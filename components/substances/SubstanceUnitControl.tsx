@@ -7,6 +7,7 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useKeyedReceipt } from "@/components/useUndoableAction";
 import { substanceDef } from "@/lib/substance-use";
 import { LabeledVerbChip } from "@/components/OfferRow";
+import { BusyMark } from "@/components/Button";
 import { useQuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import {
   logSubstanceUnitAction,
@@ -170,9 +171,10 @@ export default function SubstanceUnitControl({
                 ? "Standard drink"
                 : "Use"
             }
-            verb={ledger.pending("log") ? "Logging…" : "Log"}
+            verb="Log"
             tone="neutral"
             disabled={ledger.blocked("log")}
+            busy={ledger.pending("log")}
             onAct={() => void tap("log")}
             ariaLabel={substanceDef(substance).logLabel}
             testId={`${testIdPrefix}-log-${substance}`}
@@ -182,12 +184,15 @@ export default function SubstanceUnitControl({
             type="button"
             className="btn"
             disabled={ledger.blocked("log")}
+            aria-busy={ledger.pending("log") || undefined}
             onClick={() => void tap("log")}
             data-testid={`${testIdPrefix}-log-${substance}`}
           >
-            {ledger.pending("log")
-              ? "Logging…"
-              : substanceDef(substance).logLabel}
+            {/* The mark PRECEDES the label rather than replacing it (#5900): this
+                arm has a label, and swapping it to "Logging…" is what moved the
+                word out from under the finger. */}
+            {ledger.pending("log") ? <BusyMark /> : null}
+            {substanceDef(substance).logLabel}
           </button>
         )}
         {!inQuickEntryRow ? (
@@ -195,9 +200,11 @@ export default function SubstanceUnitControl({
             type="button"
             className="btn-ghost"
             disabled={ledger.blocked("undo") || count === 0}
+            aria-busy={ledger.pending("undo") || undefined}
             onClick={() => void tap("undo")}
             data-testid={`${testIdPrefix}-undo-${substance}`}
           >
+            {ledger.pending("undo") ? <BusyMark /> : null}
             Undo today
           </button>
         ) : null}

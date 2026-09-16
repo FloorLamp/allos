@@ -24,9 +24,13 @@ type SubmitButtonProps = Omit<
 // against, arriving through the wrapper instead of the call site. `layout` is
 // forwarded for the same reason: both of #4978's first two layout mounts are
 // submits, so a wrapper that dropped it would put the escape straight back.
+// `busy` is forwarded on the same rule: a submit whose pending state is a client
+// write rather than a form action — the mood sheet, the symptom bar — reaches the
+// primitive's in-flight treatment only through this wrapper (#5900).
 export default function SubmitButton({
   children,
   pendingLabel,
+  busy,
   disabled = false,
   requireSelection,
   "aria-label": ariaLabel,
@@ -71,6 +75,7 @@ export default function SubmitButton({
       type="submit"
       disabled={disabled || selectionMissing}
       pendingLabel={pendingLabel}
+      busy={busy}
       aria-label={ariaLabel}
       data-testid={testId}
       name={name}

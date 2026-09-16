@@ -25,19 +25,19 @@ import { CockpitPanelProvider } from "@/components/illness/CockpitPanelContext";
 //   1. THE HEADER IS THE STATUS. The fever-free ring, the sentence about the person,
 //      the Illness · Day-N tag, one prose line folding last-temp and last-meds, and
 //      "Feeling better" beside the countdown rather than at the card's bottom edge.
-//   2. A READABLE MEASURE, AND IT HAS NO DECLARER TODAY. #4752 §2 approved ~880px
-//      centered, and #5490 site 3 moved the declaration off this body and onto the
-//      Now BAND it was a row in (`components/dashboard/NowCards.tsx`), so the
+//   2. A READABLE MEASURE, DECLARED BY THE BLOCK THIS BODY SITS IN. #4752 §2 approved
+//      ~880px centered, and #5490 site 3 moved the declaration off this body and onto
+//      the Now BAND it was a row in (`components/dashboard/NowCards.tsx`), so the
 //      collapsed accordion line, this body and every other row in that one frame
-//      shared one column. #5435 §4 stops mounting that band and deletes it, and the
-//      cockpit is now mounted by IllnessNowGroup straight into Home's
-//      `PageContainer width="wide"` (72rem) — so nothing declares 880px any more and
-//      this body renders at the page's width. The measure is NOT quietly restored
-//      here: putting it back on the row is the exact placement #5490 ruled against
-//      (a centred cap on one row steps its edges in from every sibling), so where the
-//      measure should now live is an open question and is recorded as one rather than
-//      answered by this file. The stat-spread and the eye-travel from a med's name to
-//      its own button are what it was bought to dissolve.
+//      shared one column. #5435 §4 stopped mounting that band and deleted it, which
+//      left the cockpit at Home's `PageContainer width="wide"` (72rem) with nothing
+//      declaring the measure — the stat-spread and the eye-travel from a med's name to
+//      its own button came back, which is what #5894 reported. The host is Home's
+//      CURRENT CARE block now (owner ruling 2026-09-15 option (a)): it marks itself
+//      `current-care-measure` (app/globals.css) and frames every row in it — this
+//      cockpit and the Reopen list — at one measure with one left edge. It is still
+//      not this file's to spend, for #5490's reason: a centred cap on one ROW steps
+//      its edges in from every sibling, so the declaration stays on the block.
 //   3. EXPANSIONS OPEN IN PLACE. The symptom picker, the temperature entry and the med
 //      panel each open into a quiet inset panel beneath their own row. Nothing
 //      navigates and nothing outside the panel moves.

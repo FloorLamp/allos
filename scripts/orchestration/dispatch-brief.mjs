@@ -18,9 +18,9 @@
 //
 // new/adopt record ownership; brief reprints a live dispatch without writing.
 // list reports active work; claims checks live worktree paths (0 clear, 1 claimed,
-// 3 unreadable, 4 starting). promote selects the sole landing candidate.
-// done retires and cleans a dispatch; --keep preserves its worktree.
-// resume reopens a closed dispatch. Coordination state is resolved by ledger.mjs.
+// 3 unreadable, 4 starting). promote selects the sole landing candidate; done
+// retires one (--keep preserves its worktree) and resume reopens a closed one.
+// Coordination state is resolved by ledger.mjs.
 
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
@@ -47,13 +47,11 @@ const repoRoot = path.resolve(
 );
 
 /**
- * The MAIN checkout, asked of git rather than inferred from this file's location.
- *
- * `repoRoot` above answers "where does this copy of the script live", which stops
- * being the same question the moment the script runs from anywhere but the main
- * checkout. `--git-common-dir` resolves to the main checkout's `.git` from every
- * linked worktree, so its parent is the main checkout wherever the caller sits.
- * Falls back to `repoRoot` outside a git tree, where nothing else is meaningful.
+ * The MAIN checkout, asked of git rather than inferred from this file's location:
+ * `repoRoot` answers "where does this copy live", a different question from any
+ * worktree. `--git-common-dir` resolves to the main checkout's `.git` from every
+ * linked worktree, so its parent is the answer wherever the caller sits; outside
+ * a git tree, `repoRoot` is the only meaningful fallback.
  */
 function mainCheckout() {
   const common = git("rev-parse --path-format=absolute --git-common-dir", {
@@ -174,16 +172,40 @@ export function branchGitArgs(branch) {
 
 // --- discovery -------------------------------------------------------------
 
-function nvmrcMajor() {
-  return fs
-    .readFileSync(path.join(repoRoot, ".nvmrc"), "utf8")
-    .trim()
-    .replace(/^v/, "")
-    .split(".")[0];
+/**
+ * Which `.nvmrc` a dispatch's node major comes from. A lane branches from
+ * `origin/main`, so that tree's pin governs it, not this checkout's, which may
+ * be behind main or hold a lane's own edit (#5906). The working tree is the
+ * named FALLBACK; neither read is UNREAD, never a guess.
+ *
+ * @param {string|null} atMain `.nvmrc` at origin/main, null if unreadable
+ * @param {string|null} working `.nvmrc` here, null if unreadable
+ * @returns {{ major: string, at: string } | { unread: string }}
+ */
+export function nodePin(atMain, working) {
+  const major = (text) => text.trim().replace(/^v/, "").split(".")[0];
+  if (atMain) return { major: major(atMain), at: "origin/main" };
+  if (working)
+    return {
+      major: major(working),
+      at: "this checkout's working tree — origin/main's could not be read",
+    };
+  return {
+    unread: "neither origin/main's .nvmrc nor this checkout's could be read",
+  };
 }
 
-function discoverNode24() {
-  return discoverNodeBin(nvmrcMajor());
+function nvmrcPin() {
+  let working = null;
+  try {
+    working = fs.readFileSync(path.join(repoRoot, ".nvmrc"), "utf8");
+  } catch {
+    working = null;
+  }
+  return nodePin(
+    git(["show", `${MAIN_REF}:.nvmrc`], { allowFail: true }),
+    working
+  );
 }
 
 /**
@@ -197,17 +219,19 @@ export function historyDepthLine(shallow, firstCommit) {
     ? `history begins at ${firstCommit}`
     : "the oldest reachable commit could not be read";
   return shallow
-    ? `This clone is SHALLOW; ${begins}. Run \`git fetch --unshallow origin main\`; deepen, then check older claims.`
-    : `This clone has FULL history; ${begins}. Older history IS checkable here.`;
+    ? `This clone is SHALLOW; ${begins}. Deepen with \`git fetch --deepen=200 origin main\`\n` +
+        `  — BOUNDED, since policy can refuse \`--unshallow\` — before merging origin/main or\n` +
+        `  checking older claims: without the merge base, git reports unrelated histories`
+    : `This clone has FULL history; ${begins}. Older history IS checkable here`;
 }
 
 function historyDepth() {
   const shallow =
     git("rev-parse --is-shallow-repository", { allowFail: true }) === "true";
-  // `git log --reverse -1` returns the NEWEST commit — the limit is applied
-  // before the reversal — so the root is asked for as a root. In a shallow
-  // clone the graft boundary is parentless and answers here too, which is
-  // exactly the commit the shallow branch means by "history begins at".
+  // `git log --reverse -1` returns the NEWEST commit (the limit applies before
+  // the reversal), so the root is asked for as a root. A shallow clone's graft
+  // boundary is parentless and answers here too — exactly what "history begins
+  // at" means there.
   const root = git(["rev-list", "--max-parents=0", "HEAD"], {
     allowFail: true,
   })?.split("\n")[0];
@@ -250,11 +274,10 @@ function allocatePortBase(active, opts = {}) {
 }
 
 // Load caps (docs/orchestration/dispatch.md §Dispatch), as PREDICATES rather
-// than inline counts, for the reason the port-collision rule moved out of the
-// allocator's loop: a rule that lives at one call site is a rule the next
-// call site skips. The two-agent E2E cap holds on EVERY host and refuses; the
-// machine cap only WARNS — it is host-dependent and a P0 preempts (the same
-// reason the sibling-start stagger warns).
+// than inline counts, for the reason the port-collision rule left the
+// allocator's loop: a rule at one call site is a rule the next one skips. The
+// two-agent E2E cap holds on EVERY host and refuses; the machine cap only WARNS,
+// being host-dependent, and a P0 preempts it.
 export const E2E_LANE_CAP = 2;
 export const MACHINE_CAP_WARN = 5;
 
@@ -284,7 +307,8 @@ const MIGRATION_LINES = `- Migrations are NAME-KEYED — there is NO slot to res
   than resolving the hash lines by hand, and re-run the DB tier.`;
 
 function buildBrief(opts) {
-  const node24 = discoverNode24();
+  const pin = nvmrcPin();
+  const nodeBin = "unread" in pin ? null : discoverNodeBin(pin.major);
   const nm = canonicalNodeModules();
   const rows = readLedger();
   const active = activeDispatches(rows);
@@ -317,12 +341,17 @@ function buildBrief(opts) {
     );
   }
 
-  const nodeLine = node24
-    ? `- export PATH=${node24}:$PATH in EVERY shell (verify better-sqlite3 loads)`
-    : `- No node ${nvmrcMajor()} found (checked the running process, then nvm under $NVM_DIR,\n` +
-      `  ~/.nvm, and /opt/nvm) — install the .nvmrc major with your version manager first\n` +
-      `  (e.g. nvm install ${nvmrcMajor()}), then export PATH to its bin dir in EVERY shell\n` +
-      `  (verify better-sqlite3 loads)`;
+  const nodeLine =
+    "unread" in pin
+      ? `- Node major UNREAD (${pin.unread}) — resolve it with\n` +
+        `  \`node scripts/orchestration/host.mjs node-bin origin/main\`, then export PATH\n` +
+        `  to that bin dir in EVERY shell`
+      : nodeBin
+        ? `- export PATH=${nodeBin}:$PATH in EVERY shell (node ${pin.major}, .nvmrc @ ${pin.at};\n` +
+          `  verify better-sqlite3 loads)`
+        : `- No node ${pin.major} found (.nvmrc @ ${pin.at}; checked the running process, then\n` +
+          `  nvm under $NVM_DIR, ~/.nvm, and /opt/nvm) — install it with your version manager\n` +
+          `  (e.g. nvm install ${pin.major}), then export PATH to its bin dir in EVERY shell`;
 
   const issueLines = opts.issues.length
     ? opts.issues
@@ -579,14 +608,11 @@ const claimQuote = (body) =>
  * Per-issue claim verdicts, with the reader injected so the refusal paths are
  * drivable without a network.
  *
- * WHOSE CLAIM IS IT: the discriminator is the BRANCH, never the author. Both
- * orchestrators post as the same account, so `user.login` cannot separate them
- * — but a claim names the branch it dispatched, and `new --branch X` is about
- * to create X. A claim naming X IS this dispatch's own claim, posted by the
- * convention that says claim before briefing; a claim naming anything else is
- * somebody else's lane. The one way this reads CLEAR wrongly is another
- * orchestrator writing your exact branch name into their claim, which would
- * make it the same lane anyway.
+ * WHOSE CLAIM IS IT: the discriminator is the BRANCH, never the author — both
+ * orchestrators post as one account. A claim naming the branch `new` is about to
+ * create is this dispatch's own; any other branch is another lane. This reads
+ * CLEAR wrongly only if someone claimed your exact branch name, which would make
+ * it the same lane anyway.
  *
  * @param {string[]} numbers issue numbers being dispatched
  * @param {string} branch the branch `new` is about to create
@@ -654,11 +680,10 @@ function attributedPr(prs, branch) {
 }
 
 /**
- * Refusal when an OPEN PR already has this branch as its head and its body
- * names a session other than the one running. Null when it does not, and null
- * when there is nothing to compare against — those are WARNINGS the caller
- * prints, because unlike the issue claim this read happens on EVERY dispatch
- * and #4460 governs a check whose failure would cost every lane its start.
+ * Refusal when an OPEN PR already heads this branch and its body names another
+ * session. Null otherwise, and null with nothing to compare against — those are
+ * WARNINGS the caller prints, since this read happens on EVERY dispatch and a
+ * failing check must not cost every lane its start (#4460).
  *
  * @param {{ head?: { ref?: string }, number?: number, body?: string }[]} prs
  * @param {string} branch the branch about to be dispatched onto
@@ -681,17 +706,12 @@ export function branchPrRefusal(prs, branch, self) {
 /**
  * The session a commit message's `Claude-Session:` trailer names, or null.
  *
- * The trailer LINE AT COLUMN 0, never any session id in the prose: commit
- * messages here quote refusals and each other, and a commit that quotes
- * `session_x` — or quotes a whole trailer, indented, as a quotation is written
- * — is not a commit `session_x` wrote. `--format=%B` prints a message raw, so
- * a real trailer is always unindented and this costs nothing.
- *
- * The FIRST trailer wins, because the reader hands this the branch's own
- * commits NEWEST FIRST — so the first trailer in the text is the
- * most recent commit that signed one, and a `git merge origin/main` commit
- * (which signs nothing) falls through to the work underneath it instead of
- * reading as an unowned branch.
+ * The trailer LINE AT COLUMN 0, never a session id in the prose: commits here
+ * quote refusals and each other, and a quoted trailer (indented, as quotation is
+ * written) is not one that session wrote. `--format=%B` prints raw, so a real
+ * trailer is unindented. The FIRST trailer wins because the reader hands this the
+ * branch's commits NEWEST FIRST, so a `git merge origin/main` commit, signing
+ * nothing, falls through to the work under it rather than reading as unowned.
  *
  * @param {string|null|undefined} messages one or more commit messages, newest first
  */
@@ -703,19 +723,14 @@ export function trailerSession(messages) {
 }
 
 /**
- * Refusal when the trailer on the branch's own work names another session.
- * Null when it names this one, null when there is no trailer — an unmarked
- * commit is not attributable, which is the same answer `branchPrRefusal` gives
- * an unmarked PR body.
+ * Refusal when the trailer on the branch's own work names another session. Null
+ * when it names this one or there is no trailer — an unmarked commit is not
+ * attributable, the answer `branchPrRefusal` gives an unmarked PR body.
  *
- * Call this only where the PR bodies did not attribute the branch. It does NOT
- * say WHY they did not, because it cannot tell: no open PR heads it, the one
- * that does carries no session footer, and the PR list could not be read at all
- * are three different worlds, and the third is the one an enumeration gets
- * wrong. A refusal that names a cause it has not established sends its reader
- * to look for a PR that may exist and may not — the exact harm naming the
- * deciding reader exists to prevent — so it points at the `[pr-owner]` line the
- * caller always prints just above it, which does know.
+ * Call this only where the PR bodies did not attribute the branch, and do not
+ * say WHY: no open PR, no session footer, and an unreadable PR list are three
+ * different worlds, and a refusal naming an unestablished cause sends its reader
+ * hunting a PR that may not exist. It points at the `[pr-owner]` line above.
  *
  * @param {string|null} messages the branch's own commit messages, newest first
  * @param {string} branch the branch about to be dispatched onto
@@ -740,10 +755,9 @@ export function branchTrailerRefusal(messages, branch, self) {
 
 /**
  * The messages of the commits `branch` carries and origin/main does not, or a
- * stated reason there are none to read. Local ref first, then this clone's
- * remote-tracking ref, then the remote itself — because a branch another
- * session banked from another clone has no ref here at all, and "I have no ref
- * for it" must not read as "it has no trailer".
+ * stated reason there are none to read. Local ref, then remote-tracking ref,
+ * then the remote itself: a branch banked from another clone has no ref here,
+ * and "no ref for it" must not read as "it has no trailer".
  *
  * @returns {{ messages: string, ref: string } | { absent: string } | { unknown: string }}
  */
@@ -808,8 +822,8 @@ function openPrsReader(repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
 /**
  * BOTH READERS, IN ORDER, AS ONE DECISION — pure, with the reads handed in, so
  * the ordering is drivable without a network or a git tree (the #4473 shape).
- * Both are thunks: the second reader only runs when the first did not answer,
- * and that laziness is the whole ordering — neither costs a call it need not.
+ * They are thunks: the second runs only when the first did not answer, and that
+ * laziness IS the ordering.
  *
  * @param {string} branch
  * @param {string|null} self the running session, normalised
@@ -1102,22 +1116,12 @@ function cmdNew(argv) {
 function cmdList() {
   const rows = readLedger();
   const active = activeDispatches(rows);
-  // A stall threshold derived from a degenerate sample is a FALSE ALARM
-  // GENERATOR, which is worse than no threshold — the whole point of the
-  // check-in tooling is that its alarms are worth reading.
-  //
-  // Observed live: backfilling three in-flight clusters into a fresh ledger
-  // (dispatch, then `done`, then re-dispatch with the right worktree names)
-  // left five "completed" entries lasting about a minute each. Median 1m,
-  // threshold 3m, and both real clusters — 23 minutes into work that routinely
-  // runs an hour — were immediately branded STALL. Every row shouting is how
-  // the previous restart detector failed.
-  //
-  // Two guards, because the sample can be degenerate in two different ways:
-  // too FEW completions to be a distribution at all, and completions too SHORT
-  // to be real dispatches (a backfill, an aborted probe, a `done` typo). A
-  // dispatch that finished in under MIN_REAL_DISPATCH_MS did not do a cluster's
-  // work, so it says nothing about how long a cluster takes.
+  // A threshold from a degenerate sample is a FALSE ALARM GENERATOR, worse than
+  // no threshold: a backfill of five minute-long "completions" once branded
+  // both live clusters STALL 23 minutes into hour-long work. Two guards, for the
+  // two ways the sample degenerates — too FEW completions to be a distribution,
+  // and completions too SHORT to be dispatches (a backfill, an aborted probe, a
+  // `done` typo), which say nothing about how long a cluster takes.
   const MIN_COMPLETIONS_FOR_MEDIAN = 3;
   const MIN_REAL_DISPATCH_MS = 5 * 60_000;
   const allDurations = completedDurationsMs(rows).sort((a, b) => a - b);
@@ -1219,16 +1223,12 @@ function cmdList() {
   }
 }
 
-// "Has anybody touched this tree lately?" — the question the dirty check cannot
-// ask. Ten minutes is chosen to be longer than a gate run's quiet stretch (a
-// `next build` writes continuously; the pure tier does not) and far shorter than
-// the stall threshold, so it separates "mid-task and quiet" from "gone".
-//
-// Walks the tree's own files, skipping node_modules and .git — those are hard
-// links from the parent checkout and a shared .git is written by every OTHER
-// worktree's commits, which would make every tree look permanently busy.
-/** Elapsed milliseconds as `4h00m`. Shared by `list` and `claims`, which report
- * the same clock about the same dispatches. */
+// "Has anybody touched this tree lately?" — what the dirty check cannot ask.
+// Ten minutes is longer than a gate run's quiet stretch and far shorter than the
+// stall threshold, separating "mid-task and quiet" from "gone". Skips
+// node_modules and .git: hard links, and a shared .git every other worktree
+// commits into, would make every tree look busy.
+/** Elapsed milliseconds as `4h00m`, shared by `list` and `claims`. */
 const fmt = (ms) =>
   `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
@@ -1317,9 +1317,11 @@ export const pathOverlaps = (a, b) =>
 /**
  * Per-dispatch verdicts for one path. `changesFor` returns the paths a dispatch
  * is holding, or why it could not be asked. Starting and unreadable are distinct.
+ * `wide` says why a path set is broader than the dispatch's own work, so a claim
+ * from it is not reported as certain.
  * @param {string} target repo-relative path
  * @param {{ branch: string }[]} dispatches
- * @param {(d: { branch: string }) => { paths: string[] } | { unknown: string } | { starting: string }} changesFor
+ * @param {(d: { branch: string }) => { paths: string[], wide?: string | null } | { unknown: string } | { starting: string }} changesFor
  */
 export function fileClaims(target, dispatches, changesFor) {
   return dispatches.map((d) => {
@@ -1333,6 +1335,9 @@ export function fileClaims(target, dispatches, changesFor) {
       branch: d.branch,
       verdict: hit ? "claimed" : "clear",
       why: hit ?? null,
+      // Only a CLAIM can be wrong for being wide: a wider set matching nothing
+      // is a stronger clear.
+      wide: hit ? (found.wide ?? null) : null,
     };
   });
 }
@@ -1357,20 +1362,35 @@ const CLAIMS_EXIT = { claimed: 1, unknown: 3, starting: 4, clear: 0 };
 function worktreeChanges(dir) {
   if (!fs.existsSync(dir))
     return { unknown: `worktree gone from disk (${dir})` };
-  // Three commands that each return PLAIN PATHS. `git status --porcelain` would
-  // answer the first two at once, and its two-column prefix is a trap here:
-  // `git()` above trims its output, so the leading space of an unstaged " M"
-  // disappears and every fixed-width slice is off by one on the first entry only
-  // — a parse that looks right and drops the file you asked about.
+  // Three reads that each return PLAIN PATHS. `git status --porcelain` would
+  // answer the first two at once, and its two-column prefix is a trap: trimmed
+  // output loses the leading space of an unstaged " M", so every fixed-width
+  // slice is off by one on the first entry — a parse that drops the file asked about.
+  // UNLANDED, without assuming a merge base: `origin/main...HEAD` needs one, and
+  // a shallow clone past a branch's base has none, so every lane answered CANNOT
+  // TELL in a fresh container (#5928). Naming the base is that same diff; without
+  // one, two-dot is WIDER, carrying main's changes — the safe direction, since a
+  // listed path costs a question and a dropped one costs a collision.
   const opts = { cwd: dir, allowFail: true };
-  const out = [
-    git(["diff", "--name-only", "-z", "HEAD"], opts), // tracked, staged or not
-    git(["ls-files", "-z", "--others", "--exclude-standard"], opts), // untracked
-    git(["diff", "--name-only", "-z", "origin/main...HEAD"], opts), // unlanded
+  const base = git(["merge-base", MAIN_REF, "HEAD"], opts);
+  const cmds = [
+    ["diff", "--name-only", "-z", "HEAD"], // tracked, staged or not
+    ["ls-files", "-z", "--others", "--exclude-standard"], // untracked
+    ["diff", "--name-only", "-z", base ?? MAIN_REF, "HEAD"], // unlanded
   ];
-  if (out.some((o) => o === null))
-    return { unknown: `git could not read ${dir}` };
-  return { paths: out.flatMap((o) => o.split("\0").filter(Boolean)) };
+  const out = cmds.map((c) => git(c, opts));
+  // WHICH read failed: naming only the directory sent readers to inspect
+  // perfectly healthy worktrees (#5928).
+  const failed = cmds[out.findIndex((o) => o === null)];
+  if (failed)
+    return { unknown: `\`git ${failed.join(" ")}\` failed in ${dir}` };
+  return {
+    paths: out.flatMap((o) => o.split("\0").filter(Boolean)),
+    wide: base
+      ? null
+      : "no merge base here, so this also carries what main changed; " +
+        "`git fetch --deepen=200 origin main` narrows it",
+  };
 }
 
 function cmdClaims(argv) {
@@ -1395,13 +1415,11 @@ function cmdClaims(argv) {
     console.error(`dispatch-brief.mjs claims: ${arg} is outside ${root}.`);
     process.exit(2);
   }
-  // A DETACHED worktree gets the literal "HEAD" here, which matches no branch,
-  // so nothing is excluded and the caller's own dispatch comes back as `unknown`
-  // (git lists no worktree for its branch). That is the ALARM direction, not the
-  // false-clear one, and no lane runs detached — so this is left alone on
-  // purpose. Do not "fix" it by dropping the filter or by matching on worktree
-  // path: both trade an alarm nobody sees for a CLEAR that would be wrong, which
-  // is the one answer this command must never give.
+  // A DETACHED worktree gets the literal "HEAD", which matches no branch, so the
+  // caller's own dispatch comes back as `unknown`. That is the ALARM direction,
+  // and no lane runs detached, so it is left alone on purpose: dropping the
+  // filter or matching on worktree path would trade an alarm nobody sees for a
+  // CLEAR that is wrong — the one answer this command must never give.
   const self = git(["rev-parse", "--abbrev-ref", "HEAD"], {
     cwd,
     allowFail: true,
@@ -1432,7 +1450,11 @@ function cmdClaims(argv) {
   if (claimed.length) {
     console.log(`CLAIMED  ${target}`);
     for (const r of claimed)
-      console.log(`  ${r.branch}  holds ${r.why} (not in main)`);
+      console.log(
+        r.wide
+          ? `  ${r.branch}  differs from origin/main at ${r.why} — ${r.wide}`
+          : `  ${r.branch}  holds ${r.why} (not in main)`
+      );
   }
   if (unknown.length) {
     console.log(
@@ -1636,14 +1658,11 @@ Merge the PR first, then retire. If the branch is genuinely ABANDONED, pass
   }
 }
 
-// Reprint a live dispatch's brief, writing nothing.
-//
-// The ledger stores a dispatch's PARAMETERS, not its brief text, and the brief
-// is only ever printed once — at `new`. An orchestrator that loses the text
-// (restart, compaction, a tail that cut it off) has no way back to it, and the
-// obvious move, re-running `new`, silently forked the ledger and the roster.
-// Rebuilding from the recorded parameters is exact: `buildBrief` is a pure
-// function of them, so this prints the same bytes the agent was given.
+// Reprint a live dispatch's brief, writing nothing. The ledger stores a
+// dispatch's PARAMETERS, not its text, and `new` prints the brief once; an
+// orchestrator that lost it (restart, compaction, a cut-off tail) used to re-run
+// `new`, which forked the ledger and the roster. `buildBrief` is a pure function
+// of those parameters, so this prints the same bytes the agent was given.
 function cmdBrief(argv) {
   const branch = argv[0];
   if (!branch) {

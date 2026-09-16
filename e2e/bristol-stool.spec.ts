@@ -472,11 +472,19 @@ test("the sheet lists the day's movements and the newest tap is undoable (#5663)
   await expect(
     tapped.getByTestId("quick-entry-stool-receipt-heading")
   ).toHaveText("Type 6 · Mushy");
+  // THE CLOCK CARRIES ITS WORD (#5921). This tap named no minute, so the row's only
+  // instant is the stamp it was filed at, and #5618 ruling 6's "logged" is what keeps
+  // the sheet from spelling it the way it spells a minute somebody stated. The minute
+  // itself is still read back out of the store rather than written here — the run
+  // freezes the clock and the boundary shard can move it.
   await expect(
     tapped.getByTestId("quick-entry-stool-receipt-facts")
   ).toHaveText(
-    `Fluffy pieces with ragged edges, a mushy stool · ${logged[0].started_at.slice(11, 16)}`
+    `Fluffy pieces with ragged edges, a mushy stool · logged ${logged[0].started_at.slice(11, 16)}`
   );
+  // The store agrees that nobody stated it, which is what the word is about.
+  expect(logged[0].occurred_at).toBeNull();
+  expect(logged[0].time_source).toBeNull();
   await expect(rows.nth(0)).toHaveAttribute(
     "data-reading-id",
     String(logged[0].id)
