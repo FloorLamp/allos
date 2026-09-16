@@ -84,6 +84,11 @@ export const DATASET_UNDO_KIND = {
   // not optional here — they are deletable datasets AND undoable roots, which is the
   // decision this type forces. (`skin_lesions` is not a deletable dataset, so its kind
   // needs no entry; medical_documents is not an undoable root yet.)
+  // #5872: the stool ledger is a deletable dataset AND an undoable root, which is the
+  // decision this type forces. One profile-owned row with no children and no counter,
+  // so bulk-deleting N rows is N per-row deletes restorable from one toast — the same
+  // treatment the record's own ⋯ gives a movement.
+  stool_events: "stool-event",
   allergies: "allergy",
   conditions: "condition",
   immunizations: "immunization",

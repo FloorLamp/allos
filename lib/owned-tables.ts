@@ -175,6 +175,9 @@ export const OWNED_TABLES = [
   // food_daily_totals / food_log_events pairing re-instantiated. Directly owned;
   // nothing FKs into it, so deleteProfile clears it by profile_id.
   "substance_log_events",
+  // The stool ledger (#5872): one row per movement, the Bristol type an optional
+  // fact about it. Born `profile_id INTEGER NOT NULL`, so it joins here.
+  "stool_events",
   // The fasting log (#2756): one row per claimed fast — an interval the user STARTS and
   // ENDS explicitly (never inferred), plus an optional note. Directly owned; nothing FKs
   // into it, so a delete is a plain row delete and deleteProfile clears it by profile_id.

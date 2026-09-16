@@ -72,7 +72,6 @@ import {
 import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
 import { logSubstanceUnitCore } from "@/lib/substance-log-write";
 import { logBristolStool } from "@/lib/offline/writes";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { createCycleRow } from "@/lib/cycle-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import type { StampedFormData } from "@/lib/logged-via";
@@ -258,10 +257,9 @@ function seedStoolReading(profileId: number, date: string): number {
     (
       db
         .prepare(
-          `SELECT id FROM metric_samples
-            WHERE profile_id = ? AND metric = ? AND date = ?`
+          "SELECT id FROM stool_events WHERE profile_id = ? AND date = ?"
         )
-        .get(profileId, BRISTOL_STOOL_METRIC, date) as { id: number }
+        .get(profileId, date) as { id: number }
     ).id
   );
 }
@@ -269,12 +267,9 @@ function seedStoolReading(profileId: number, date: string): number {
 const stoolTypeOf = (id: number, profileId: number): number | null =>
   (
     db
-      .prepare(
-        `SELECT value FROM metric_samples
-          WHERE id = ? AND profile_id = ? AND metric = ?`
-      )
-      .get(id, profileId, BRISTOL_STOOL_METRIC) as { value: number } | undefined
-  )?.value ?? null;
+      .prepare("SELECT type FROM stool_events WHERE id = ? AND profile_id = ?")
+      .get(id, profileId) as { type: number | null } | undefined
+  )?.type ?? null;
 
 // ── The five kinds, as a table ────────────────────────────────────────────────
 //
