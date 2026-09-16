@@ -14,8 +14,6 @@ import {
   type PreventiveReviewCandidate,
   type PreventiveReviewSource,
 } from "@/lib/preventive-review";
-import { preventiveReviewCandidate } from "@/lib/dashboard-candidates/attention";
-import { rankDashboardCandidates } from "@/lib/dashboard-relevance";
 
 // The #3025 boundary, unit-tested with no DB: structured evidence decides,
 // prose asks. Auto-satisfaction from a document row exists only through an
@@ -321,31 +319,5 @@ describe("offer dedupe", () => {
     expect(
       offeredPreventiveReviewCandidates([...trip([7]), variant], none)
     ).toEqual([variant]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The dashboard fact never enters Now
-// ---------------------------------------------------------------------------
-describe("dashboard placement", () => {
-  it("a review candidate lands in Show everything, never Now", () => {
-    const candidate = preventiveReviewCandidate(
-      { scope: "profile", profileId: 1 },
-      { recordId: 7, ruleKey: "cervical_cancer" },
-      0
-    );
-    // Structural bar: no rank reason is true, so nowScore is null at every
-    // minute of the day. Removing the bar (any owed/changed reason) would rank
-    // it into Now and go red here.
-    for (const minutesOfDay of [0, 420, 720, 1200]) {
-      const placements = rankDashboardCandidates([candidate], {
-        activeProfileId: 1,
-        minutesOfDay,
-        today: "2026-08-19",
-        upcoming: [],
-      });
-      expect(placements).toHaveLength(1);
-      expect(placements[0].lane).toBe("everything");
-    }
   });
 });

@@ -62,13 +62,3 @@ export function profileDataRelevance(
 ): DashboardRelevancePolicy {
   return { kind: "profile-data", presence, engagement };
 }
-
-export function engagementFromSource(
-  source: string | null | undefined
-): "unknown" | "manual" | "external" {
-  if (source === undefined) return "unknown";
-  // The existing body-metric and sleep stores use NULL for rows entered in
-  // Allos. Named sources identify imports/integrations; an explicit "manual"
-  // value is accepted for models that normalize provenance before this edge.
-  return source === null || source === "manual" ? "manual" : "external";
-}

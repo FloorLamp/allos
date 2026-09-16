@@ -6,15 +6,7 @@ import {
   outcomeGoalStateChanged,
   sleepArrivedInWakeWindow,
 } from "../dashboard-reading-promotions";
-import {
-  careCandidates,
-  progressCandidates,
-  sleepCandidates,
-} from "../dashboard-candidates";
 import type { OutcomeGoal } from "../types";
-
-const subject = { scope: "profile" as const, profileId: 7 };
-const ctx = { subject, sourceOrder: 0 };
 
 describe("closed dashboard reading promotions", () => {
   // FIVE, NOT SIX: `weekly-target-transition` retired with #4756/#5064. The kind is
@@ -81,53 +73,6 @@ describe("closed dashboard reading promotions", () => {
         "2026-06-17"
       )
     ).toBe(false);
-  });
-
-  it("routes every registered transition through its existing domain candidate", () => {
-    const candidates = [
-      careCandidates.lab(ctx, "LDL Cholesterol", { changed: true }),
-      progressCandidates.goal(ctx, 2, true),
-      progressCandidates.trainingResult(ctx, "bench", "2026-06-17", 0),
-      sleepCandidates.reading(
-        ctx,
-        "last-night",
-        "2026-06-17",
-        "external",
-        {
-          kind: "local-time",
-          opensAt: 360,
-          closesAt: 540,
-          wrapsMidnight: false,
-        },
-        true
-      ),
-      sleepCandidates.nap(ctx, "2026-06-17", 780, "manual", 30),
-    ];
-
-    expect(candidates.map(({ readingPromotion }) => readingPromotion)).toEqual(
-      DASHBOARD_READING_PROMOTIONS
-    );
-    expect(candidates.every(({ rankReasons }) => rankReasons.changed)).toBe(
-      true
-    );
-  });
-
-  it("leaves sibling last-night facts as ordinary readings", () => {
-    const bedtime = sleepCandidates.reading(
-      ctx,
-      "bedtime",
-      "2026-06-17",
-      "external",
-      {
-        kind: "local-time",
-        opensAt: 360,
-        closesAt: 540,
-        wrapsMidnight: false,
-      }
-    );
-
-    expect(bedtime.readingPromotion).toBeUndefined();
-    expect(bedtime.rankReasons.changed).toBe(false);
   });
 
   it("requires the canonical last-night label and never repromotes recent sleep", () => {

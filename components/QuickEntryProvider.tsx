@@ -15,10 +15,8 @@ import {
   type ReactNode,
 } from "react";
 import dynamic from "next/dynamic";
-import { IconChevronDown } from "@tabler/icons-react";
 import BottomSheet from "./BottomSheet";
 import { LoggedViaSurface } from "./LoggedViaSurface";
-import Avatar from "./Avatar";
 import { useToast } from "./Toast";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
@@ -33,7 +31,6 @@ import {
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
-import type { OverlaySize } from "./overlay";
 import {
   DayContextBoundary,
   DayContextProvider,
@@ -42,12 +39,21 @@ import {
   type DayContextValue,
 } from "./DayContext";
 import BoundedDaySwitcher from "./BoundedDaySwitcher";
-import InfoTooltipIcon from "./InfoTooltipIcon";
-import { CREATE_ACTIONS } from "./CreateAction";
-import { bristolScaleLines } from "@/lib/bristol-stool";
-import { isWithinReach, logHeading, SHEET_REACH } from "@/lib/log-manifest";
+import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
+import type { FoodSlotBoundaries } from "@/lib/food-slot";
+import {
+  useVisitResumeBoundary,
+  useVisitResumeWatch,
+  type VisitResumeWatch,
+} from "./quick-entry/visit-resume";
+import {
+  QuickEntrySubjectPicker,
+  QuickEntryTitleAdornment,
+  sheetForEntry,
+  type SheetChrome,
+} from "./quick-entry/sheet-chrome";
 import { formatRelativeTime, formatWeekdayDate } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { TimezoneProvider } from "./TimezoneProvider";
@@ -177,6 +183,15 @@ interface QuickEntryApi {
     subjectProfileId?: number
   ) => void;
   close: () => void;
+  /**
+   * The sheet's food-window splits, published by whoever gathered them (#5902).
+   * `QuickLogMenu`'s open-time `loadLogSheetContext` is that gatherer and the only
+   * caller; the provider keeps the last answer so the visit's resume check can ask
+   * which window it opened in without a second read. `null` clears it — a sheet
+   * that closed, or a gather that failed, leaves the day as the only boundary the
+   * resume check can still compare.
+   */
+  noteSlotBoundaries: (boundaries: FoodSlotBoundaries | null) => void;
 }
 
 interface QuickEntryHostApi extends QuickEntryApi {
@@ -189,6 +204,9 @@ interface QuickEntryHostApi extends QuickEntryApi {
   visit: QuickEntryVisitHostApi;
   actingProfileId: number;
   writableProfiles: SessionProfile[];
+  // The resume check's two event-time reads (#5902), owned by
+  // components/quick-entry/visit-resume.ts.
+  resume: VisitResumeWatch;
 }
 
 interface QuickEntrySession {
@@ -247,6 +265,7 @@ interface QuickEntryVisitHostApi {
   ) => void;
   back: () => void;
   beginClose: () => void;
+  invalidate: () => void;
   complete: (entryId: number) => boolean;
   retry: (entryId: number) => void;
   selectDay: (entryId: number, day: string) => void;
@@ -290,6 +309,7 @@ export function useQuickEntry(): QuickEntryApi {
   return useMemo(
     () => ({
       close: ctx.close,
+      noteSlotBoundaries: ctx.noteSlotBoundaries,
       open: (
         form: QuickEntryForm,
         prefill?: QuickEntryPrefill,
@@ -300,66 +320,6 @@ export function useQuickEntry(): QuickEntryApi {
   );
 }
 
-// The sheet's visible and accessible name per form, and how wide its panel gets
-// from `sm` up. Bodies render content beneath that shared title.
-//
-// THE SIZE IS DECLARED PER FORM, NOT PER HOST (#4977 item 1). One `BottomSheet`
-// mounts every body in this registry, so a width set on the mount below is a width
-// set for all of them — and the bodies genuinely differ: a dose list is a column of
-// rows, the measurements grid is a multi-column tool. #2774's three buckets are the
-// vocabulary for exactly that difference, so each form names the one its content is,
-// here, beside the title it already names. Every entry but `measurements` declares
-// `sm`, which is the sheet's historical default and therefore the width each of them
-// renders at today; measurements declares `lg`, the bucket
-// `OVERLAY_PANEL_MAX_WIDTH`'s own note already assigns to "the measurements grid".
-// THE CHROME ONE FORM DECLARES: its title, how wide its panel gets, and — where the
-// body's instrument has a vocabulary a reader cannot see — the sentence behind the
-// title row's info glyph (#5756). Named once because three places used to spell it.
-type SheetChrome = { title: string; size: OverlaySize; help?: string };
-
-const SHEET: Record<QuickEntryForm, SheetChrome> = {
-  food: { title: logHeading("food"), size: "sm" },
-  // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
-  // #3361: the form renders body content, so the sheet prints its heading.
-  //
-  // `lg` (#4977 item 1): the form's grid is INTRINSIC since #2014 — it asks its
-  // container (`repeat(auto-fit, minmax(10.5rem, 1fr))`) rather than the window — so
-  // the only thing standing between this mount and the two-row Vitals group the
-  // Trends modal already renders was a container that never said how wide it was.
-  // Nothing in the form changes; it flows to four fields a row on its own.
-  measurements: { title: logHeading("body"), size: "lg" },
-  dose: { title: logHeading("dose"), size: "sm" },
-  practice: { title: logHeading("practice"), size: "sm" },
-  // #1892: the sheet's period row. The panel owns no heading — the verb is on the
-  // button, which is the point.
-  cycle: { title: "Log period", size: "sm" },
-  // #2130: the sheet's mood row — the same check-in write, a second mount.
-  mood: { title: logHeading("mood"), size: "sm" },
-  // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
-  // the question, and a printed one above them would say it twice.
-  stool: { title: logHeading("stool"), size: "sm", help: bristolScaleLines() },
-  // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
-  // question, and each carries its own verb.
-  substance: { title: logHeading("substance"), size: "sm" },
-  // #4064: the sheet's symptom row. The panel owns no heading — the bar's own
-  // "Daily symptoms" label is suppressed the way the illness cockpit suppresses it,
-  // so the sheet prints the one heading.
-  symptom: { title: logHeading("symptom"), size: "sm" },
-  document: { title: "Add document", size: "sm" },
-};
-
-function sheetForEntry(
-  entry: Pick<QuickEntrySession, "form" | "view">
-): SheetChrome {
-  // THE SAME NOUN THE TRIGGER CARRIES (#5300 rule 6). This spelled "Add medication"
-  // and "Add supplement" itself, which is the create registry's own copy — a second
-  // vocabulary for two forms that already had one, and `IntakeItemKind`'s two members
-  // are exactly two of its kinds.
-  return entry.view.kind === "intake"
-    ? { title: CREATE_ACTIONS[entry.view.intakeKind].label, size: "lg" }
-    : SHEET[entry.form];
-}
-
 export function useQuickEntryVisit(
   outerOpen: boolean,
   onInvalidated: () => void
@@ -367,6 +327,7 @@ export function useQuickEntryVisit(
   const ctx = useContext(Ctx);
   const dayContext = useOptionalDayContext();
   const ownerId = useId();
+  const liveProfileClocks = useLiveProfileClocks();
   const [edge, setEdge] = useState(() => ({
     open: outerOpen,
     serial: outerOpen ? 1 : 0,
@@ -403,6 +364,20 @@ export function useQuickEntryVisit(
     if (outerOpen && currentVisit && ctx.visit.state.invalidated)
       onInvalidated();
   }, [ctx.visit.state.invalidated, currentVisit, onInvalidated, outerOpen]);
+
+  // THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (#5902). One listener,
+  // here in the visit owner, so `QuickLogSheet` needs not one line of it and neither
+  // does any future host that takes a visit. What it watches, why the day is derived
+  // at event time and why a draft holds the sheet open: visit-resume.ts.
+  //
+  // (The desktop panel reaches these forms through the provider's DIRECT overlay
+  // rather than a visit, so it has no visit to invalidate and is not covered.)
+  useVisitResumeBoundary({
+    watching: outerOpen && currentVisit,
+    timeZone: liveProfileClocks.get(ctx.actingProfileId)?.timeZone ?? null,
+    watch: ctx.resume,
+    onCrossed: ctx.visit.invalidate,
+  });
 
   const activeEntry = (currentVisit ? ctx.visit.state.entries : []).find(
     (entry) => entry.id === ctx.visit.state.activeId
@@ -584,105 +559,6 @@ const QUICK_ENTRY_LOADING = (
   </p>
 );
 
-// THE SHEET'S TITLE ROW, right of the heading: the form's own instrument vocabulary
-// where it has one, then who this entry is being logged for.
-//
-// THE GLYPH IS THE REGISTRY'S, NOT THIS COMPONENT'S (#5756). A body whose control is
-// the question — the stool tiles are seven pictures — has a sentence per option that a
-// sighted reader could reach nowhere: the tiles carry it as their accessible name, the
-// record's select prints it, and the one surface where a person PICKS a type showed
-// pictures. `SheetChrome.help` is where a form says it has such a sentence, and the
-// glyph is the design system's existing "short explanation or hidden full value" row
-// rather than a description on tap — the tap is the write (#2642).
-function QuickEntryTitleAdornment({
-  session,
-  writableProfiles,
-  onToggle,
-}: {
-  session: Pick<QuickEntrySession, "subject" | "pickerOpen" | "form" | "view">;
-  writableProfiles: SessionProfile[];
-  onToggle: () => void;
-}) {
-  const { help } = sheetForEntry(session);
-  const subjectInfo = writableProfiles.find((p) => p.id === session.subject);
-  return (
-    <>
-      {help ? (
-        <InfoTooltipIcon label={help} data-testid="quick-entry-help" />
-      ) : null}
-      {subjectInfo == null ? null : writableProfiles.length <= 1 ? (
-        <span
-          data-testid="quick-entry-subject-chip"
-          className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
-        >
-          <Avatar profile={subjectInfo} size="sm" />
-          <span className="truncate">{subjectInfo.name}</span>
-        </span>
-      ) : (
-        <button
-          type="button"
-          data-testid="quick-entry-subject-chip"
-          aria-expanded={session.pickerOpen}
-          aria-label={`Logging for ${subjectInfo.name}. Change who this is for.`}
-          onClick={onToggle}
-          className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-1.5 text-xs font-medium text-slate-600 hover:border-black/20 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:border-white/20"
-        >
-          <Avatar profile={subjectInfo} size="sm" />
-          <span className="truncate">{subjectInfo.name}</span>
-          <IconChevronDown
-            className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
-              session.pickerOpen ? "rotate-180" : ""
-            }`}
-            aria-hidden
-          />
-        </button>
-      )}
-    </>
-  );
-}
-
-function QuickEntrySubjectPicker({
-  session,
-  writableProfiles,
-  onSelect,
-}: {
-  session: Pick<QuickEntrySession, "subject" | "pickerOpen">;
-  writableProfiles: SessionProfile[];
-  onSelect: (profileId: number) => void;
-}) {
-  if (!session.pickerOpen || writableProfiles.length <= 1) return null;
-  return (
-    <div
-      data-testid="quick-entry-subject-picker"
-      className="mb-2 rounded-lg border border-(--border) bg-surface p-2"
-    >
-      <p className="mb-1.5 px-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-        Who is this for?
-      </p>
-      <ul className="flex flex-col gap-0.5">
-        {writableProfiles.map((profile) => (
-          <li key={profile.id}>
-            <button
-              type="button"
-              data-testid={`quick-entry-subject-option-${profile.id}`}
-              aria-current={profile.id === session.subject ? "true" : undefined}
-              onClick={() => onSelect(profile.id)}
-              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
-                profile.id === session.subject
-                  ? "bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200"
-                  : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-850"
-              }`}
-            >
-              <Avatar profile={profile} size="sm" />
-              <span className="truncate">{profile.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export default function QuickEntryProvider({
   children,
   measurements,
@@ -742,21 +618,33 @@ export default function QuickEntryProvider({
       visitRequestRefs.current.set(key, token + 1);
   }, []);
 
+  // THE ONE INVALIDATION. Started as the last-good subscription's own closure;
+  // named because #5902's resume crossing ends in exactly this state — the visit
+  // emptied and flagged, which every host already turns into its close through
+  // `onInvalidated`. A second close path is what naming it avoids.
+  const invalidateVisit = useCallback(() => {
+    invalidateVisitRequests();
+    updateVisit((current) => ({
+      ...current,
+      activeId: null,
+      entries: [],
+      returnFocus: null,
+      invalidated: true,
+      completable: false,
+    }));
+  }, [invalidateVisitRequests, updateVisit]);
+
   useLayoutEffect(() => {
     const invalidate = () => {
-      invalidateVisitRequests();
+      // The last-good invalidation reaches the DIRECT overlay too; a resume
+      // crossing is the visit's business alone and leaves this sheet alone.
       setOpen(false);
-      updateVisit((current) => ({
-        ...current,
-        activeId: null,
-        entries: [],
-        returnFocus: null,
-        invalidated: true,
-        completable: false,
-      }));
+      invalidateVisit();
     };
     return subscribeLastGoodInvalidation(invalidate);
-  }, [invalidateVisitRequests, updateVisit]);
+  }, [invalidateVisit]);
+
+  const resume = useVisitResumeWatch();
 
   useLayoutEffect(() => {
     clearLastGood();
@@ -1783,14 +1671,17 @@ export default function QuickEntryProvider({
     () => ({
       open: openForm,
       close,
+      noteSlotBoundaries: resume.noteSlotBoundaries,
       actingProfileId,
       writableProfiles,
+      resume,
       visit: {
         state: visitState,
         start: startVisit,
         open: openVisitForm,
         back: backVisit,
         beginClose: beginVisitClose,
+        invalidate: invalidateVisit,
         complete: completeVisitEntry,
         retry: retryVisitEntry,
         selectDay: selectVisitDay,
@@ -1814,6 +1705,8 @@ export default function QuickEntryProvider({
       openVisitForm,
       exitIntake,
       acceptIntakeSave,
+      invalidateVisit,
+      resume,
       refreshDose,
       focusDoseReturn,
       retryVisitEntry,
@@ -2142,7 +2035,16 @@ export function QuickEntryVisitBodies({
     );
   const { state } = ctx.visit;
   if (state.identity !== identity) return null;
-  return state.entries.map((entry) => (
+  // `display: contents`, so the wrapper generates no box and the bodies remain the
+  // sheet's own children for layout. It exists to be a NODE: the resume check
+  // (#5902) asks the dirty-form registry whether this subtree holds unsaved input,
+  // and that question needs a root. Nothing else reads it.
+  //
+  // The mount callback is spelled INLINE because react-hooks/refs treats a bound
+  // ref-ish callback as a ref and then reads the sibling bodies' own
+  // `addTriggerRef` props as render-time ref access. Re-running it per render costs
+  // two assignments to a box nothing renders from.
+  const bodies = state.entries.map((entry) => (
     <Activity
       key={`${state.identity}:${state.generation}:${entry.id}`}
       mode={state.activeId === entry.id ? "visible" : "hidden"}
@@ -2181,6 +2083,11 @@ export function QuickEntryVisitBodies({
       />
     </Activity>
   ));
+  return (
+    <div className="contents" ref={(node) => ctx.resume.attachBodies(node)}>
+      {bodies}
+    </div>
+  );
 }
 
 function QuickEntryBodyMount({

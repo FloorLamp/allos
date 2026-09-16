@@ -15,15 +15,23 @@ import SubmitButton from "@/components/SubmitButton";
 // `LOG_MANIFEST.stool.pieces.form`: the record's "Log stool form" door and that row's
 // correction. `row` absent posts the log action on the day the mount is standing on;
 // `row` present seeds from that row and posts the correction. ONE layout — the mode
-// decides seed, action and which fields the row's ADDRESS has already fixed.
+// decides seed, action and which fields the correction's door does not carry.
 //
-// THE INSTANT IS THE ADDRESS, WHICH IS WHY A CORRECTION HAS NO WHEN. A Bristol reading's
-// natural key IS its instant (`logBristolStool`): restating the same minute upserts onto
-// the row, and stating a different one writes a SECOND row beside it — so a date or time
-// field in edit mode would not move the reading, it would fork it. This is `symptom`'s
-// (date, symptom) argument on a different key. What a correction moves is the TYPE,
-// which is the mis-tap #4433 names; a reading logged on the wrong day is a delete and a
-// re-log, and the ⋯ offers both.
+// A CORRECTION HAS NO WHEN, AND SINCE #5872 FOR A DIFFERENT REASON. It used to be that
+// the reading's natural key WAS its instant, so a date or time field in edit mode would
+// have forked the row rather than moved it. That is gone: a movement is addressed by its
+// `stool_events` id, two movements in one minute are two rows, and
+// `correctStoolEventCore` takes `date` and `statedAt` as happily as it takes `type`.
+// What holds the field back now is the one arm of that core #5872 left un-extracted — a
+// date move that states no minute keeps the instant the row already had, so the row
+// would land on the new day still carrying the old day's instant (#5400, which this
+// issue's shared event-patch core closes and which is not written). Nothing shipped
+// reaches that arm, and a when-field here is exactly what would reach it.
+//
+// So what a correction moves is the TYPE, which is the mis-tap #4433 names —
+// `correctStoolReading` posts nothing else. A movement filed on the wrong day is a
+// delete and a re-log, which the ⋯ offers both of and which writes a row whose date and
+// instant agree.
 //
 // A SELECT, NOT THE SEVEN ICONS. The picker is the domain's TAP surface
 // (`StoolTypeControl`) and belongs where a tap is the whole interaction; inside a form
@@ -35,9 +43,16 @@ import SubmitButton from "@/components/SubmitButton";
 // present posts `profile_id` and is re-gated by `gateItemProfile`.
 
 export interface StoolReadingRow {
-  /** The `metric_samples` row id — the correction's whole address. */
+  /** The `stool_events` row id — the correction's whole address. */
   id: number;
-  type: number;
+  /**
+   * The row's stored type, or NULL for an occurrence nobody saw the form of (#5872).
+   * The picker opens on the scale's midpoint for a null, exactly as the ADD mode does,
+   * because slice 1 ships no surface that writes an untyped row — #5872 slice 2's
+   * `Didn't see` tile is what creates them, and it is that slice's job to give this
+   * control an eighth state and the CLEAR the write core already accepts.
+   */
+  type: number | null;
 }
 
 export default function StoolForm({

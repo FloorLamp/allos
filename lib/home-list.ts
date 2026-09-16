@@ -228,6 +228,10 @@ export interface HomeListInput {
   // The shared eligible-action list, in the model's own order (`buildAttentionModel`):
   // date → priority → domain → dose-day slot → title → key.
   attention: readonly UpcomingItem[];
+  // The low-supply cue keys the caller can mount the shared refill action on (#5121).
+  // Empty is a complete answer: it means no cue is seated, which is what a surface with
+  // no way to offer the action should render.
+  refillTargets: ReadonlySet<string>;
   training: HomeTrainingInput;
   fast: OpenEpisode | null;
   period: HomePeriodInput;
@@ -250,6 +254,39 @@ export interface HomeList {
 // reading: unmet weekly pace never becomes a newly owed action.
 function isPracticeTarget(item: UpcomingItem): boolean {
   return item.practiceLog != null;
+}
+
+// A LOW-SUPPLY CUE IS AN ACTION WHOSE CONTROL THE MODEL HAS NO WORD FOR (#5121,
+// #5435 §9). `itemIsActionable` asks the item what it can host, and the affordance
+// fields it reads are the typed one-taps `UpcomingItem` declares — `doseId`,
+// `practiceLog`, `followUpResolve` and the rest. There is no refill field among them,
+// so a tracked item that has run out reaches Home as a dated fact with no control and
+// is seated nowhere: the page neither states the shortage nor offers the fix, which is
+// the gap §9's #5121 row names.
+//
+// THE CONTROL ALREADY EXISTS AND IS SHARED — the #852 one-tap Refilled over the
+// compare-and-set write core that Manage, the medication row and the medication card
+// all mount. What was missing is only a SEAT, so the decision is made here, where
+// every other seat decision is, rather than by teaching the shared model an affordance
+// that /upcoming, the digest, the app badge and the calendar feed would then all have
+// to carry.
+//
+// AN ACTION OR NOTHING (§2.2/§2.4), which is why this asks the CALLER rather than the
+// item. `refillTargets` is the set of cue keys the caller can actually mount the
+// shared action on; a cue it cannot is not admitted, so this never seats a row whose
+// control would be missing. A pooled bottle and a private supply are the same question
+// here — both are keyed by the shared minters, and which of them the caller can name
+// is the caller's answer, not a second rule in this file.
+//
+// ELIGIBLE MEANS TODAY (§2.1). A refill still days out is a dated commitment and keeps
+// the Later fold's tail, where it already sits with no control; only a cue whose own
+// run-out date has arrived is a current action. The item arrives already
+// snooze/dismiss-filtered by the shared gather, so "eligible" asks for nothing more.
+function isRefillCue(
+  item: UpcomingItem,
+  refillTargets: ReadonlySet<string>
+): boolean {
+  return item.domain === "refill" && refillTargets.has(item.key);
 }
 
 // Whole days from today to the item's own date. A null date is now, not undated
@@ -414,7 +451,7 @@ function partitionActions(input: HomeListInput): PartitionedActions {
     }
     // Overdue or due today. Only an ACTION earns a seat under the rule; a dated fact
     // with no control is the record's or the glance card's, stated once there (§2.4).
-    if (itemIsActionable(item))
+    if (itemIsActionable(item) || isRefillCue(item, input.refillTargets))
       care.push(attentionRow(input, item.key, "care", { kind: "item", item }));
   }
 

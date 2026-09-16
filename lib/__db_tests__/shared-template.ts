@@ -9,19 +9,41 @@ import path from "node:path";
 // both sides derive independently avoids passing a value across that boundary.
 // It lives under node_modules/.cache so it is already git-ignored and is thrown
 // away by a clean install.
-export function templateDbPath(): string {
-  return path.join(
-    process.cwd(),
-    "node_modules",
-    ".cache",
-    "allos-db-tests",
-    "template.db"
-  );
-}
+//
+// THE FINGERPRINT IS PART OF THE PATH, NOT JUST THE REUSE TEST (#5893). A cwd
+// names a checkout only while `node_modules` is that checkout's own, and parallel
+// lanes symlink it to one shared target — at which point every worktree composes
+// a path to the SAME physical file. Two lanes with different migration sets then
+// thrash: each finds the other's fingerprint, rebuilds, and clears the template
+// its sibling's workers are copying from. Measured once at 574 of 911 files
+// failing `ENOENT … copyfile … template.db`, naming no migration and no test of
+// the lane's own. So the key that already decides whether a template may be
+// REUSED also decides WHERE IT LIVES, and two runs land on one file exactly when
+// sharing it is correct — which is the condition the cwd was standing in for.
+//
+// Sibling key directories are left where they are: pruning them is the
+// cross-checkout delete this exists to stop, and `rm -rf node_modules` still
+// takes the lot.
+//
+// Memoized per root because `setup-shared.ts` asks for the path once per test
+// file and the fingerprint costs ~9 ms — ~8 s of rehashing across a full tier.
+const templatePathByRoot = new Map<string, string>();
 
-// Sidecars SQLite (and our boot lock) can leave beside the template. Cleared
-// before a rebuild so a stale WAL can never be read as part of the schema.
-export const TEMPLATE_SIDECARS = ["", "-wal", "-shm", ".boot-lock"] as const;
+export function templateDbPath(root = process.cwd()): string {
+  let cached = templatePathByRoot.get(root);
+  if (cached === undefined) {
+    cached = path.join(
+      root,
+      "node_modules",
+      ".cache",
+      "allos-db-tests",
+      templateKey(root),
+      "template.db"
+    );
+    templatePathByRoot.set(root, cached);
+  }
+  return cached;
+}
 
 /** Where the fingerprint of the inputs that produced the template is recorded. */
 export function templateKeyPath(): string {

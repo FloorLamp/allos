@@ -6,7 +6,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { useEffect } from "react";
 import { ToastProvider } from "@/components/Toast";
+import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import QuickEntryProvider, {
   QuickEntryVisitBodies,
   remounts,
@@ -29,6 +31,23 @@ import type { QuickEntryPrn } from "@/app/(app)/quick-entry-actions";
 // and the acting-profile change dropping the cache (the same device-local wipe
 // boundary ProfileSwitchWatcher enforces for the offline read snapshots).
 
+// `DirtyFormProvider` (mounted by the visit harness below, so #5902's "never over a
+// draft" guard has a real registry to ask) calls `useRouter().refresh` when a form
+// releases into an owed refresh. ONE STABLE OBJECT per render — a fresh literal makes
+// the provider's `dispatch` a new function every render, which tears down and rebuilds
+// the listener effect and wipes the registration state under test.
+const nextRouter = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  push: vi.fn(),
+  replace: vi.fn(),
+  prefetch: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+}));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => nextRouter,
+}));
 const loadQuickEntry = vi.hoisted(() => vi.fn());
 const loadQuickEntryIntakeContext = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/quick-entry-actions", () => ({
@@ -128,6 +147,11 @@ vi.mock("@/components/UploadForm", () => ({
     return <div data-testid="upload-body-probe" />;
   },
 }));
+// The visited food body's stand-in. `data-unsaved` is #3356's own seam — a form that
+// composes its payload out of React state answers the dirty-form registry for itself —
+// and it is what lets the resume tests below put a genuine DRAFT inside the sheet
+// without driving a real body's fields.
+const foodDraft = vi.hoisted(() => ({ unsaved: false }));
 vi.mock("@/app/(app)/nutrition/FoodLogBar", async () => {
   const { useDayContext } = await vi.importActual<
     typeof import("@/components/DayContext")
@@ -136,15 +160,23 @@ vi.mock("@/app/(app)/nutrition/FoodLogBar", async () => {
     default: function FoodHostProbe({
       days,
       proteinQuickAdd,
+      slot,
     }: {
       days: { date: string; label: string }[];
       proteinQuickAdd?: { initialGramsByDate: Record<string, number> };
+      slot: string;
     }) {
       const selected = useDayContext().parts.day;
       const label = days.find((day) => day.date === selected)?.label ?? "";
       const grams = proteinQuickAdd?.initialGramsByDate[selected] ?? -1;
+      // `slot` is what the real bar seeds `activeSlot` from and prints as
+      // "Add to <slot>" — the header #5902 is about, so the probe carries it.
       return (
-        <output data-testid="food-host-probe">
+        <output
+          data-testid="food-host-probe"
+          data-slot={slot}
+          data-unsaved={foodDraft.unsaved ? "true" : "false"}
+        >
           {selected}:{grams}:{label}
         </output>
       );
@@ -340,7 +372,12 @@ function dueDose(today: string, meds: QuickEntryPrn["meds"] = []) {
   });
 }
 
-function food(day: string, proteinGrams: number, today = "2026-09-03") {
+function food(
+  day: string,
+  proteinGrams: number,
+  today = "2026-09-03",
+  slot: "Morning" | "Midday" | "Evening" = "Midday"
+) {
   return ready({
     form: "food" as const,
     today,
@@ -358,7 +395,7 @@ function food(day: string, proteinGrams: number, today = "2026-09-03") {
     proteinGrams,
     proteinPreset: 30,
     excludedGroups: [],
-    slot: "Midday" as const,
+    slot,
     slotBoundaries: { midday: 660, evening: 900 },
   });
 }
@@ -392,14 +429,29 @@ function stool(today = MEASUREMENTS.defaultDate) {
   return ready({ form: "stool" as const, today, todayCount: 0 });
 }
 
+// The default food-window splits (lib/food-slot.ts): Morning before 11:00, Midday
+// before 15:00, Evening to midnight. What the sheet's open-time gather publishes.
+const SLOT_BOUNDARIES = { midday: 11 * 60, evening: 15 * 60 };
+
 function VisitSheet({
   open,
   onDone = () => {},
+  onInvalidated = () => {},
+  slotBoundaries = SLOT_BOUNDARIES,
 }: {
   open: boolean;
   onDone?: () => void;
+  onInvalidated?: () => void;
+  slotBoundaries?: { midday: number; evening: number } | null;
 }) {
-  const visit = useQuickEntryVisit(open, vi.fn());
+  const visit = useQuickEntryVisit(open, onInvalidated);
+  // Stands in for `QuickLogMenu`'s open-time `loadLogSheetContext`, which is the one
+  // publisher of these in the app (#5902). Closed means no gather, so nothing is
+  // published — the same as a menu that never ran.
+  const { noteSlotBoundaries } = useQuickEntry();
+  useEffect(() => {
+    noteSlotBoundaries(open ? slotBoundaries : null);
+  }, [noteSlotBoundaries, open, slotBoundaries]);
   return (
     <>
       <output data-testid="visit-view">{visit.active?.form ?? "menu"}</output>
@@ -408,6 +460,12 @@ function VisitSheet({
         onClick={(event) => visit.open("dose", event.currentTarget)}
       >
         Dose
+      </button>
+      <button
+        data-testid="visit-food"
+        onClick={(event) => visit.open("food", event.currentTarget)}
+      >
+        Food
       </button>
       <button
         data-testid="visit-stool"
@@ -431,25 +489,44 @@ function VisitSheet({
   );
 }
 
-function renderVisitSheet(initiallyOpen = false, onDone?: () => void) {
+function renderVisitSheet(
+  initiallyOpen = false,
+  onDone?: () => void,
+  {
+    onInvalidated,
+    slotBoundaries,
+    timeZone = "UTC",
+  }: {
+    onInvalidated?: () => void;
+    slotBoundaries?: { midday: number; evening: number } | null;
+    timeZone?: string;
+  } = {}
+) {
   const surface = (open: boolean) => (
     <ToastProvider>
-      <ProfileDaysBoundary
-        clocks={
-          new Map([
-            [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
-            [MIA.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
-          ])
-        }
-      >
-        <QuickEntryProvider
-          measurements={MEASUREMENTS}
-          writableProfiles={[ACTING, MIA]}
-          actingProfileId={ACTING.id}
+      <DirtyFormProvider>
+        <ProfileDaysBoundary
+          clocks={
+            new Map([
+              [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone }],
+              [MIA.id, { today: MEASUREMENTS.defaultDate, timeZone }],
+            ])
+          }
         >
-          <VisitSheet open={open} onDone={onDone} />
-        </QuickEntryProvider>
-      </ProfileDaysBoundary>
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING, MIA]}
+            actingProfileId={ACTING.id}
+          >
+            <VisitSheet
+              open={open}
+              onDone={onDone}
+              onInvalidated={onInvalidated}
+              slotBoundaries={slotBoundaries}
+            />
+          </QuickEntryProvider>
+        </ProfileDaysBoundary>
+      </DirtyFormProvider>
     </ToastProvider>
   );
   const utils = render(surface(initiallyOpen));
@@ -1553,5 +1630,214 @@ describe("midnight fallback integration", () => {
       (await screen.findByTestId("quick-entry-unavailable")).textContent
     ).toContain("current response");
     expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (#5902) ──────────────
+//
+// Background the PWA at breakfast, come back at dinner: a page the OS did not
+// discard comes back exactly as it was, with the morning's offers, the morning's
+// rows and a food header that still says "Add to Morning" while a bare tap files
+// the serving there. Owner ruling 2026-09-15 — the sheet CLOSES on that return,
+// and never over a draft. Regathering in place was considered and reversed.
+//
+// The listener lives in the visit owner (`useQuickEntryVisit`), so what is driven
+// here is what BOTH hosts get: a `visibilitychange` pair around a clock move, and
+// the visit's existing `invalidated` flag reaching the host's `onInvalidated`.
+// The day comes from the profile's zone, the window from the boundaries the
+// open-time gather published, and a return inside the same window on the same day
+// is not a crossing at all.
+describe("a resume across a slot or day boundary (#5902)", () => {
+  let hidden = false;
+
+  function background() {
+    hidden = true;
+    fireEvent(document, new Event("visibilitychange"));
+  }
+  function resume() {
+    hidden = false;
+    fireEvent(document, new Event("visibilitychange"));
+  }
+
+  beforeEach(() => {
+    foodDraft.unsaved = false;
+    hidden = false;
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => hidden,
+    });
+    // Date only: the tier's own async settling still needs real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-03T08:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(document, "hidden");
+  });
+
+  it("closes on a return in a later food window, and the next open names it", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(food("2026-09-03", 5, "2026-09-03", "Morning"))
+      .mockResolvedValueOnce(food("2026-09-03", 5, "2026-09-03", "Evening"));
+    const onInvalidated = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+    });
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-food"));
+    expect(
+      (await screen.findByTestId("food-host-probe")).getAttribute("data-slot")
+    ).toBe("Morning");
+
+    background();
+    vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+    resume();
+
+    await waitFor(() => expect(onInvalidated).toHaveBeenCalled());
+    expect(screen.getByTestId("visit-view").textContent).toBe("menu");
+    expect(screen.queryByTestId("food-host-probe")).toBeNull();
+
+    // The host's close, then the next puck tap: one fresh gather, whose slot is
+    // what the bar's "Add to <slot>" header seeds from.
+    rerenderOpen(false);
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-food"));
+    expect(
+      (await screen.findByTestId("food-host-probe")).getAttribute("data-slot")
+    ).toBe("Evening");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes across local midnight inside one food window", async () => {
+    loadQuickEntry.mockResolvedValue(stool());
+    const onInvalidated = vi.fn();
+    vi.setSystemTime(new Date("2026-09-03T23:50:00Z"));
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+    });
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+
+    background();
+    // Ten past midnight: still Evening, a different day.
+    vi.setSystemTime(new Date("2026-09-04T00:10:00Z"));
+    resume();
+
+    await waitFor(() => expect(onInvalidated).toHaveBeenCalled());
+    expect(screen.getByTestId("visit-view").textContent).toBe("menu");
+  });
+
+  it("leaves the sheet and its state alone inside one window on one day", async () => {
+    loadQuickEntry.mockResolvedValue(stool());
+    const onInvalidated = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+    });
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    const time = await screen.findByTestId("stool-when-time");
+    fireEvent.change(time, { target: { value: "08:10" } });
+
+    background();
+    // Twenty minutes later, still Morning, still the same day. An ordinary app
+    // switch is free: no timer, no minute threshold, nothing to cross.
+    vi.setSystemTime(new Date("2026-09-03T08:20:00Z"));
+    resume();
+    await act(async () => {});
+
+    expect(onInvalidated).not.toHaveBeenCalled();
+    expect(screen.getByTestId("visit-view").textContent).toBe("stool");
+    expect(
+      screen
+        .getByRole("button", { name: /^Yesterday$/ })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      (screen.getByTestId("stool-when-time") as HTMLInputElement).value
+    ).toBe("08:10");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays open over a body with unsaved input, boundary or not", async () => {
+    foodDraft.unsaved = true;
+    loadQuickEntry.mockResolvedValue(
+      food("2026-09-03", 5, "2026-09-03", "Morning")
+    );
+    const onInvalidated = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+    });
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-food"));
+    await screen.findByTestId("food-host-probe");
+
+    background();
+    vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+    resume();
+    await act(async () => {});
+
+    expect(onInvalidated).not.toHaveBeenCalled();
+    // The header still names the window it gathered in — the accepted cost of not
+    // prompting on resume.
+    expect(
+      screen.getByTestId("food-host-probe").getAttribute("data-slot")
+    ).toBe("Morning");
+  });
+
+  it("dispatches nothing from a closed sheet or while the document is hidden", async () => {
+    loadQuickEntry.mockResolvedValue(stool());
+    const onInvalidated = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+    });
+
+    // Closed: no listener at all, so the pair cannot record or compare anything.
+    background();
+    vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+    resume();
+    await act(async () => {});
+    expect(onInvalidated).not.toHaveBeenCalled();
+
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+
+    // Hidden, and still hidden: the clock moves a whole day and nothing runs
+    // until the page is actually back.
+    background();
+    vi.setSystemTime(new Date("2026-09-04T19:00:00Z"));
+    await act(async () => {});
+    expect(onInvalidated).not.toHaveBeenCalled();
+    expect(screen.getByTestId("visit-view").textContent).toBe("stool");
+  });
+
+  it("keeps the day boundary when no gather published the windows", async () => {
+    loadQuickEntry.mockResolvedValue(stool());
+    const onInvalidated = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, undefined, {
+      onInvalidated,
+      slotBoundaries: null,
+    });
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+
+    // Morning to Evening with no boundaries to judge it by: unknown on both
+    // sides, so the window decides nothing.
+    background();
+    vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+    resume();
+    await act(async () => {});
+    expect(onInvalidated).not.toHaveBeenCalled();
+
+    // The profile day never needed them.
+    background();
+    vi.setSystemTime(new Date("2026-09-04T19:00:00Z"));
+    resume();
+    await waitFor(() => expect(onInvalidated).toHaveBeenCalled());
   });
 });

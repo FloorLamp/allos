@@ -82,7 +82,9 @@ export type DataQualityGapKey =
   | "phenoage-inputs"
   | "failed-extractions"
   | "risk-attributes"
-  | "dose-amount-unreadable";
+  | "dose-amount-unreadable"
+  | "intake-unscheduled"
+  | "intake-obligation-mismatch";
 
 // Every gap key, so a sweep over the family can be EXHAUSTIVE rather than over
 // whichever keys a fixture happened to trip. Typed against the union above, so a new
@@ -99,6 +101,8 @@ export const DATA_QUALITY_GAP_KEYS = [
   "failed-extractions",
   "risk-attributes",
   "dose-amount-unreadable",
+  "intake-unscheduled",
+  "intake-obligation-mismatch",
 ] as const satisfies readonly DataQualityGapKey[];
 
 // One structural gap. `leverage` is the COUNT of consumers this fix unblocks — it
@@ -165,6 +169,28 @@ export interface DataQualityInputs {
   // The FIRST item carrying one, so the CTA lands where the amount is retyped.
   // Null when there are none.
   unreadableDoseAmountItem: { id: number; kind: IntakeItemKind } | null;
+  // Count of ACTIVE `must`/`should` items with no LIVE dose that states a time
+  // (#5285). `stackSchedule` already calls these "Not scheduled" on the Manage list;
+  // dueness, reminders and adherence all skip them, and until now nothing said so.
+  unscheduledObligations: number;
+  // The FIRST of them — the name the copy says and the editor the CTA opens. Null
+  // when there are none.
+  unscheduledObligationItem: IntakeGapItem | null;
+  // Count of ACTIVE `must`/`should` items whose product the curated PRN registry
+  // knows as an as-needed one (#5285). A daily obligation on an as-needed painkiller
+  // is usually a mis-set field; keeping the schedule is still a legitimate answer,
+  // so this only ever suggests.
+  obligationMismatches: number;
+  // The FIRST of them, same job as above. Null when there are none.
+  obligationMismatchItem: IntakeGapItem | null;
+}
+
+// The item one of the two #5285 gaps is about: what the copy calls it, and where its
+// editor is. Both gaps name a row rather than a profile field, so both carry one.
+export interface IntakeGapItem {
+  id: number;
+  name: string;
+  kind: IntakeItemKind;
 }
 
 // ── Detectors ─────────────────────────────────────────────────────────────────
@@ -318,6 +344,20 @@ function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
   };
 }
 
+// THE ITEM'S OWN EDITOR — the door all three intake gaps open. A medication has an
+// edit form of its own (the same deep link the med-rxcui gap uses, #1146); a
+// supplement's rows are edited inline on the Manage tab, which is the only surface a
+// supplement's doses have. One helper because one rule: fixing THIS item lowers the
+// count and the CTA follows to the next one.
+function intakeItemEditorHref(item: {
+  id: number;
+  kind: IntakeItemKind;
+}): AppRoute {
+  return item.kind === "medication"
+    ? medicationEditHref(item.id)
+    : nutritionTabHref("supplements");
+}
+
 function doseAmountUnreadableGap(i: DataQualityInputs): DataQualityGap | null {
   // Fires on dose amounts written before #3153 refused them at the write boundary.
   // The row is not WRONG — a dose stores only the text that was typed, so there is
@@ -343,15 +383,74 @@ function doseAmountUnreadableGap(i: DataQualityInputs): DataQualityGap | null {
       `${n} ${noun} can't be read as a number (a "2,5 g" could be 2.5 g or 25 g), ` +
       `so ${n === 1 ? "it counts" : "they count"} as nothing in your upper-limit ` +
       `warnings and your RDA share.`,
-    // The FIRST affected item's own editor — a medication's edit form (the same
-    // deep link the med-rxcui gap uses, #1146), and for a supplement the tab its
-    // rows are edited inline on, which is the only surface a supplement's doses
-    // have. Fixing that item lowers the count and the CTA follows to the next.
-    ctaHref:
-      item.kind === "medication"
-        ? medicationEditHref(item.id)
-        : nutritionTabHref("supplements"),
+    // The FIRST affected item's own editor, where the amount is retyped.
+    ctaHref: intakeItemEditorHref(item),
     leverage: 2,
+  };
+}
+
+// ── #5285's two setup rows ──────────────────────────────────────────────────────
+//
+// Both are about an obligation the rest of the row does not keep, and both are the
+// structural, one-time shape this module is for: they retire BY CONSTRUCTION the
+// moment the data changes — state a time and the first stops firing, switch the
+// obligation (or keep it and dismiss once) and the second does. Neither ever writes;
+// the gather they read (getIntakeDataQualityRows) has already applied the `must`/
+// `should` and active/live boundaries, so there is nothing to re-judge here.
+
+function intakeUnscheduledGap(i: DataQualityInputs): DataQualityGap | null {
+  // The case the whole issue is about: an item the person said they MUST take, whose
+  // schedule states no time. `stackSchedule` returns "Not scheduled" for it and the
+  // Manage list says so, while dueness, the reminder tick and the adherence
+  // denominator all skip it in silence. Three real, nameable consumers — which is
+  // what the leverage below counts, and what the copy names in the same order.
+  const item = i.unscheduledObligationItem;
+  if (i.unscheduledObligations <= 0 || item === null) return null;
+  const n = i.unscheduledObligations;
+  return {
+    key: "intake-unscheduled",
+    label: n === 1 ? `Set a dose time for ${item.name}` : `Set ${n} dose times`,
+    whyLine:
+      n === 1
+        ? `${item.name} has no dose time — set one and it will be due, reminded ` +
+          `and counted.`
+        : `${item.name} and ${n - 1} other ${n === 2 ? "item have" : "items have"} ` +
+          `no dose time — set them and they will be due, reminded and counted.`,
+    ctaHref: intakeItemEditorHref(item),
+    leverage: 3,
+  };
+}
+
+function intakeObligationMismatchGap(
+  i: DataQualityInputs
+): DataQualityGap | null {
+  // SUGGEST-ONLY, and the copy has to offer both answers, because one of them is
+  // "you were right": a person who genuinely takes ibuprofen on a schedule dismisses
+  // this once and the episode key keeps it silent for good.
+  //
+  // LEVERAGE 1, and the consumer is the one the sentence names by saying "as-needed":
+  // the label's redose interval and daily maximum (lib/prn-defaults, #798), which a
+  // `must` item never gets. That is what the switch arm turns on, and it is the only
+  // thing this gap can unblock — so it sits at the bottom of the tier, below every
+  // gap that unblocks an engine outright.
+  const item = i.obligationMismatchItem;
+  if (i.obligationMismatches <= 0 || item === null) return null;
+  const n = i.obligationMismatches;
+  return {
+    key: "intake-obligation-mismatch",
+    label:
+      n === 1
+        ? `Check how ${item.name} is taken`
+        : `Check how ${n} items are taken`,
+    whyLine:
+      n === 1
+        ? `${item.name} is set as a daily obligation; it is usually taken as ` +
+          `needed — keep the schedule, or switch it to as-needed.`
+        : `${item.name} and ${n - 1} other ${n === 2 ? "item are" : "items are"} ` +
+          `set as daily obligations; they are usually taken as needed — keep the ` +
+          `schedules, or switch them to as-needed.`,
+    ctaHref: intakeItemEditorHref(item),
+    leverage: 1,
   };
 }
 
@@ -391,6 +490,10 @@ function riskAttributesGap(i: DataQualityInputs): DataQualityGap | null {
 const DETECTORS: ((i: DataQualityInputs) => DataQualityGap | null)[] = [
   birthdateGap,
   medRxcuiGap,
+  // Ahead of `sexGap` in the leverage-3 tier: a must medication that is silently due
+  // nowhere is a live hole in today's schedule, where an unset sex degrades gating on
+  // surfaces that still work.
+  intakeUnscheduledGap,
   // Ahead of the other leverage-2 gaps on purpose: it is the one of them whose
   // consequence is a SAFETY total that silently omits a dose.
   doseAmountUnreadableGap,
@@ -402,6 +505,10 @@ const DETECTORS: ((i: DataQualityInputs) => DataQualityGap | null)[] = [
   phenoAgeGap,
   failedExtractionsGap,
   riskAttributesGap,
+  // LAST, so it is last in the leverage-1 tier too: it is the only suggest-only gap
+  // here — "keep the schedule" is a correct answer to it — and it must never be read
+  // before a gap that unblocks something outright.
+  intakeObligationMismatchGap,
 ];
 
 // Every structural gap for a gathered snapshot, ranked by leverage DESCENDING (the
@@ -467,5 +574,9 @@ export function shortGapNoun(key: DataQualityGapKey): string {
       return "risk factors";
     case "dose-amount-unreadable":
       return "dose amounts";
+    case "intake-unscheduled":
+      return "dose times";
+    case "intake-obligation-mismatch":
+      return "as-needed setting";
   }
 }

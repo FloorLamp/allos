@@ -3,6 +3,10 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { runMigrations, type Migration } from "@/lib/migrations/runner";
+import {
+  DATA_WRITE_REVISION_MIGRATION,
+  advanceDataWriteRevisionForMigration,
+} from "@/lib/write-revision";
 import { makeTmpDir } from "../__tests__/tmp-dir";
 import { perTestCeiling } from "../../vitest.timeouts";
 
@@ -66,11 +70,36 @@ const WALL_CLOCK_SETTING_KEYS = [
   "hc_overlap_unstamped_era_at",
 ];
 
+/** Stands in for the runner-minted `data_write_revision.transaction_id`. */
+const ELIDED_TRANSACTION_ID = "<runner-minted uuid, see dumpState>";
+
 /**
  * Every schema object and every row, as comparable text.
  *
  * `schema_migrations.applied_at` is reduced to the name: it is the RUNNER's own
  * `instantNow()` at `record.run`, not anything a migration body writes.
+ *
+ * `data_write_revision.transaction_id` is reduced for the same reason, and is the
+ * THIRD value of that class. For every migration it applies AFTER the one that
+ * creates `data_write_revision`, the runner calls
+ * `advanceDataWriteRevisionForMigration` inside that migration's own transaction
+ * (runner.ts) and it mints a fresh `migration:<randomUUID()>`. No migration body
+ * calls it. Two independent runs therefore disagree on the column by
+ * construction, exactly as they do on the two values above.
+ *
+ * The trap sat green here because `20260909-data-write-revision` is the LAST
+ * shipped migration: nothing is applied once the table exists, so the bump never
+ * fires and the column keeps the literal `migration:init` that body seeded. The
+ * first branch to append ANY migration fires it, and the assertion below then
+ * reds on a whole-dump diff over a value no body wrote (#5904; the two branches
+ * that appended one, #5865 and #5872, are both sitting on it).
+ *
+ * `revision` IS STILL COMPARED, and it is the half of the row that carries the
+ * meaning: the runner bumps it once per COMMITTED application, so an application
+ * that landed twice leaves a count this comparison still sees. A body re-entered
+ * inside the runner's transaction commits once and moves it once, which is the
+ * property this file measures. The control at the bottom of the file exercises
+ * both directions, because MIGRATIONS itself cannot reach either.
  */
 function dumpState(db: Database.Database): string {
   const out: string[] = [];
@@ -89,24 +118,9 @@ function dumpState(db: Database.Database): string {
       rows = rows.map((r) => ({ name: r.name }));
     }
     if (o.name === "data_write_revision") {
-      // THE RUNNER'S OWN VALUE, NOT A MIGRATION BODY'S (#5409 found it).
-      //
-      // `runner.ts` calls `advanceDataWriteRevisionForMigration` for every migration
-      // that runs AFTER the revision row exists, and that helper mints a fresh
-      // `migration:<uuid>` each time. It is per-RUN random by construction, so the two
-      // databases below can never agree on it however well the bodies behave — the same
-      // class as `schema_migrations.applied_at` above, and reduced for the same reason.
-      //
-      // It was dormant until now only because `20260909-data-write-revision` was the
-      // LAST shipped migration, so nothing had ever reached the advance. The first
-      // migration appended after it — this branch's — is what made the column appear,
-      // and every migration appended from here on would have done the same.
-      //
-      // `revision` is NOT elided: how many times the counter moved is a real property
-      // of the run, and the comparison still holds it.
       rows = rows.map((r) => ({
         ...r,
-        transaction_id: "<per-run uuid minted by the runner>",
+        transaction_id: ELIDED_TRANSACTION_ID,
       }));
     }
     if (o.name === "settings") {
@@ -300,5 +314,78 @@ describe("migration bodies re-entered by the SQLITE_BUSY retry (#3590)", () => {
     );
     expect(forced.size).toBe(1);
     expect(dump).not.toBe(clean);
+  });
+
+  // THE POSITIVE CONTROL FOR `dumpState`'s transaction_id ELISION, which the
+  // assertion at the top of this file cannot exercise at all: MIGRATIONS ends at
+  // the migration that CREATES `data_write_revision`, so the runner's per-migration
+  // mint never fires over the shipped chain and the elision would stay unmeasured
+  // until the next branch appends a migration — the one moment it has to be right.
+  // This runs a set that does reach the mint, and asks both halves of the
+  // question: with the elision the two runs agree, and `revision` — which is NOT
+  // elided — still moves when an application lands twice, where the comparison
+  // still reports it.
+  it("elides the runner's minted transaction_id over a set that reaches it, and still sees a second revision bump", () => {
+    // The SHIPPED body, looked up by name rather than copied: the control has to
+    // reach the runner's real `dataWriteRevisionExists` branch, and a hand-written
+    // CREATE TABLE here could drift from the one production runs.
+    const revisionTable = MIGRATIONS.find(
+      (m) => m.name === DATA_WRITE_REVISION_MIGRATION
+    );
+    if (!revisionTable) {
+      throw new Error(
+        `${DATA_WRITE_REVISION_MIGRATION} is no longer registered, so this ` +
+          `control cannot build a database in which the runner mints a ` +
+          `transaction_id. Point it at the body that creates data_write_revision.`
+      );
+    }
+    // Anything applied after the table exists reaches the bump; the body itself is
+    // beside the point, so it is the smallest one that writes both schema and a row.
+    const follower: Migration = {
+      name: "control-applied-after-the-revision-table",
+      up(db) {
+        db.exec(`CREATE TABLE IF NOT EXISTS follower (n INTEGER)`);
+        db.prepare(`INSERT INTO follower (n) VALUES (1)`).run();
+      },
+    };
+    const revisionRow = (revision: number): string =>
+      `  {"singleton":1,"revision":${revision},"transaction_id":"${ELIDED_TRANSACTION_ID}"}`;
+
+    const clean = applyCleanly("migration-reentry-revision-clean", [
+      revisionTable,
+      follower,
+    ]);
+    const { dump, forced } = applyWithForcedReentry(
+      "migration-reentry-revision-forced",
+      [revisionTable, follower]
+    );
+    expect(forced.size).toBe(2);
+    expect(dump).toBe(clean);
+    // ...having actually reached the mint: one bump, for `follower` and not for
+    // the body that created the table, with the minted value elided. Without this
+    // the agreement above could be the agreement of two runs that never minted.
+    expect(clean).toContain(revisionRow(1));
+
+    // AND THE ELISION IS NARROW. A second committed application of the same
+    // migration would bump `revision` again, so the control lands that second bump
+    // directly, through the call the runner itself makes, under the SAME migration
+    // name — `schema_migrations` is then identical and `revision` is the only
+    // column left that can differ. It differs, and it is the only line that does.
+    const doubled = applyCleanly("migration-reentry-revision-doubled", [
+      revisionTable,
+      {
+        name: follower.name,
+        up(db) {
+          follower.up(db);
+          advanceDataWriteRevisionForMigration(db);
+        },
+      },
+    ]);
+    const cleanLines = clean.split("\n");
+    const doubledLines = doubled.split("\n");
+    expect(doubledLines.length).toBe(cleanLines.length);
+    expect(doubledLines.filter((line, i) => line !== cleanLines[i])).toEqual([
+      revisionRow(2),
+    ]);
   });
 });
