@@ -973,7 +973,7 @@ const FROZEN_UNGUARDED_DELETES: readonly {
   {
     file: "20260911-stool-events.ts",
     table: "metric_samples",
-    why: "#2680: the migration-131 shape — a link introduced LATER landing on an earlier file. 20260911-stool-events deletes the `bristol_stool_type` samples it has just moved to their own table, and at that position `metric_samples` has NO inbound delete link at all: the first one is care_plan_items.source_metric_sample_id (ON DELETE SET NULL), added for #5409's carried follow-up two migrations after it. There is no child to clear when it runs, and nothing it deletes could ever be named by a breathing-rate follow-up. Runtime deletes of a sample are unaffected — foreign_keys is ON outside the runner, so the link's own SET NULL fires, which is exactly why that pair is spelled SET NULL.",
+    why: "#2680: the migration-131 shape — a link introduced LATER landing on an earlier file. 20260911-stool-events deletes the `bristol_stool_type` samples it has just moved to their own table, and at that position `metric_samples` has NO inbound delete link at all: the first one is care_plan_items.source_metric_sample_id (ON DELETE SET NULL), added for #5409's carried follow-up three migrations after it (20260912-food-sensitivities and 20260916-shared-supply-last-fill land between them). There is no child to clear when it runs, and nothing it deletes could ever be named by a breathing-rate follow-up. Runtime deletes of a sample are unaffected — foreign_keys is ON outside the runner, so the link's own SET NULL fires, which is exactly why that pair is spelled SET NULL.",
   },
   {
     file: "20260813-bmi-derived-rows.ts",
