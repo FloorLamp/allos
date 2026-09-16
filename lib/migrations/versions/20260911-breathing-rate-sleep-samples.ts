@@ -40,9 +40,10 @@ import { deleteRowsWithCascade } from "../cascade-delete";
 // -- WHY IT IS SAFE TO RUN, AND TO RUN AGAIN ---------------------------------------
 //
 // IDEMPOTENT. After it runs, the only wearable `Respiratory Rate` rows left are the
-// three kinds it DECLINES - a spot reading with no session around it, a row carrying a
-// #1404 correction lineage, and a hand-corrected row whose night already stated a
-// number - so a replay over an at-rest database moves nothing. Each of the three is
+// kinds it DECLINES - a spot reading with no session around it, a night holding a
+// #1404 correction lineage, a night a blocking link names with nowhere to carry it to,
+// and a hand-corrected row whose night already stated a number - so a replay over an
+// at-rest database moves nothing. Each of the three is
 // declined by the same test on the second pass as on the first, which is why the
 // replay is a no-op rather than a second, different answer. The DB tier replays
 // migrations, so this is a property it is exercised for rather than one that is merely
@@ -60,17 +61,19 @@ import { deleteRowsWithCascade } from "../cascade-delete";
 // `PRAGMA foreign_key_list` at apply time and removes what the runtime would have
 // removed, so the migration's delete and the ingest's delete leave the same graph.
 //
-// AND IT IS HANDED ROWS THAT HAVE NO CHILDREN TO CASCADE. An earlier draft of this
-// header claimed "nothing else references these rows" and it was FALSE:
-// `medical_record_revisions.record_id` cascades on `medical_records(id)` and is written
-// by the ingest itself (`upsertVitals` -> `insertObservationRevision`) whenever a
-// re-send supersedes a stored value - which a rolling 48-hour Health Connect window
-// does routinely. `adoptWearableBreathingRates` now excludes a row carrying one from
-// its candidate set entirely (see its header): the reading and its #1404 lineage stay
-// exactly where they are rather than being orphaned here or destroyed at runtime. The
-// helper above is therefore the guard for every OTHER inbound link - follow-up labs,
-// instrument responses, the lab lifecycle, medication links, preventive decisions - all
-// of which are document- and lab-driven and none of which can name a device vital.
+// AND IT IS HANDED ROWS WITH NOTHING BLOCKING LEFT ON THEM. Two earlier drafts of this
+// header surveyed the inbound links BY HAND and both were wrong - the second named
+// "follow-up labs" and "medication links" as covered by the helper when they are
+// precisely the three links it skips, because they are NO ACTION and the helper is the
+// cascading half. No survey stands here now. `adoptWearableBreathingRates` reads the
+// blocking links out of `PRAGMA foreign_key_list` at this migration's own position in
+// the sequence (`blockingInboundLinks`), CARRIES the ones it has somewhere to carry -
+// the `care_plan_items` follow-up pair, onto the sample, which is the owner's
+// 2026-09-11 "carried" branch - and DECLINES the night for any other, naming it in the
+// warning above. So the rows this delete is handed have no blocking reference and no
+// #1404 revision lineage on them, and the helper below removes what the runtime delete
+// would have removed. Nothing here is spelled twice, so nothing here can be misspelled,
+// and a link a LATER migration adds is in the answer without an edit to this file.
 //
 // THE #133 EDIT LOCK IS HONOURED ON BOTH BRANCHES. A hand-corrected observation is
 // elected ahead of the vendor's later re-stamp and arrives in `metric_samples` with
@@ -80,7 +83,7 @@ import { deleteRowsWithCascade } from "../cascade-delete";
 const log = createLogger("migration:breathing-rate-sleep-samples");
 
 export function up(db: Database.Database): void {
-  const { adopted, removed } = adoptWearableBreathingRates(
+  const { adopted, removed, carried, declined } = adoptWearableBreathingRates(
     db,
     undefined,
     (rows) => {
@@ -95,6 +98,19 @@ export function up(db: Database.Database): void {
     log.info("wearable breathing rates moved to sleep-window samples", {
       adopted,
       removed,
+      carried,
+    });
+  // WHAT IT DECLINED, NAMED, ONE LINE PER LINK. A migration that leaves rows where
+  // they are has to say which link held them and how many: under the design this
+  // round rejected the refusal was invisible from outside — `foreign_key_check`
+  // clean, the runner's own warning firing on nothing — which is a worse place to be
+  // than the dangling reference it was replacing. `warn`, not `info`: a decline is a
+  // night this migration was written to move and did not.
+  for (const d of declined)
+    log.warn("wearable breathing rates left in medical_records", {
+      held_by: d.held_by,
+      nights: d.nights,
+      rows: d.rows,
     });
 }
 

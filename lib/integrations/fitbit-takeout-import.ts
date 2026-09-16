@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import { db, writeTx } from "@/lib/db";
-import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
+import {
+  adoptWearableBreathingRates,
+  reportBreathingRateDeclines,
+} from "@/lib/breathing-rate-db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { getTimezone } from "@/lib/settings";
@@ -303,7 +306,10 @@ export function importTakeoutArchive(
     // Health Connect ingest runs it last: a nightly breathing rate that an EARLIER
     // import left in `medical_records` joins the night this archive's sleep logs just
     // established. An archive that carries no such leftover does nothing here.
-    writeTx(() => adoptWearableBreathingRates(db, profileId));
+    const adoption = writeTx(() => adoptWearableBreathingRates(db, profileId));
+    // The declines are this archive's to disclose too: Data → Review is where an
+    // import's "what it did and did not do" already lives.
+    reportBreathingRateDeclines(profileId, FITBIT_TAKEOUT_ID, adoption);
   } catch (err) {
     // Earlier chunks are durable by design, so represent exactly what completed.
     // `received` is the accounted portion of this failed run (the split invariant),

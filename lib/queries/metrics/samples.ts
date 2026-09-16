@@ -5,6 +5,7 @@
 // profile-scoped.
 
 import { db } from "../../db";
+import { BREATHING_RATE_METRIC } from "../../breathing-rate";
 import { ALL_ROWS } from "../../trends";
 import { snapshotCached } from "../../read-snapshot";
 import {
@@ -282,6 +283,31 @@ export function getLatestMetricSample(
     )
     .get(profileId, metric) as { value: number; date: string } | undefined;
   return row ?? null;
+}
+
+// The nightly breathing-rate samples a carried follow-up hangs off (#5409): the
+// source reading of a `breathing-rate` follow-up and every candidate that could
+// resolve it, in one profile-scoped read, newest first.
+//
+// EVERY ROW, no source election. The election in this module answers "what does the
+// day read"; this answers "which stored night is this follow-up ABOUT", and the row
+// the follow-up names is a specific one — eliding it because another source also
+// stated that night would make the follow-up vanish rather than render.
+export function getBreathingRateFollowUpNights(
+  profileId: number
+): { id: number; date: string; metric: string; value: number | null }[] {
+  return db
+    .prepare(
+      `SELECT id, date, metric, value FROM metric_samples
+        WHERE profile_id = ? AND metric = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, BREATHING_RATE_METRIC) as {
+    id: number;
+    date: string;
+    metric: string;
+    value: number | null;
+  }[];
 }
 
 export function getLatestMetricValue(

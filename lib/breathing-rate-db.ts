@@ -9,6 +9,13 @@ import {
   type BreathingRateSession,
 } from "@/lib/breathing-rate";
 import { roundForMetric } from "@/lib/ingest-bounds";
+import {
+  blockingInboundLinks,
+  parentIdsNamedBy,
+  type BlockingInboundLink,
+} from "@/lib/migrations/cascade-delete";
+import { BREATHING_RATE_FOLLOWUP_KIND } from "@/lib/followup-breathing-rate";
+import { recordSyncEvent } from "@/lib/integrations/connections";
 import { isEditLocked } from "@/lib/integrations/sync-log";
 import { parseUtcSql } from "@/lib/date";
 
@@ -48,25 +55,53 @@ import { parseUtcSql } from "@/lib/date";
 // it superseded. Where the night holds NO row yet, the LATEST observation stamp wins,
 // which is the same ranking read the other way.
 //
-// -- IT MOVES A ROW ONLY WHEN THE MOVE CARRIES EVERYTHING THE ROW HAS ---------------
+// -- IT MOVES A NIGHT ONLY WHEN THE MOVE CARRIES EVERYTHING THE NIGHT HAS -----------
 //
-// This is the rule the falsifying pass on PR #5880 bought, and the two clauses below
-// are the two ways a row can have more on it than its number.
+// A reading can have more on it than its number, and there are exactly two kinds of
+// more: a row another table still POINTS AT, and a row with a correction LINEAGE
+// hanging off it. The rule for both is the same, and the unit is the NIGHT, not the
+// row, because the night is an ELECTION: its rows are ranked and one of them becomes
+// the number. Deciding row by row inside an election set silently changes which row
+// wins - drop the final re-stamp from the candidate set and the superseded provisional
+// it replaced is elected in its place, and the night is then stated WRONG on three
+// surfaces while the correct reading sits in `medical_records`. That is a defect this
+// file shipped with, reproduced from the clause that used to live in the candidate
+// query, and moving the decision to the night is what closes it.
 //
-// A ROW WITH A CORRECTION LINEAGE IS NEVER READ AND NEVER REMOVED. `upsertVitals`
-// writes a `medical_record_revisions` row (#1404) whenever a re-send supersedes a
-// stored value, and Health Connect re-sends a rolling 48-hour window, so a corrected
-// rate on the SAME stamp is exactly that. Those rows cascade on `medical_records(id)`:
-// inside the migration, where `runner.ts` applies with `foreign_keys = OFF`, a bare
-// delete ORPHANS them; at runtime, with keys on, it DESTROYS them. `metric_samples` has
-// no revision child, so the lineage cannot travel with the reading - and a move that
-// cannot carry it is not a move, it is a loss. The `NOT EXISTS` clause below therefore
-// holds such a row out of the candidate set entirely: it is not counted, not elected,
-// not adopted and not deleted, and the night keeps stating it where it always did. The
-// cost is real and named: a night whose reading was corrected in place keeps its row in
-// the vitals fold, which is the duplication #5409 is about. Carrying the lineage into
-// the stream store instead would need a `metric_sample_revisions` child table, which is
-// a schema question this round does not answer.
+// WHAT CAN BE CARRIED IS CARRIED (the owner's 2026-09-11 ruling names "carried or
+// kept", carried first). A person who tapped "Track follow-up" on a night's reading has
+// a `care_plan_items` row naming it. `care_plan_items` gained a
+// `source_metric_sample_id` / `resolved_by_metric_sample_id` pair
+// (20260916-care-plan-metric-sample-links) - its FIFTH source kind, on the shape its
+// other four already use - so the reference MOVES onto the night's sample with the
+// reading, and the person's "Recheck breathing rate" still points at the reading it was
+// about. `CARRIED_LINKS` below declares that policy BESIDE the code that performs it.
+//
+// WHAT CANNOT BE CARRIED DECLINES THE NIGHT, AND SAYS SO. Two things reach this:
+//
+//   • A BLOCKING INBOUND LINK WITH NO CARRYING DESTINATION. The links are not
+//     surveyed by hand - `blockingInboundLinks` (lib/migrations/cascade-delete.ts)
+//     reads every `NO ACTION` / `RESTRICT` / `SET DEFAULT` reference to
+//     `medical_records` out of `PRAGMA foreign_key_list` at the moment of the run, and
+//     `parentIdsNamedBy` probes the whole delete-set with ONE set query per link. A
+//     hand survey of exactly these links is what failed twice on this branch. A link
+//     this file does not know how to carry holds its night back whether or not anyone
+//     remembered it existed, and a link added after this file was written is included
+//     in the answer without an edit here.
+//   • A #1404 CORRECTION LINEAGE. `upsertVitals` writes a `medical_record_revisions`
+//     row whenever a re-send supersedes a stored value, and Health Connect re-sends a
+//     rolling 48-hour window. Those rows cascade on `medical_records(id)`: inside the
+//     migration (`foreign_keys = OFF`) a delete ORPHANS them, at runtime it DESTROYS
+//     them, and `metric_samples` has no revision child for them to travel to. This is
+//     the "kept" branch of the ruling, because "carried" is genuinely unavailable.
+//
+// A declined night is left EXACTLY as it was - no sample, no removal, nothing counted -
+// and it is REPORTED: `declined` names the link (or the lineage) and how many nights
+// and rows it held, the migration logs it, and the ingest writes it to
+// `integration_sync_events`. A posture nobody can see is not a posture; under the
+// refuse-by-default design this round rejected, `PRAGMA foreign_key_check` came back
+// clean, the boot warning fired on nothing and the runtime logged only on error, which
+// is strictly MORE silent than the dangling reference it replaced.
 //
 // A HAND-CORRECTED ROW LEAVES `medical_records` ONLY WHEN THE NIGHT STATES ITS OWN
 // NUMBER. `upsertVitals` refuses to clobber an `edited = 1` row and this must not be
@@ -95,6 +130,21 @@ interface Candidate {
   occurred_at: string | null;
   value_num: number;
   edited: number | null;
+  /** 1 when a #1404 correction lineage hangs off this row. */
+  has_revision: number;
+}
+
+/** Why a night was left in `medical_records`, and how much of it. */
+export interface BreathingRateDecline {
+  /**
+   * The link that held it, as `table.column`, or `medical_record_revisions` for a
+   * correction lineage - the thing to name in a log line or a sync event.
+   */
+  held_by: string;
+  /** Nights left where they were. */
+  nights: number;
+  /** Observation rows in those nights. */
+  rows: number;
 }
 
 export interface BreathingRateAdoption {
@@ -102,7 +152,42 @@ export interface BreathingRateAdoption {
   adopted: number;
   /** Observation rows removed from `medical_records`. */
   removed: number;
+  /** Follow-up references moved from the removed rows onto the night's sample. */
+  carried: number;
+  /** The nights this run declined to move, by what held each back. */
+  declined: BreathingRateDecline[];
 }
+
+/**
+ * The blocking inbound links to `medical_records` this adoption knows how to CARRY,
+ * and where each one lands.
+ *
+ * Declared here, beside the UPDATE that performs it, and consulted against the links
+ * the schema actually has: the enumeration is computed, only the RESOLUTION is
+ * declared. A blocking link absent from this map is not assumed harmless - it declines
+ * the nights it names, which is what makes "we forgot one" a visible outcome instead
+ * of a dangling reference.
+ *
+ * `source` additionally re-stamps `source_kind`, because the discriminator names the
+ * kind of thing the source IS and it stops being a medical record; the resolving link
+ * carries alone, as migration 184's repair of the same pair does.
+ */
+const CARRIED_LINKS: Readonly<
+  Record<string, { column: string; restampsKind: boolean }>
+> = {
+  "care_plan_items.source_medical_record_id": {
+    column: "source_metric_sample_id",
+    restampsKind: true,
+  },
+  "care_plan_items.resolved_by_medical_record_id": {
+    column: "resolved_by_metric_sample_id",
+    restampsKind: false,
+  },
+};
+
+const linkName = (link: BlockingInboundLink): string =>
+  `${link.table}.${link.columns.join("+")}`;
+
 
 /**
  * How a caller takes the adopted observations out of `medical_records`.
@@ -160,18 +245,19 @@ export function adoptWearableBreathingRates(
   const placeholders = WEARABLE_RESPIRATORY_SOURCES.map(() => "?").join(",");
   const candidates = handle
     .prepare(
-      `SELECT id, profile_id, source, date, occurred_at, value_num, edited
+      `SELECT id, profile_id, source, date, occurred_at, value_num, edited,
+              -- A #1404 CORRECTION LINEAGE IS A PROPERTY OF THE ROW, READ WITH IT, and
+              -- deliberately not a filter: a candidate dropped before the election
+              -- changes which row wins it. The night it belongs to is declined below,
+              -- whole, after the ranking has seen every row in it.
+              EXISTS (
+                SELECT 1 FROM medical_record_revisions rev
+                 WHERE rev.record_id = medical_records.id
+              ) AS has_revision
          FROM medical_records
         WHERE canonical_name = ?
           AND value_num IS NOT NULL
           AND source IN (${placeholders})
-          -- A ROW WITH A #1404 CORRECTION LINEAGE IS NOT A CANDIDATE. See the header:
-          -- medical_record_revisions cascades on this row and cannot follow it into
-          -- metric_samples, so the row is left alone rather than moved without it.
-          AND NOT EXISTS (
-                SELECT 1 FROM medical_record_revisions rev
-                 WHERE rev.record_id = medical_records.id
-              )
           ${profileId == null ? "" : "AND profile_id = ?"}
         ORDER BY profile_id, id`
     )
@@ -180,7 +266,8 @@ export function adoptWearableBreathingRates(
       ...WEARABLE_RESPIRATORY_SOURCES,
       ...(profileId == null ? [] : [profileId])
     ) as Candidate[];
-  if (candidates.length === 0) return { adopted: 0, removed: 0 };
+  if (candidates.length === 0)
+    return { adopted: 0, removed: 0, carried: 0, declined: [] };
 
   const readSessions = handle.prepare(
     `SELECT source, origin, date, started_at, ended_at
@@ -328,9 +415,78 @@ export function adoptWearableBreathingRates(
     });
   }
 
+  // ---- WHAT HOLDS A NIGHT BACK, READ FROM THE SCHEMA AND PROBED IN ONE QUERY ----
+  //
+  // The delete-set is every candidate row, so the probe is per LINK, never per id and
+  // never chunked (`parentIdsNamedBy` carries the measured numbers). The links are
+  // whatever `PRAGMA foreign_key_list` says they are right now, which inside the
+  // migration is the graph as of this migration's position in the sequence.
+  const candidateIds = candidates.map((row) => row.id);
+  const carriedLinks: BlockingInboundLink[] = [];
+  const heldBy = new Map<number, string>();
+  for (const link of blockingInboundLinks(handle, "medical_records")) {
+    const name = linkName(link);
+    if (CARRIED_LINKS[name]) {
+      carriedLinks.push(link);
+      continue;
+    }
+    const named = parentIdsNamedBy(handle, link, candidateIds);
+    // A link the probe cannot express (a composite key, a reference to something other
+    // than the row key) holds EVERY night rather than none: the fail-closed direction
+    // is the one that leaves data where it is and says which link did it.
+    for (const id of named ?? candidateIds) if (!heldBy.has(id)) heldBy.set(id, name);
+  }
+
+  // The carry itself, one statement per carried link, profile-scoped like every write
+  // in this file. The doomed ids are the night's - a link on a row that STAYS keeps
+  // pointing at the row it always did.
+  const carryStatements = carriedLinks.map((link) => {
+    const carry = CARRIED_LINKS[linkName(link)];
+    const column = link.columns[0];
+    return (sampleId: number, profileId: number, ids: number[]): number =>
+      ids.length === 0
+        ? 0
+        : Number(
+            handle
+              .prepare(
+                `UPDATE care_plan_items
+                    SET ${carry.column} = ?, ${column} = NULL
+                        ${carry.restampsKind ? ", source_kind = ?" : ""}
+                  WHERE profile_id = ?
+                    AND ${column} IN (${ids.map(() => "?").join(",")})`
+              )
+              .run(
+                sampleId,
+                ...(carry.restampsKind ? [BREATHING_RATE_FOLLOWUP_KIND] : []),
+                profileId,
+                ...ids
+              ).changes
+          );
+  });
+
   let adopted = 0;
   let removed = 0;
+  let carried = 0;
+  const declined = new Map<string, BreathingRateDecline>();
+  const decline = (held_by: string, rows: number): void => {
+    const at = declined.get(held_by) ?? { held_by, nights: 0, rows: 0 };
+    at.nights += 1;
+    at.rows += rows;
+    declined.set(held_by, at);
+  };
   for (const target of targets.values()) {
+    // THE NIGHT IS THE UNIT. One row it cannot move means the night does not move:
+    // what is left behind otherwise is a night stated in two stores, and - worse - an
+    // election run over a set the ranking never saw whole.
+    const held =
+      target.rows.map((row) => heldBy.get(row.id)).find((name) => name != null) ??
+      (target.rows.some((row) => row.has_revision === 1)
+        ? "medical_record_revisions"
+        : null);
+    if (held != null) {
+      decline(held, target.rows.length);
+      continue;
+    }
     // THE #133 LOCK ELECTS BEFORE THE STAMP DOES. A locked row is a person's own
     // statement about this night, and `upsertVitals` refuses to let any re-send
     // overwrite it; ranking the vendor's later re-stamp above it would write a number
@@ -353,8 +509,8 @@ export function adoptWearableBreathingRates(
       target.origin,
       target.startedAt
     ) as { id: number } | undefined;
-    if (!already) {
-      insertSample.run(
+    const insertNight = (): number => {
+      const written = insertSample.run(
         target.profileId,
         target.source,
         target.origin,
@@ -370,7 +526,9 @@ export function adoptWearableBreathingRates(
         isEditLocked(latest.edited) ? 1 : 0
       );
       adopted++;
-    }
+      return Number(written.lastInsertRowid);
+    };
+    const sampleId = already?.id ?? insertNight();
     // WHAT MAY LEAVE `medical_records`. An unlocked row is superseded by the night's
     // sample either way. A LOCKED row leaves only when the value just written is its
     // own - so a night that already held a sample drops no locked row at all, and a
@@ -378,8 +536,50 @@ export function adoptWearableBreathingRates(
     const doomed = target.rows.filter(
       (row) => !isEditLocked(row.edited) || (!already && row.id === latest.id)
     );
+    // THE REFERENCE MOVES FIRST, and to the row the night now states. At runtime this
+    // is what keeps the delete below from raising SQLITE_CONSTRAINT_FOREIGNKEY inside
+    // somebody else's push; in the migration, where keys are off, it is what keeps the
+    // reference from dangling. One order, both postures.
+    const doomedIds = doomed.map((row) => row.id);
+    for (const carry of carryStatements)
+      carried += carry(sampleId, target.profileId, doomedIds);
     remove(doomed.map((row) => ({ id: row.id, profileId: row.profile_id })));
     removed += doomed.length;
   }
-  return { adopted, removed };
+  return { adopted, removed, carried, declined: [...declined.values()] };
+}
+
+/**
+ * Put an adoption's DECLINES where a person can see them: one
+ * `integration_sync_events` row naming the link that held a night and how many nights
+ * it held.
+ *
+ * WHY A SYNC EVENT AND NOT A LOG LINE. Server logs are the one surface a user of this
+ * app never reads, and the adoption's declines are about THEIR data - a night that
+ * stays in the vitals fold because a reference on it has nowhere to go. Data → Review
+ * renders `integration_sync_events` per source, which is where the rest of "what this
+ * push did and did not do" already lives (`suppressed`, `edited`, `superseded`).
+ *
+ * `ok: true` and `skipped`, deliberately: nothing FAILED. The push wrote what it could,
+ * the declined nights are intact where they were, and every later push re-derives the
+ * same answer - so this is a disclosure, not an error, and it must not put a red badge
+ * on a sync that worked. A run with nothing to decline writes no row at all.
+ *
+ * Best-effort like every other `recordSyncEvent` caller: it can neither break nor
+ * meaningfully slow the ingest it observes.
+ */
+export function reportBreathingRateDeclines(
+  profileId: number,
+  sourceId: string,
+  adoption: BreathingRateAdoption
+): void {
+  if (adoption.declined.length === 0) return;
+  const nights = adoption.declined.reduce((n, d) => n + d.nights, 0);
+  recordSyncEvent(profileId, sourceId, {
+    ok: true,
+    skipped: nights,
+    details: `breathing rate: ${nights} night(s) left in medical records — ${adoption.declined
+      .map((d) => `${d.held_by} (${d.nights})`)
+      .join(", ")}`,
+  });
 }

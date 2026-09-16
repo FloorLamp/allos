@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { SqlPrepare } from "../write-revision";
 
 // Issue #2680 — the OTHER half of migration delete-safety.
 //
@@ -22,9 +23,19 @@ import type Database from "better-sqlite3";
 //      cascading children behind, in a state `PRAGMA foreign_key_check` reports as
 //      a violation, while the same delete at runtime removes them.
 //
-// `CHILD_LINKS` covers ONLY half 1. Its silence used to read as coverage; this
-// module is half 2, and it exists so a migration's delete MATCHES the runtime
+// `CHILD_LINKS` covers ONLY half 1, by hand. Its silence used to read as coverage;
+// this module was written as half 2, so a migration's delete MATCHES the runtime
 // delete instead of approximating it.
+//
+// BOTH HALVES ARE NOW ENUMERATED HERE, from the one pragma walk (#5409). A hand
+// survey of half 1 failed twice on the same mechanism, and the census says why it
+// is not carelessness: of the six shipped migrations whose delete target had a
+// blocking inbound parent, two declared `CHILD_LINKS` — and those two are the only
+// two the exercise suite judges, because it is gated on the declaration. So
+// `blockingInboundLinks` answers half 1's enumeration the way `inboundDeleteLinks`
+// answers half 2's, and `parentIdsNamedBy` probes it in the one shape that belongs
+// on a boot path. The POLICY for a blocking link stays with the caller, which is
+// the only place that knows whether the reference can be carried somewhere.
 //
 // DERIVED, NEVER TRANSCRIBED. Every link here is read out of
 // `PRAGMA foreign_key_list` at APPLY time. That is deliberate on two counts. It
@@ -65,6 +76,17 @@ export interface InboundDeleteLink {
   action: InboundDeleteAction;
 }
 
+/**
+ * One inbound foreign key a runtime DELETE on `parent` would REFUSE — the blocking
+ * half (`NO ACTION`, `RESTRICT`, `SET DEFAULT`), carrying its declared action
+ * verbatim so a caller can say which one it hit. Same shape as the link a delete
+ * acts on, because it is the same key read from the same pragma.
+ */
+export interface BlockingInboundLink extends Omit<InboundDeleteLink, "action"> {
+  /** The declared `ON DELETE`, as SQLite reports it ("NO ACTION", "RESTRICT", …). */
+  onDelete: string;
+}
+
 interface ForeignKeyRow {
   id: number;
   seq: number;
@@ -83,7 +105,7 @@ function q(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
 
-function userTables(db: Database.Database): string[] {
+function userTables(db: SqlPrepare): string[] {
   return (
     db
       .prepare(
@@ -96,7 +118,7 @@ function userTables(db: Database.Database): string[] {
 }
 
 /** The single-column key a row of `table` can be named by. */
-function rowKeyOf(db: Database.Database, table: string): string {
+function rowKeyOf(db: SqlPrepare, table: string): string {
   const cols = db.prepare(`PRAGMA table_info(${q(table)})`).all() as {
     name: string;
     pk: number;
@@ -127,13 +149,119 @@ export function inboundDeleteLinks(
   db: Database.Database,
   parent: string
 ): InboundDeleteLink[] {
-  const wanted = parent.toLowerCase();
   const out: InboundDeleteLink[] = [];
+  eachInboundKey(db, parent, (link, onDelete) => {
+    const action: InboundDeleteAction | null =
+      onDelete === "CASCADE"
+        ? "cascade"
+        : onDelete === "SET NULL"
+          ? "set-null"
+          : null;
+    if (action === null) return;
+    out.push({ ...link, action });
+  });
+  return out;
+}
+
+/**
+ * Every inbound reference to `parent` that a runtime DELETE would REFUSE — the
+ * exact complement of `inboundDeleteLinks`, read from the same pragma in the same
+ * walk. `ON DELETE NO ACTION` (the schema default), `RESTRICT`, and `SET DEFAULT`
+ * all land here: the first two abort the delete, and the third is the case the
+ * module header calls worse than a refused cycle, because the cleanup half would
+ * silently leave the child pointing at nothing.
+ *
+ * WHY THIS EXISTS AS CODE RATHER THAN AS A LIST. The blocking half is what a
+ * row-deleting migration declares by hand as `CHILD_LINKS`, and the hand survey is
+ * what keeps failing: two of the six shipped migrations whose delete target had a
+ * blocking inbound parent declared one. Two of those six were also the only two
+ * with fixtures, because the exercise suite is gated on the declaration it exists
+ * to judge — declare nothing and nothing judges you. A caller that asks the schema
+ * instead cannot forget a link, and a link added AFTER the caller was written shows
+ * up in its answer without an edit.
+ *
+ * It answers the enumeration only. What to DO about a blocking link — carry the
+ * reference onto the row that replaces the parent, free it, or decline to delete —
+ * is the caller's policy and must be the caller's, because only the caller knows
+ * whether a carrying destination exists. What this module refuses to do is let that
+ * policy be chosen by omission.
+ */
+export function blockingInboundLinks(
+  db: SqlPrepare,
+  parent: string
+): BlockingInboundLink[] {
+  const out: BlockingInboundLink[] = [];
+  eachInboundKey(db, parent, (link, onDelete) => {
+    if (onDelete === "CASCADE" || onDelete === "SET NULL") return;
+    out.push({ ...link, onDelete });
+  });
+  return out;
+}
+
+/**
+ * Which of `parentIds` some row of `link` still names — ONE set query over the whole
+ * delete-set, which is the only probe shape that belongs on a boot path.
+ *
+ * SHAPE, MEASURED, because the three obvious ways to write this differ by 590×.
+ * At 200k parent rows × 200k child rows, in memory (a floor, not a forecast):
+ *
+ *   one set query per link, whole delete-set :      13.26 ms
+ *   chunked over the ids (500 chunks of 400) :   7,811    ms
+ *   one query per id (`CHUNK = 400` per-id)  :   5,681    ms per chunk (~47 min)
+ *
+ * The cost is the child table's size, not the delete-set's: 63 of this schema's 150
+ * blocking inbound links have no index on the referencing column, so the probe is a
+ * scan of the child and the number of ids in the `IN` list barely moves it. Chunking
+ * therefore multiplies the scan by the number of chunks — the one thing that must
+ * not be done here, and the shape the existing `CHUNK = 400` delete loop invites.
+ *
+ * A COMPOSITE key is refused rather than approximated: it names its parent rows by a
+ * tuple, an id list cannot express that, and the caller's fail-closed answer (treat
+ * every id as named, adopt nothing, say so) is safer than a probe that silently
+ * matches nothing. `null` is that refusal.
+ */
+export function parentIdsNamedBy(
+  db: SqlPrepare,
+  link: BlockingInboundLink,
+  parentIds: readonly number[]
+): Set<number> | null {
+  if (link.columns.length !== 1) return null;
+  // The child's column carries the PARENT's referenced column value, which is what the
+  // id list holds only when the reference is to the parent's row key. A reference to
+  // some other unique column is a different question, and it is refused the same way a
+  // composite is rather than answered against the wrong column.
+  if (link.parentColumns[0] !== rowKeyOf(db, link.parent)) return null;
+  const found = new Set<number>();
+  if (parentIds.length === 0) return found;
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT ${q(link.columns[0])} AS ref
+         FROM ${q(link.table)}
+        WHERE ${q(link.columns[0])} IN (${parentIds.map(() => "?").join(",")})`
+    )
+    .all(...parentIds) as { ref: number | null }[];
+  for (const row of rows) if (row.ref != null) found.add(row.ref);
+  return found;
+}
+
+/**
+ * The shared walk both enumerations read: every inbound foreign key of `parent`,
+ * grouped out of `PRAGMA foreign_key_list` (which emits one row per COLUMN, so rows
+ * sharing an `id` are one composite key), with its declared `ON DELETE` handed to
+ * the visitor. Filtering by action is the ONLY difference between the two, and it is
+ * a one-line difference on purpose: the walk that finds the links a delete cleans up
+ * is the walk that finds the links a delete cannot.
+ */
+function eachInboundKey(
+  db: SqlPrepare,
+  parent: string,
+  visit: (link: Omit<InboundDeleteLink, "action">, onDelete: string) => void
+): void {
+  const wanted = parent.toLowerCase();
   for (const table of userTables(db)) {
     const rows = db
       .prepare(`PRAGMA foreign_key_list(${q(table)})`)
       .all() as ForeignKeyRow[];
-    // PRAGMA emits one row per COLUMN; rows sharing an `id` are one composite key.
     const byKey = new Map<number, ForeignKeyRow[]>();
     for (const row of rows) {
       const group = byKey.get(row.id) ?? [];
@@ -143,27 +271,21 @@ export function inboundDeleteLinks(
     for (const group of byKey.values()) {
       const head = group[0];
       if (head.table.toLowerCase() !== wanted) continue;
-      const action: InboundDeleteAction | null =
-        head.on_delete === "CASCADE"
-          ? "cascade"
-          : head.on_delete === "SET NULL"
-            ? "set-null"
-            : null;
-      if (action === null) continue;
       const ordered = [...group].sort((a, b) => a.seq - b.seq);
-      out.push({
-        table,
-        columns: ordered.map((r) => r.from),
-        // `to` is null only for a reference to the parent's implicit rowid alias;
-        // resolve it the same way SQLite does rather than leaving a null in a
-        // predicate that would then match nothing.
-        parentColumns: ordered.map((r) => r.to ?? rowKeyOf(db, head.table)),
-        parent: head.table,
-        action,
-      });
+      visit(
+        {
+          table,
+          columns: ordered.map((r) => r.from),
+          // `to` is null only for a reference to the parent's implicit rowid alias;
+          // resolve it the same way SQLite does rather than leaving a null in a
+          // predicate that would then match nothing.
+          parentColumns: ordered.map((r) => r.to ?? rowKeyOf(db, head.table)),
+          parent: head.table,
+        },
+        head.on_delete
+      );
     }
   }
-  return out;
 }
 
 /** What `deleteRowsWithCascade` actually did, per affected table. */

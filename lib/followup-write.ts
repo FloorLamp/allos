@@ -24,6 +24,7 @@ import {
 } from "./followup-iop";
 import { dentalFollowUpTitle, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpTitle, SKIN_FOLLOWUP_KIND } from "./followup-skin";
+import { BREATHING_RATE_FOLLOWUP_KIND } from "./followup-breathing-rate";
 import type { DentalProcedure, SkinLesion } from "./types";
 import { biomarkerFamily } from "./canonical-name";
 import { normalizeResolution, normalizeSettleDisposition } from "./followup";
@@ -156,6 +157,14 @@ const RESOLVE_TARGET_BY_KIND: Record<
   [SKIN_FOLLOWUP_KIND]: {
     table: "skin_lesions",
     resolvedCol: "resolved_by_skin_lesion_id",
+  },
+  // Breathing rate (#5409): the source reading is a nightly `metric_samples` row and a
+  // LATER night resolves it, so the resolving link is the metric-sample pair migration
+  // 20260916-care-plan-metric-sample-links added. Nothing else about the resolve
+  // changes — the same core, the same action, dispatched on the same discriminator.
+  [BREATHING_RATE_FOLLOWUP_KIND]: {
+    table: "metric_samples",
+    resolvedCol: "resolved_by_metric_sample_id",
   },
 };
 

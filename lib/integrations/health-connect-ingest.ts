@@ -1,5 +1,8 @@
 import { db, writeTx } from "@/lib/db";
-import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
+import {
+  adoptWearableBreathingRates,
+  reportBreathingRateDeclines,
+} from "@/lib/breathing-rate-db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { compareWindowStarts, pushStampFor } from "@/lib/metric-window-overlap";
@@ -356,7 +359,10 @@ export function ingestHealthConnectPayload(
   // as a full sync failure. It is re-derived from the store on every push, so the cost
   // of a miss is one push of convergence and the reading is visible meanwhile.
   try {
-    writeTx(() => adoptWearableBreathingRates(db, profileId));
+    const adoption = writeTx(() => adoptWearableBreathingRates(db, profileId));
+    // What it could not move, where the user can see it (Data → Review), not only in
+    // a server log they never read.
+    reportBreathingRateDeclines(profileId, source, adoption);
   } catch (err) {
     log.error("breathing-rate adoption failed after Health Connect ingest", {
       profileId,

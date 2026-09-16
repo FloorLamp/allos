@@ -940,6 +940,11 @@ const FROZEN_UNGUARDED_DELETES: readonly {
     why: "#2680: a real orphaning. Runs after both cascading children exist (066, 120) and clears neither — its CHILD_LINKS registry covers only the non-cascading half. 20260813-cascade-orphan-sweep repairs it.",
   },
   {
+    file: "20260911-stool-events.ts",
+    table: "metric_samples",
+    why: "#2680: the migration-131 shape — a link introduced LATER landing on an earlier file. 20260911-stool-events deletes the `bristol_stool_type` samples it has just moved to their own table, and at that position `metric_samples` has NO inbound delete link at all: the first one is care_plan_items.source_metric_sample_id (ON DELETE SET NULL), added for #5409's carried follow-up two migrations after it. There is no child to clear when it runs, and nothing it deletes could ever be named by a breathing-rate follow-up. Runtime deletes of a sample are unaffected — foreign_keys is ON outside the runner, so the link's own SET NULL fires, which is exactly why that pair is spelled SET NULL.",
+  },
+  {
     file: "20260813-bmi-derived-rows.ts",
     table: "medical_records",
     why: "#2680: the same orphaning as migration 180, which it was modelled on, and the one the issue reproduced against the real schema. 20260813-cascade-orphan-sweep repairs it.",
