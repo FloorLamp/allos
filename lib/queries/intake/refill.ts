@@ -10,6 +10,7 @@ import { db, today, writeTx } from "../../db";
 import { shiftDateStr } from "../../date";
 import {
   consumptionRate,
+  rememberedFillFor,
   resolveRefillWrite,
   RATE_WINDOW_DAYS,
   type DoseRate,
@@ -173,9 +174,11 @@ export type RefillOutcome =
   // Not owned by the profile / removed.
   | { kind: "stale-item" };
 
-// Record a refill: add `fillSize` units to the item's on-hand supply and REMEMBER that
-// size (last_fill_size) for next time. When `fillSize` is null, reuse the remembered
-// size; if none is remembered, return "needs-size" so the caller asks. The whole read-
+// Record a refill: add `fillSize` units to the target's on-hand supply and REMEMBER that
+// size on THE CONTAINER IT WAS A FILL OF — the item's `last_fill_size` for a private
+// supply, the bottle's for a pooled one (#5121's owner ruling, #5911). When `fillSize` is
+// null, reuse that container's own remembered size; if it remembers none, return
+// "needs-size" so the caller asks once. The whole read-
 // modify-write runs in ONE writeTx (BEGIN IMMEDIATE): the on-hand value is re-read
 // under the write lock and the fill is added RELATIVE to it via resolveRefillWrite, so a
 // dose confirm that decremented supply between page-load and the tap is preserved, not
@@ -207,37 +210,58 @@ export function refillSupply(
     )
       return { kind: "stale-item" };
     // A POOLED item (#1374) refills the shared bottle, not its own (always NULL)
-    // counter — same lock-read-relative increment, applied to the pool row. The
-    // remembered fill size stays on the ITEM: "I buy the 90-count bottle" is a fact
-    // about how this person restocks, and the pool has no single restocker.
+    // counter — same lock-read-relative increment, applied to the pool row.
+    //
+    // THE BOTTLE REMEMBERS ITS OWN FILL (#5121 owner ruling 2026-09-16; #5911). The
+    // remembered size read here, and the one written back, are BOTH
+    // `shared_supplies.last_fill_size` — never the member's. `row.last_fill_size` is
+    // this person's record of how they restock their OWN bottle, and it survives
+    // `linkItemToPool` (which drops the private count and keeps the size), so reusing
+    // it answered a household jar's one-tap with a number that was never a fill of that
+    // jar. That is #5911's whole mechanism, and it is gone because the input is gone,
+    // not because a predicate now filters it.
+    //
+    // NOR IS THE MEMBER'S SIZE WRITTEN. A pooled tap states a fact about the bottle;
+    // overwriting the member's private memory with it is the same confusion running the
+    // other way, and it would follow the item back out of the pool on unlink. Each
+    // container's usual refill stays its own.
     if (row.supply_id != null) {
       const pool = db
-        .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
-        .get(row.supply_id) as { quantity_on_hand: number | null } | undefined;
+        .prepare(
+          "SELECT quantity_on_hand, last_fill_size FROM shared_supplies WHERE id = ?"
+        )
+        .get(row.supply_id) as
+        | { quantity_on_hand: number | null; last_fill_size: number | null }
+        | undefined;
       if (!pool) return { kind: "stale-item" };
       if (pool.quantity_on_hand == null) return { kind: "untracked" };
-      const remembered =
-        row.last_fill_size != null && row.last_fill_size > 0
-          ? row.last_fill_size
-          : null;
+      const remembered = rememberedFillFor({
+        supplyId: row.supply_id,
+        itemLastFillSize: row.last_fill_size,
+        poolLastFillSize: pool.last_fill_size,
+      });
       const fill = fillSize != null && fillSize > 0 ? fillSize : remembered;
+      // First refill of this bottle: nothing is remembered FOR IT, so the caller asks
+      // once — #5908's shipped interim, now the genuine first use of an ask-once
+      // pattern rather than a question with no end.
       if (fill == null) return { kind: "needs-size" };
       const next = resolveRefillWrite(pool.quantity_on_hand, fill) as number;
       db.prepare(
-        `UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now')
+        `UPDATE shared_supplies
+            SET quantity_on_hand = ?, last_fill_size = ?, updated_at = datetime('now')
           WHERE id = ?`
-      ).run(next, row.supply_id);
-      db.prepare(
-        "UPDATE intake_items SET last_fill_size = ? WHERE id = ? AND profile_id = ?"
-      ).run(fill, itemId, profileId);
+      ).run(next, fill, row.supply_id);
       invalidatePoolRefillOffers(row.supply_id);
       return { kind: "refilled", newQuantity: next, fillSize: fill };
     }
     if (row.quantity_on_hand == null) return { kind: "untracked" };
-    const remembered =
-      row.last_fill_size != null && row.last_fill_size > 0
-        ? row.last_fill_size
-        : null;
+    // A PRIVATE target reuses the ITEM's own remembered fill, unchanged (#852). The same
+    // one resolver answers both, so "which container's fill is this" is decided once.
+    const remembered = rememberedFillFor({
+      supplyId: null,
+      itemLastFillSize: row.last_fill_size,
+      poolLastFillSize: null,
+    });
     const fill = fillSize != null && fillSize > 0 ? fillSize : remembered;
     if (fill == null) return { kind: "needs-size" };
     // Increment relative to the lock-read current value (no clobber of a concurrent
