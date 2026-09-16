@@ -1256,7 +1256,14 @@ async function measureReachCosts(browser) {
       .first();
     if (await link.isVisible().catch(() => false)) {
       await tapClick(link);
-      await page.waitForTimeout(800);
+      // WAIT FOR THE LANDING rather than sleeping at it (#5924). A hub the
+      // pages census did not already compile costs the dev server seconds on
+      // its first visit, so a fixed 800ms read six of the eight as "landed on
+      // /, expected /x" — a wrong-destination claim about a navigation still in
+      // flight. The tap count is the measurement; this keeps its note honest.
+      await page
+        .waitForURL((url) => url.pathname.startsWith(href), { timeout: 15_000 })
+        .catch(() => {});
       if (page.url().includes(href)) endTaps();
       else
         endTaps(`landed on ${new URL(page.url()).pathname}, expected ${href}`);
