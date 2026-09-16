@@ -3,7 +3,6 @@ import {
   documentSourceId,
 } from "@/lib/document-source";
 import {
-  DEFAULT_FORMAT_PREFS,
   formatClock,
   formatDateShape,
   type DisplayFormatPrefs,
@@ -47,7 +46,7 @@ export function sourceDocumentId(
 export function formatRecordDate(
   date: string | null,
   fallback = "—",
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): string {
   if (!date) return fallback;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -70,7 +69,7 @@ export function formatRecordDateTime(
   date: string | null,
   timeOfDay: string | null,
   fallback = "—",
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): string {
   const datePart = formatRecordDate(date, fallback, prefs);
   if (!date || timeOfDay == null) return datePart;
@@ -100,7 +99,7 @@ export interface VisitLabelRef {
 // never blank.
 export function formatVisitLabel(
   visit: VisitLabelRef,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): string {
   return [
     visit.type?.trim() || "Visit",

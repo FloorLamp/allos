@@ -13,6 +13,7 @@ import type {
 import type { ClassifyActivityTypeOutcome } from "../activity-type-write";
 import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-daily-totals-write";
+import { DEFAULT_FORMAT_PREFS } from "../format-date";
 import { formatRecordDate } from "../record-format";
 import { isRealIsoDate } from "../date";
 import { isDoseDateAccepted } from "../dose-log-window";
@@ -474,7 +475,7 @@ export function preventiveAnswerText(outcome: PreventiveTapOutcome): string {
     case "not-applicable":
       return `Marked not applicable ${GLYPH.notApplicable}`;
     case "reminded":
-      return `Snoozed until ${formatRecordDate(outcome.snoozeUntil)} ${GLYPH.snoozed}`;
+      return `Snoozed until ${formatRecordDate(outcome.snoozeUntil, undefined, DEFAULT_FORMAT_PREFS)} ${GLYPH.snoozed}`;
     case "unknown-rule":
     default:
       return "Not recorded — this reminder is out of date. Open the app.";
@@ -493,7 +494,9 @@ export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
       return `Marked not applicable ${GLYPH.notApplicable} — it won't be suggested again.`;
     case "reminded":
       return `Snoozed until ${formatRecordDate(
-        outcome.snoozeUntil
+        outcome.snoozeUntil,
+        undefined,
+        DEFAULT_FORMAT_PREFS
       )} ${GLYPH.snoozed} — hidden from Upcoming and reminders until then (restore it on Upcoming any time).`;
     case "unknown-rule":
     default:

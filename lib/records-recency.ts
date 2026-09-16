@@ -282,8 +282,10 @@ export function recordsRecencyFamily(source: string): string {
 // the LOGIN-LESS channels. These strings are built by an Upcoming generator, which has
 // no login and so no DisplayFormatPrefs in scope; for the digest and Telegram an
 // unambiguous ISO date is the honest answer rather than silently imposing one login's
-// date shape on a channel that has none (the #964/#1448 rule, and
-// lib/__tests__/date-locale-guard.test.ts enforces it).
+// date shape on a channel that has none (the #964/#1448 rule). Since #5351 the
+// formatters make that choice unskippable rather than a scan's finding: `prefs` is a
+// required argument, so a channel with no login either states DEFAULT_FORMAT_PREFS or
+// does not format at all — which is what this module does.
 //
 // It is NOT a licence for the page. `biomarkerRetestDetail` used to be cited here as
 // the precedent and no longer is: its row now carries structured facts and each
