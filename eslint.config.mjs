@@ -194,11 +194,11 @@ const RPE_BRAND_CAST = {
 };
 // #5348 — the write-authorization seam, the RPE seam's twin one level up.
 // `WriteAuthorizedProfileId` is minted by `requireWriteAccess`, `requireProfileWriteAccess`
-// and `requireAdmin` in lib/auth.ts and by nothing else. This rule refuses the cast
-// spellings above; it does not make the brand unforgeable, and the residual is not a
-// list anyone has closed (#5892, #5914, #5939). A test tier may cast: a db or action
-// fixture has no request to gate, and exporting a minter for it would put the mint in
-// two places, which is what the seam exists to prevent.
+// and `requireAdmin` in lib/auth.ts. This rule refuses the cast spellings above; it does
+// not make the brand unforgeable, and the residual is not a list anyone has closed
+// (#5892, #5914, #5939). A test tier may cast: a db or action fixture has no request to
+// gate, and exporting a minter for it would put the mint in two places, which is what
+// the seam exists to prevent.
 const WRITE_BRAND_CAST = WRITE_BRAND_CAST_SELECTORS.map((selector) => ({
   selector,
   message:
