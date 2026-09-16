@@ -534,7 +534,7 @@ describe("the form's refill control reuses the BOTTLE's fill, not the member's",
     mountEdit({
       medication: { ...ROW, supply_id: 11, quantity_on_hand: null },
       poolChip: poolChip(500),
-      initialAction: null,
+      initialAction: undefined,
     });
     expect(screen.queryByTestId("refill-size")).toBeNull();
     fireEvent.click(screen.getByTestId("refill-button"));
@@ -556,7 +556,7 @@ describe("the form's refill control reuses the BOTTLE's fill, not the member's",
         last_fill_size: 30,
       },
       poolChip: poolChip(null),
-      initialAction: null,
+      initialAction: undefined,
     });
     fireEvent.click(screen.getByTestId("refill-button"));
     expect(actions.refill).not.toHaveBeenCalled();
