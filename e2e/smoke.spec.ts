@@ -3,7 +3,11 @@ import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import { appContent } from "./helpers";
 import { followLink, loginAs, openCommandPalette } from "./nav";
-import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_CHILD,
+  E2E_MEMBER_PASSWORD,
+  HOME_POOL_BOTTLE,
+} from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
@@ -238,6 +242,61 @@ test("a run-out medication is a Home row carrying the shared Refilled tap (#5121
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("Out of supply");
   await expect(row.getByTestId("refill-button")).toBeVisible();
+});
+
+// #5435 §9 / PR 4: the same cue for a POOLED bottle, whose tap must ASK FOR A SIZE.
+// A pooled row is titled with the BOTTLE but its control is aimed at a member picked by
+// id order alone, so a one-tap would add that member's remembered fill — a number the
+// bottle never saw, with nothing on screen naming whose it was. The page now hands a
+// pooled cue no remembered fill at all, which the DB tier pins over every member shape.
+// What that tier cannot do is RUN the control: it reads the element's props and records
+// that the client component threw. So "the first tap reveals the size field instead of
+// writing" is a claim about the mounted affordance's own behaviour, and this is the one
+// browser reading of it.
+test("a pooled Home cue's Refilled tap asks for a size instead of recording one (#5435)", async ({
+  page,
+}) => {
+  // PIN THE PRECONDITION the way the case above does. Nothing else writes this bottle
+  // — the tap asserted below deliberately records nothing — but the cue exists only
+  // while the bottle is empty, so the count is restored to the seed's own zero rather
+  // than trusted to survive a reused server.
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `UPDATE shared_supplies SET quantity_on_hand = 0 WHERE name = ?`
+    ).run(HOME_POOL_BOTTLE);
+  } finally {
+    db.close();
+  }
+
+  await page.goto("/");
+  // Scoped to the NOW BAND and to the pooled key: `pool-refill:` is minted from the
+  // BOTTLE, so a row under it is the household's one cue rather than one per member.
+  const row = appContent(page)
+    .getByTestId("home-now")
+    .locator('[data-candidate-id^="attention.fact:pool-refill:"]')
+    .filter({ hasText: HOME_POOL_BOTTLE });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Shared bottle");
+  // Nothing is asked before the tap — the size field is what the tap REVEALS.
+  await expect(row.getByTestId("refill-size")).toHaveCount(0);
+  await row.getByTestId("refill-button").click();
+  await expect(row.getByTestId("refill-size")).toBeVisible();
+  // …and nothing was recorded: the affordance posts its own recency line after a
+  // successful write, and the household's count is still the zero pinned above.
+  await expect(row.getByTestId("refill-recency")).toHaveCount(0);
+  const after = new Database(workerDbPath());
+  try {
+    after.pragma("busy_timeout = 5000");
+    expect(
+      after
+        .prepare(`SELECT quantity_on_hand FROM shared_supplies WHERE name = ?`)
+        .get(HOME_POOL_BOTTLE)
+    ).toMatchObject({ quantity_on_hand: 0 });
+  } finally {
+    after.close();
+  }
 });
 
 // #272: a medication whose name carries a PERCENT strength ("Hydrocortisone

@@ -20,6 +20,9 @@ import {
   SUPPLY_CHILD_LOW_MED,
   SUPPLY_EDIT_BOTTLE,
   SUPPLY_PARENT_EDIT_MED,
+  HOME_POOL_BOTTLE,
+  HOME_POOL_MED,
+  HOME_POOL_SITUATION,
   E2E_LOGIN_DRUG_ALLERGY,
   DRUG_ALLERGY_PROFILE,
   E2E_LOGIN_DOSE_LEDGER_PHONE,
@@ -577,6 +580,89 @@ export function seedSharedSupplyPools(): void {
     grantProfile(supplyLoginId, supplyChildId, "write");
     console.log(
       `e2e: seeded shared-supply-pool fixture — ${E2E_LOGIN_SUPPLY} granted ${SUPPLY_PARENT_PROFILE} (${supplyParentId}) + ${SUPPLY_CHILD_PROFILE} (${supplyChildId}); bottles ${sharedBottleId}/${lowBottleId} (#1374)`
+    );
+  }
+
+  // ── #5435 §9 pooled Home cue fixture ─────────────────────────────────────────
+  // The MAIN profile's own EMPTY bottle with one linked medication, so a POOLED
+  // low-supply cue lands in Home's Now band on the dashboard the default admin opens.
+  // The #1374 bottles above belong to the caregiver login and sit at ~2 days, which
+  // left the pooled cue with no browser reading of its own.
+  //
+  // The member REMEMBERS a 30-unit fill — the state a one-tap would have written onto
+  // the household bottle. The spec's claim is that the tap asks for a size instead, so
+  // it never writes and this fixture is repeat-safe by construction. Distinctly named
+  // and additive: nothing else reads this bottle, this medication or its situation.
+  // Idempotent hard-clear for a reused dev server. Synthetic, no PHI.
+  //
+  // SITUATIONAL, on a situation that stays INACTIVE, so the member is never DUE. The
+  // supply rate comes from its scheduled dose row either way, but a due row would land
+  // in one of Home's time-of-day stacks and a neighbour spec addressing that stack by
+  // the single item it expected there would break on the second button.
+  {
+    db.prepare(
+      `DELETE FROM intake_item_logs WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE_ID, HOME_POOL_MED);
+    db.prepare(
+      `DELETE FROM intake_item_doses WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE_ID, HOME_POOL_MED);
+    db.prepare(
+      `DELETE FROM intake_items WHERE profile_id = ? AND name = ?`
+    ).run(PROFILE_ID, HOME_POOL_MED);
+    db.prepare(`DELETE FROM shared_supplies WHERE name = ?`).run(
+      HOME_POOL_BOTTLE
+    );
+    // Hard-cleared too: situations carry UNIQUE(profile_id, name NOCASE).
+    db.prepare(`DELETE FROM situations WHERE profile_id = ? AND name = ?`).run(
+      PROFILE_ID,
+      HOME_POOL_SITUATION
+    );
+    const homePoolSituationId = Number(
+      db
+        .prepare(
+          `INSERT INTO situations (profile_id, name, active, illness_type)
+           VALUES (?, ?, 0, 0)`
+        )
+        .run(PROFILE_ID, HOME_POOL_SITUATION).lastInsertRowid
+    );
+    const homePoolBottleId = Number(
+      db
+        .prepare(
+          `INSERT INTO shared_supplies (name, strength, form, quantity_on_hand)
+           VALUES (?, '10 mg', 'tablet', 0)`
+        )
+        .run(HOME_POOL_BOTTLE).lastInsertRowid
+    );
+    // quantity_on_hand NULL because the bottle is the truth for a linked item (#1374);
+    // one dose row at 1 unit gives the pool a rate of 1/day, so 0 on hand is 0 days left
+    // and the cue is due TODAY rather than folded into Later. `should`, because the
+    // pooled cue exists only while some active member is pushable (#1505).
+    const homePoolMedId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, notes, condition, situation, situation_id, obligation,
+              kind, active, source, quantity_on_hand, qty_per_dose, last_fill_size,
+              supply_id)
+           VALUES (?, ?, 'e2e pooled Home cue fixture', 'situational', ?, ?, 'should',
+                   'medication', 1, 'manual', NULL, 1, 30, ?)`
+        )
+        .run(
+          PROFILE_ID,
+          HOME_POOL_MED,
+          HOME_POOL_SITUATION,
+          homePoolSituationId,
+          homePoolBottleId
+        ).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 tablet', 'Evening', 'any', 0)`
+    ).run(homePoolMedId);
+    console.log(
+      `e2e: seeded pooled Home-cue fixture "${HOME_POOL_BOTTLE}" (bottle ${homePoolBottleId}) on profile ${PROFILE_ID} (#5435 §9)`
     );
   }
 }

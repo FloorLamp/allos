@@ -27,7 +27,7 @@
 // no route at all — that is tick-gather-budget.test.ts, whose digest gather costs more
 // per profile than a whole render here. Wall time is docs/internals/profiling.md's.
 
-import type { ReactElement } from "react";
+import { isValidElement, type ReactElement } from "react";
 import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
@@ -36,10 +36,16 @@ import {
   createSharedSupply,
   linkItemToPool,
   reconcileFlags,
+  refillSupply,
 } from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
-import { getTimezone, setWeekMode } from "@/lib/settings";
+import {
+  getTimezone,
+  resolveSituationId,
+  setActiveSituations,
+  setWeekMode,
+} from "@/lib/settings";
 import { perTestCeiling } from "../../vitest.timeouts";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { episodesForSituation } from "@/lib/symptom-episode";
@@ -188,20 +194,60 @@ let refillItemId = 0;
  * dropped only at render time was structurally unobservable here.
  */
 let readOnlyRefillRowIds: string[] = [];
-let readOnlyRefillElements: Record<string, unknown>[] = [];
 
 /**
- * The POOLED low-supply render, whose carrying member is PAUSED (#5435 §9). A shared
- * bottle's cue is carried by this profile's lowest-id member, and that member can be
- * one the pool's own math has already excluded — `poolPushes` and `poolConsumers` both
- * drop inactive members. Its own remembered fill is then a number nobody fills at.
+ * The POOLED low-supply render (#5435 §9). A shared bottle's cue is carried by this
+ * profile's LOWEST-ID member — a position picked to aim an href, not a claim to consume
+ * — so the carrier can be any shape at all: one the pool's own math has already
+ * excluded (`poolPushes` and `poolConsumers` both drop inactive members), and equally a
+ * fully active sole consumer whose remembered fill was never a fill of this bottle.
+ *
+ * ONE BOTTLE PER SHAPE, ALL ON ONE PROFILE, so the whole table is read off ONE render
+ * rather than six. The same profile also keeps a PRIVATE run-out item, which is the
+ * negative control: without it "no pooled cue reuses a fill" would also be true of a
+ * page that had stopped mounting the affordance at all.
  */
 const POOL_REFILL_FIXTURE = "pooled low-supply fixture";
 let poolRefillElements: Record<string, unknown>[] = [];
 let poolRefillRowIds: string[] = [];
-/** The paused lowest-id member that carries the pooled cue, and the bottle it draws on. */
-let pausedCarrierItemId = 0;
-let poolSupplyId = 0;
+/** Shape label → its own bottle and the lowest-id member carrying that bottle's cue. */
+const poolShapes = new Map<
+  string,
+  { supplyId: number; carrierItemId: number }
+>();
+/** The PRIVATE run-out item on the pooled profile — the negative control. */
+let poolPrivateItemId = 0;
+/** The situation holding the `held` shape's carrier (#1296 pause_situation_id). */
+const POOL_HOLD_SITUATION = "Pre-surgery";
+
+/** How one member is seeded. Every field left unset is the ordinary active case. */
+type PoolMemberShape = {
+  /** Named in the failure message, so a red says WHICH shape reused a fill. */
+  label: string;
+  active?: 0 | 1;
+  obligation?: "should" | "may";
+  /** false: no scheduled dose at all, so `poolConsumers` rates it at 0 doses/day. */
+  dosed?: boolean;
+  /** Held by POOL_HOLD_SITUATION: `active = 1`, and still due nothing. */
+  held?: boolean;
+  /**
+   * Refilled at this size while the item was still PRIVATE, and linked only after.
+   * `linkItemToPool` nulls `quantity_on_hand` and KEEPS `last_fill_size`, so the
+   * survivor is a size that was never a fill of this bottle — on a member that is
+   * active, dosing and alone, which is what no predicate over the carrier can catch.
+   */
+  privatelyRefilledAt?: number;
+};
+
+/** Every carrier shape the acceptance criterion names, one bottle each. */
+const POOL_CARRIER_SHAPES: readonly PoolMemberShape[] = [
+  { label: "active" },
+  { label: "paused", active: 0 },
+  { label: "held", held: true },
+  { label: "never dosed", dosed: false },
+  { label: "may", obligation: "may" },
+  { label: "linked with a stale fill", privatelyRefilledAt: 30 },
+];
 
 /**
  * A tracked medication with nothing left on the shelf: one scheduled dose (so the
@@ -230,51 +276,113 @@ function seedRunOutItem(profileId: number): number {
 }
 
 /**
- * An empty household-shared bottle drawn on by two of one profile's items: a PAUSED
- * one seeded first (so it holds the lower id and therefore carries the cue) that
- * remembers a 30-unit fill, and the ACTIVE one that is the bottle's only real consumer
- * and fills at 90. Linking nulls each item's private count, so the only low-supply cue
- * this profile can raise is the pool's.
+ * One empty household-shared bottle per carrier shape. The SHAPED member is seeded
+ * first, so it holds the lower id and therefore carries that bottle's cue, and it
+ * remembers a 30-unit fill; behind it goes one ordinary active, pushed, dosing member
+ * filling at 90, so the bottle is LOW and pushable whatever the carrier is — a carrier
+ * that consumes nothing would otherwise take its own cue off the page and leave the
+ * assertion about it asserting nothing. Linking nulls every member's private count, so
+ * the only low-supply cues this profile raises are the pools' and the private control's.
  */
-function seedPausedCarrierPool(profileId: number): void {
-  poolSupplyId = createSharedSupply(
-    {
-      name: "Shared D3",
-      strength: null,
-      form: null,
-      lowSupplyDays: null,
-      notes: null,
-    },
-    0
-  );
-  pausedCarrierItemId = seedPoolMember(profileId, "Old D3 (paused)", 0, 30);
-  seedPoolMember(profileId, "New D3", 1, 90);
+function seedShapedPools(profileId: number): void {
+  for (const shape of POOL_CARRIER_SHAPES) {
+    const supplyId = createSharedSupply(
+      {
+        name: `Shared D3 (${shape.label})`,
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      0
+    );
+    const carrierItemId = seedPoolMember(
+      profileId,
+      supplyId,
+      `Old D3 (${shape.label})`,
+      30,
+      shape
+    );
+    seedPoolMember(profileId, supplyId, `New D3 (${shape.label})`, 90, {
+      label: "consumer",
+    });
+    poolShapes.set(shape.label, { supplyId, carrierItemId });
+  }
+  setActiveSituations(profileId, [POOL_HOLD_SITUATION]);
 }
 
 function seedPoolMember(
   profileId: number,
+  supplyId: number,
   name: string,
-  active: number,
-  lastFillSize: number
+  lastFillSize: number,
+  shape: PoolMemberShape
 ): number {
   const born = `${shiftDateStr(today(profileId), -60)}T08:00:00`;
+  const privateFill = shape.privatelyRefilledAt ?? null;
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, kind, active, obligation, condition,
-            quantity_on_hand, qty_per_dose, last_fill_size, created_at)
-         VALUES (?, ?, 'supplement', ?, 'should', 'daily', NULL, 1, ?, ?)`
+           (profile_id, name, kind, active, obligation, condition, quantity_on_hand,
+            qty_per_dose, last_fill_size, pause_situation_id, created_at)
+         VALUES (?, ?, 'supplement', ?, ?, 'daily', ?, 1, ?, ?, ?)`
       )
-      .run(profileId, name, active, lastFillSize, born).lastInsertRowid
+      .run(
+        profileId,
+        name,
+        shape.active ?? 1,
+        shape.obligation ?? "should",
+        // A privately-refilled member needs a private count to refill INTO; every other
+        // one is linked straight from untracked, the way the link control leaves it.
+        privateFill == null ? null : 200,
+        privateFill == null ? lastFillSize : null,
+        shape.held === true
+          ? resolveSituationId(profileId, POOL_HOLD_SITUATION)
+          : null,
+        born
+      ).lastInsertRowid
   );
-  db.prepare(
-    `INSERT INTO intake_item_doses
-       (item_id, amount, time_of_day, food_timing, sort, created_at)
-     VALUES (?, '1 capsule', 'Morning', 'any', 0, ?)`
-  ).run(itemId, born);
-  linkItemToPool(profileId, itemId, poolSupplyId);
+  if (shape.dosed !== false)
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at)
+       VALUES (?, '1 capsule', 'Morning', 'any', 0, ?)`
+    ).run(itemId, born);
+  // The stale fill is written by the REAL refill core, onto the item while it is still
+  // private, so what survives the link is a remembered size the product itself wrote.
+  if (privateFill != null) refillSupply(profileId, itemId, privateFill);
+  linkItemToPool(profileId, itemId, supplyId);
   return itemId;
+}
+
+/**
+ * Row id → the refill control mounted INSIDE that row, found by walking the row's own
+ * `control` prop. The flat element list cannot say which row a control hangs on, and
+ * every claim below is about one row's own control rather than about the render's Nth.
+ */
+function refillControlsByRow(
+  elements: Record<string, unknown>[]
+): Map<string, Record<string, unknown>> {
+  const walk = (node: unknown): Record<string, unknown> | null => {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const hit = walk(child);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    if (!isValidElement(node)) return null;
+    const props = (node as ReactElement<Record<string, unknown>>).props;
+    return props.hasLastFill !== undefined ? props : walk(props.children);
+  };
+  const byRow = new Map<string, Record<string, unknown>>();
+  for (const props of elements) {
+    if (typeof props.id !== "string") continue;
+    const control = walk(props.control);
+    if (control) byRow.set(props.id, control);
+  }
+  return byRow;
 }
 
 function windowsRead(
@@ -457,13 +565,16 @@ describe("Home's one list, rendered", () => {
     session.access = "read";
     const readOnlyRender = await renderHome();
     session.access = "write";
-    readOnlyRefillElements = readOnlyRender.elements;
     readOnlyRefillRowIds = readOnlyRender.ids;
 
     // ── THE POOLED LOW-SUPPLY RENDER, on its own profile for the same reasons.
     const poolBefore = new Set(allProfileIds());
     const poolProfileId = newProfile(`dashboard:${POOL_REFILL_FIXTURE}`);
-    seedPausedCarrierPool(poolProfileId);
+    seedShapedPools(poolProfileId);
+    // THE NEGATIVE CONTROL ON THE SAME RENDER: one PRIVATE run-out item, which keeps
+    // its remembered fill and its one-tap. Every pooled assertion below is an absence,
+    // and an absence proves nothing on a page that mounts nothing.
+    poolPrivateItemId = seedRunOutItem(poolProfileId);
     session.accessible = profiles(
       allProfileIds().filter((id) => !poolBefore.has(id))
     );
@@ -840,9 +951,6 @@ describe("Home's one list, rendered", () => {
         id.startsWith("attention.fact:refill:")
       )
     ).toEqual([]);
-    expect(
-      readOnlyRefillElements.filter((props) => props.hasLastFill !== undefined)
-    ).toEqual([]);
   });
 
   // ── THE POOLED CUE'S CARRIER IS A POSITION, NOT A CONSUMER (#1374, §9) ────────
@@ -856,29 +964,90 @@ describe("Home's one list, rendered", () => {
       poolRefillRowIds,
       `${POOL_REFILL_FIXTURE} rendered no rows at all, so the checks below are vacuous.`
     ).not.toEqual([]);
-    expect(poolRefillRowIds).toContain(
-      `attention.fact:pool-refill:${poolSupplyId}`
-    );
-    expect(
-      poolRefillElements.filter((props) => props.hasLastFill !== undefined)
-    ).toHaveLength(1);
+    const paused = poolShapes.get("paused")!;
+    const rowId = `attention.fact:pool-refill:${paused.supplyId}`;
+    expect(poolRefillRowIds).toContain(rowId);
+    expect(refillControlsByRow(poolRefillElements).get(rowId)).toMatchObject({
+      itemId: paused.carrierItemId,
+      supplyId: paused.supplyId,
+    });
   });
 
-  it("asks a paused carrier's pooled refill for a size instead of reusing its fill", () => {
-    // THE HARM IS A SILENT WRITE ONTO A SHARED BOTTLE. `poolPushes` and `poolConsumers`
-    // both drop inactive members, so this carrier drains the pool at nothing, and its
-    // remembered 30 is a number no one fills at — the only member actually drawing on
-    // the bottle fills at 90. With `hasLastFill` true the affordance never reveals the
-    // size input, and the row names the BOTTLE, so a tap would set the household's
-    // count to a stopped item's fill with nothing on screen saying whose it was.
-    const control = poolRefillElements.find(
-      (props) => props.hasLastFill !== undefined
+  it("asks EVERY pooled cue for a size, whatever shape its carrier is", () => {
+    // THE HARM IS A SILENT WRITE ONTO A SHARED BOTTLE, under a row that names the
+    // BOTTLE — with `hasLastFill` true the affordance never reveals the size input, so
+    // nothing on screen says whose fill was reused.
+    //
+    // WHY THERE IS NO PREDICATE HERE. Two earlier attempts filtered the carrier instead
+    // — first on `active`, then on the pool's own consumption math — and each covered
+    // one shape of the same mistake. The last row of this table defeats both: a member
+    // refilled at 30 while it was still private and linked only afterwards is active,
+    // dosing and the bottle's sole consumer, yet its remembered 30 was never a fill of
+    // this jar, because `linkItemToPool` drops the private count and keeps the size.
+    // So the page carries no member's remembered fill onto a pooled cue at all, and
+    // this table is the statement that there is no longer an input that can vary.
+    const controls = refillControlsByRow(poolRefillElements);
+    const pooled = poolRefillRowIds.filter((id) =>
+      id.startsWith("attention.fact:pool-refill:")
     );
-    expect(control).toMatchObject({
-      itemId: pausedCarrierItemId,
-      supplyId: poolSupplyId,
-      hasLastFill: false,
-      lastFillSize: null,
+    expect(
+      pooled,
+      `${POOL_REFILL_FIXTURE} seated no pooled cue, so the checks below are vacuous.`
+    ).toHaveLength(POOL_CARRIER_SHAPES.length);
+    for (const shape of POOL_CARRIER_SHAPES) {
+      const fixture = poolShapes.get(shape.label)!;
+      const rowId = `attention.fact:pool-refill:${fixture.supplyId}`;
+      expect(
+        pooled,
+        `the ${shape.label} carrier's bottle raised no pooled cue.`
+      ).toContain(rowId);
+      expect(
+        controls.get(rowId),
+        `the ${shape.label} carrier's pooled cue mounted the wrong refill control.`
+      ).toMatchObject({
+        itemId: fixture.carrierItemId,
+        supplyId: fixture.supplyId,
+        hasLastFill: false,
+        lastFillSize: null,
+      });
+    }
+  });
+
+  it("reaches the linked-with-a-stale-fill state that table claims to cover", () => {
+    // THE TABLE'S OWN POSITIVE CONTROL. That row is only the interesting case if the
+    // member really arrives at the bottle still remembering its private fill; had the
+    // seed's refill not landed, the carrier would be an ordinary unremembering member
+    // and its green would mean nothing. This is the state `linkItemToPool` leaves —
+    // the private count gone, the size kept — and it is the one no CHECK constraint
+    // forbids and no predicate over the member can tell from a genuine pooled fill.
+    const stale = poolShapes.get("linked with a stale fill")!;
+    expect(
+      db
+        .prepare(
+          `SELECT quantity_on_hand, last_fill_size, supply_id, active
+             FROM intake_items WHERE id = ?`
+        )
+        .get(stale.carrierItemId)
+    ).toMatchObject({
+      quantity_on_hand: null,
+      last_fill_size: 30,
+      supply_id: stale.supplyId,
+      active: 1,
+    });
+  });
+
+  it("still reuses a PRIVATE supply's own remembered fill on that same render", () => {
+    // THE NEGATIVE CONTROL for the table above. "No pooled cue reuses a fill" is also
+    // true of a page that stopped mounting the affordance, or stopped remembering fills
+    // at all — so the same render's private cue has to keep its one-tap and its own 90.
+    // What changed is the POOLED path and only the pooled path.
+    const rowId = `attention.fact:refill:${poolPrivateItemId}`;
+    expect(poolRefillRowIds).toContain(rowId);
+    expect(refillControlsByRow(poolRefillElements).get(rowId)).toMatchObject({
+      itemId: poolPrivateItemId,
+      supplyId: null,
+      hasLastFill: true,
+      lastFillSize: 90,
     });
   });
 

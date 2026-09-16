@@ -703,34 +703,43 @@ async function renderHome(
     { itemId: number; supplyId: number | null; lastFillSize: number | null }
   >();
   for (const item of intakeItems) {
-    const target = {
-      itemId: item.id,
-      supplyId: item.supply_id,
-      lastFillSize: item.last_fill_size,
-    };
-    refillTargets.set(refillSignalKey(item.id), target);
+    // A MEMBER OF A POOL GETS NO PRIVATE KEY. Its `refill:<id>` entry carried the
+    // member's `supply_id`, so mounting it would have written to the BOTTLE under a
+    // key that names one person's item; it was unreachable only because linking nulls
+    // `quantity_on_hand` and `refillItems` requires one — a convention six write cores
+    // keep and no CHECK constraint enforces. Not writing it makes Home structurally
+    // incapable of mounting a pool-writing refill anywhere but on the pooled key.
+    if (item.supply_id == null) {
+      refillTargets.set(refillSignalKey(item.id), {
+        itemId: item.id,
+        supplyId: null,
+        lastFillSize: item.last_fill_size,
+      });
+      continue;
+    }
     // A POOLED BOTTLE IS KEYED ON THE POOL, never on a member (#1374), and its cue
     // names ONE subject. `poolRefillItems` picks this profile's lowest-id member to
     // carry it, so the same pick is made here — the row and its control then act on
     // the same item, and a second member of the same bottle can never mint a rival
     // control for it.
-    if (item.supply_id == null) continue;
     const poolKey = poolRefillSignalKey(item.supply_id);
     const seated = refillTargets.get(poolKey);
     if (seated == null || item.id < seated.itemId)
       refillTargets.set(poolKey, {
-        ...target,
-        // A PAUSED CARRIER REMEMBERS NO FILL THE BOTTLE CAN USE. Carrying the cue is a
-        // POSITION, not a claim to consume: `poolPushes` and `poolConsumers` both drop
-        // inactive members, so the lowest-id member can be one the pool has already
-        // decided drains it at nothing. Its private fill size is then a stopped item's
-        // number, and the one-tap would write it onto the household-shared bottle
-        // silently — `hasLastFill` suppresses the size input, and the row names the
-        // BOTTLE, so nothing on screen says whose fill was reused. Unremembered
-        // instead, which is the documented first-use path: the action asks for the
-        // size. An ACTIVE carrier keeps reusing its own fill, as every other surface
-        // that mounts this affordance does.
-        lastFillSize: item.active ? item.last_fill_size : null,
+        itemId: item.id,
+        supplyId: item.supply_id,
+        // NO MEMBER'S REMEMBERED FILL EVER REACHES A POOLED CUE. Carrying it is a
+        // POSITION — this profile's lowest id, picked to aim an href — and a position's
+        // fill size is not the bottle's. No predicate over the member rescues it: one
+        // the pool rates at nothing (paused, situationally held, never dosed) is one
+        // case, and a member refilled at 30 while it was still PRIVATE and only then
+        // linked is another, because `linkItemToPool` drops the private count and keeps
+        // `last_fill_size` — a number that was never a fill of this jar, on a fully
+        // active sole member. So the input is removed rather than filtered: with nothing
+        // remembered the first tap reveals the size field, which is the documented
+        // first-use path, and the household's count moves only by a number someone
+        // typed for THIS bottle.
+        lastFillSize: null,
       });
   }
 
@@ -1193,7 +1202,8 @@ function HomeLaterFold({
 // What the page can mount the shared refill action ON, for one low-supply cue key
 // (#5121). `supplyId` is the bottle when the cue is a pooled one and null for a private
 // supply; `lastFillSize` is the remembered fill, whose ABSENCE is what makes the first
-// tap ask for a size instead of writing one.
+// tap ask for a size instead of writing one — and a pooled target never carries one,
+// because no member's remembered fill is a fact about the shared bottle.
 type HomeRefillTarget = {
   itemId: number;
   supplyId: number | null;

@@ -46,6 +46,21 @@ export const SUPPLY_CHILD_LOW_MED = "Supply Child Cetirizine (e2e)";
 export const SUPPLY_EDIT_BOTTLE = "Editable Shared Loratadine (e2e)";
 export const SUPPLY_PARENT_EDIT_MED = "Supply Parent Loratadine (e2e)";
 
+// #5435 §9 — a POOLED bottle at ZERO on the MAIN profile, so a pooled low-supply cue
+// reaches Home's Now band on the dashboard the default admin lands on. The bottles
+// above belong to the caregiver login and sit at ~2 days, so no browser reading existed
+// of a pooled cue as an ACTION at all. ADDITIVE and distinctly named: its own bottle and
+// its own linked medication, read by smoke.spec.ts and written by nothing.
+export const HOME_POOL_BOTTLE = "Home Pooled Bottle (e2e)";
+export const HOME_POOL_MED = "Home Pooled Med (e2e)";
+// The member is SITUATIONAL on a fixture situation that stays INACTIVE, so it is never
+// DUE and adds no dose row to the shared profile's day — a due row would join whatever
+// time-of-day stack Home groups, and a neighbour spec addressing that stack by the one
+// item it expected there would break on the second button. Its scheduled dose still
+// gives the bottle a rate (a dose row is counted whatever today's dueness is), which is
+// what makes 0 on hand read as 0 days left.
+export const HOME_POOL_SITUATION = "Pooled Bottle Hold (e2e)";
+
 // #1504 — the Upcoming page's display aggregation. A DEDICATED member login granted a
 // dedicated adult profile whose Today band is deliberately shaped like the audit's:
 // six scheduled doses (one already taken, so the fold can state a real fraction),
