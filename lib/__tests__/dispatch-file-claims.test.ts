@@ -139,16 +139,21 @@ const READABLE = [
 const LIVE = ledger(READABLE);
 // `ghost-4400` never got as far as `git worktree add`, so git names no worktree
 // for it at all; `restart-4460` has one git still lists and disk no longer has.
-const UNREADABLE: [string, string, string][] = [
+// The last column is what the reason has to NAME. "git could not read <dir>"
+// sent readers to inspect worktrees that were healthy (#5928), so a failed read
+// says which command failed.
+const UNREADABLE: [string, string, string, string][] = [
   [
     "ghost-4400",
     "no worktree was ever created",
     ledger([...READABLE, "ghost-4400"]),
+    "no worktree",
   ],
   [
     "half-cleaned-4470",
     "its directory is there and git cannot read it",
     ledger([...READABLE, "half-cleaned-4470"]),
+    "`git diff --name-only -z HEAD` failed",
   ],
 ];
 const GONE = ledger([...READABLE, "restart-4460"]);
@@ -199,15 +204,19 @@ describe("dispatch-brief.mjs claims <path>", () => {
     expect(run.status).toBe(0);
   });
 
-  it.each(UNREADABLE)("says CANNOT TELL for %s — %s", (branch, _why, at) => {
-    const run = claims(UNTOUCHED, at);
-    expect(run.stdout).toContain("CANNOT TELL");
-    expect(run.stdout).toContain(branch);
-    // The whole issue in one assertion: an unreadable worktree must not be
-    // folded into the reassuring answer.
-    expect(run.stdout).not.toContain("CLEAR");
-    expect(run.status).toBe(3);
-  });
+  it.each(UNREADABLE)(
+    "says CANNOT TELL for %s — %s",
+    (branch, _why, at, names) => {
+      const run = claims(UNTOUCHED, at);
+      expect(run.stdout).toContain("CANNOT TELL");
+      expect(run.stdout).toContain(branch);
+      expect(run.stdout).toContain(names);
+      // The whole issue in one assertion: an unreadable worktree must not be
+      // folded into the reassuring answer.
+      expect(run.stdout).not.toContain("CLEAR");
+      expect(run.status).toBe(3);
+    }
+  );
 
   it("still names a real claim when another dispatch is unreadable", () => {
     // A claim outranks an unknown, and the unknown is still printed — an
@@ -284,5 +293,107 @@ describe("the verdict rules", () => {
     ["app/xy/DayLedger.tsx", "app/x", false],
   ])("%s overlaps %s = %s", (a, b, expected) => {
     expect(pathOverlaps(a as string, b as string)).toBe(expected);
+  });
+});
+
+// AND THE CLONE SHAPE EVERY FRESH CONTAINER HAS (#5928). A shallow clone keeps
+// no merge base for a branch whose base sits below its horizon, so the unlanded
+// read's `origin/main...HEAD` fails outright — and the answer for EVERY lane
+// collapsed to CANNOT TELL, in the one command the cross-lane fence depends on.
+// The fixture is a real shallow clone, made the only way git makes one (a
+// `file://` URL — a local clone ignores `--depth`), because what is being tested
+// is what git will and will not answer, which a mocked git can only agree with.
+describe("claims in a shallow clone, where there is no merge base", () => {
+  const root = makeTmpDir("dispatch-claims-shallow");
+  const source = path.join(root, "source");
+  fs.mkdirSync(source);
+  git(source, ["init", "-q", "-b", "main"]);
+  git(source, ["config", "user.email", "lane@example.test"]);
+  git(source, ["config", "user.name", "Lane Fixture"]);
+  seed(source, CONTESTED, "export const DayLedger = 1;\n");
+  seed(source, COMMITTED, "export const day = 3;\n");
+  seed(source, UNTOUCHED, "export const other = 2;\n");
+  git(source, ["add", "-A"]);
+  git(source, ["commit", "-qm", "base"]);
+
+  const LANE = "shallow-lane-5928";
+  git(source, ["checkout", "-q", "-b", LANE]);
+  fs.appendFileSync(path.join(source, CONTESTED), "// branded\n");
+  git(source, ["commit", "-qam", "lane work"]);
+
+  // main moves on AFTER the lane branched, so a depth-1 clone's horizon lands
+  // above the lane's base and the two histories meet nowhere it can see.
+  git(source, ["checkout", "-q", "main"]);
+  for (const n of [1, 2, 3]) {
+    fs.appendFileSync(path.join(source, COMMITTED), `// main ${n}\n`);
+    git(source, ["commit", "-qam", `main ${n}`]);
+  }
+
+  const clone = path.join(root, "clone");
+  git(root, [
+    "clone",
+    "-q",
+    "--depth=1",
+    "--no-single-branch",
+    `file://${source}`,
+    clone,
+  ]);
+  const wt = path.join(root, `wt-${LANE}`);
+  git(clone, ["worktree", "add", "-q", wt, LANE]);
+
+  const LEDGER = path.join(root, "ledger.jsonl");
+  fs.writeFileSync(
+    LEDGER,
+    JSON.stringify({
+      at: "2026-08-31T12:11Z",
+      status: "active",
+      branch: LANE,
+      worktree: path.basename(wt),
+      issues: [],
+    }) + "\n"
+  );
+  const claims = (target: string) =>
+    spawnSync(process.execPath, [SCRIPT, "claims", target], {
+      cwd: clone,
+      encoding: "utf8",
+      env: { ...process.env, ALLOS_DISPATCH_LEDGER: LEDGER, SCRATCH: root },
+    });
+
+  it("is a clone whose three-dot diff really does fail", () => {
+    // The positive control. A fixture that quietly kept its merge base would
+    // pass every assertion below while testing nothing.
+    expect(git(clone, ["rev-parse", "--is-shallow-repository"])).toBe("true");
+    const threeDot = spawnSync(
+      "git",
+      ["diff", "--name-only", "origin/main...HEAD"],
+      { cwd: wt, encoding: "utf8" }
+    );
+    expect(threeDot.status).not.toBe(0);
+    expect(threeDot.stderr).toContain("no merge base");
+  });
+
+  it("names the lane holding the file, instead of answering CANNOT TELL", () => {
+    const run = claims(CONTESTED);
+    expect(run.stdout).toContain("CLAIMED");
+    expect(run.stdout).toContain(LANE);
+    expect(run.stdout).not.toContain("CANNOT TELL");
+    expect(run.status).toBe(1);
+  });
+
+  it("says the comparison it fell back to is a wider one", () => {
+    // The fallback set also carries what MAIN changed, so a claim read from it
+    // may not be the lane's own work. Wide is the safe direction — a path
+    // listed for nobody costs a question, a path dropped costs a collision —
+    // but only if the caller is told which answer it is holding.
+    const run = claims(CONTESTED);
+    expect(run.stdout).toContain("no merge base");
+    expect(run.stdout).toContain("--deepen=200");
+  });
+
+  it("still reports a file no lane differs on as clear", () => {
+    const run = claims(UNTOUCHED);
+    expect(run.stdout).toContain("CLEAR");
+    expect(run.stdout).not.toContain("CLAIMED");
+    expect(run.status).toBe(0);
   });
 });

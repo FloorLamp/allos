@@ -109,6 +109,59 @@ describe("LabeledVerbChip", () => {
     expect(verb.getAttribute("tabindex")).toBeNull();
   });
 
+  // THE CHIP DELEGATES THE PRIMITIVE'S TREATMENT (#5900). The failure this
+  // catches is the substance row's shipped one: the chip answered a tap in
+  // flight by swapping its verb to "Logging…", which is both a second spelling
+  // of in-flight AND a width change on the nub the finger is still over.
+  it("wears the one in-flight treatment without touching label or verb", () => {
+    const { onAct } = mount({ testId: "chip" });
+    const idle = screen.getByTestId("chip").textContent;
+    cleanup();
+
+    const busy = mount({ testId: "chip", busy: true });
+    const pill = screen.getByTestId("chip");
+    expect(pill.getAttribute("aria-busy")).toBe("true");
+    expect((pill as HTMLButtonElement).disabled).toBe(true);
+    expect(pill.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    // Payload label and one-word verb, byte for byte what they were idle.
+    expect(pill.textContent).toBe(idle);
+    fireEvent.click(pill);
+    expect(busy.onAct).not.toHaveBeenCalled();
+    expect(onAct).not.toHaveBeenCalled();
+  });
+
+  // The tiled pill has TWO targets in one control box, and a write in flight has
+  // to refuse both: the label half opens an editor for the payload this very
+  // write is posting, so leaving it live would let the duration move under a
+  // tap that has already left.
+  it("refuses both halves of a tiled pill while its write is in flight", () => {
+    const onLabel = vi.fn();
+    const { onAct } = mount({
+      testId: "write",
+      busy: true,
+      labelAction: {
+        onAct: onLabel,
+        ariaLabel: "Adjust duration",
+        expanded: false,
+        controls: "duration-editor",
+        testId: "label",
+      },
+    });
+    const write = screen.getByTestId("write");
+    expect((screen.getByTestId("label") as HTMLButtonElement).disabled).toBe(
+      true
+    );
+    expect((write as HTMLButtonElement).disabled).toBe(true);
+    // The mark and `aria-busy` land on the ACTING half, which is the one in
+    // flight; the label half is merely closed for the duration.
+    expect(write.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("label").getAttribute("aria-busy")).toBeNull();
+    fireEvent.click(write);
+    fireEvent.click(screen.getByTestId("label"));
+    expect(onAct).not.toHaveBeenCalled();
+    expect(onLabel).not.toHaveBeenCalled();
+  });
+
   it("lets an editable label disclose its editor without stealing the write", () => {
     const onLabel = vi.fn();
     const { onAct } = mount({

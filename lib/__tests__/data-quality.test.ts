@@ -33,6 +33,10 @@ const COMPLETE_ADULT: DataQualityInputs = {
   riskAttributesReviewed: true,
   unreadableDoseAmounts: 0,
   unreadableDoseAmountItem: null,
+  unscheduledObligations: 0,
+  unscheduledObligationItem: null,
+  obligationMismatches: 0,
+  obligationMismatchItem: null,
 };
 
 function keysOf(inputs: DataQualityInputs): string[] {
@@ -272,6 +276,10 @@ describe("leverage ranking is stable and deterministic", () => {
       riskAttributesReviewed: false, // risk gated on adult → suppressed (age null)
       unreadableDoseAmounts: 0,
       unreadableDoseAmountItem: null,
+      unscheduledObligations: 0,
+      unscheduledObligationItem: null,
+      obligationMismatches: 0,
+      obligationMismatchItem: null,
     });
     const order = gaps.map((g) => g.key);
     // Age is null: adult-gated smoking/risk/phenoage stay silent, so the visible
@@ -411,6 +419,20 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
         riskAttributesReviewed: false,
         unreadableDoseAmounts: 2,
         unreadableDoseAmountItem: { id: 42, kind: "medication" },
+        // The #5285 rows open an item's editor like the unreadable-amount row does,
+        // so the base guard below has to see both kinds of door.
+        unscheduledObligations: 1,
+        unscheduledObligationItem: {
+          id: 42,
+          name: "Ibuprofen",
+          kind: "medication",
+        },
+        obligationMismatches: 1,
+        obligationMismatchItem: {
+          id: 43,
+          name: "Magnesium",
+          kind: "supplement",
+        },
       }),
       ...detectDataQualityGaps({
         ...COMPLETE_ADULT,
@@ -644,5 +666,137 @@ describe("dose-amount-unreadable detector (#3320)", () => {
       sexKnown: false,
     });
     expect(householdDataQualityLine(gaps)).toContain("dose amounts");
+  });
+});
+
+// ---- #5285's two setup rows, as pure detectors ------------------------------
+//
+// The gather's own boundaries (`must`/`should`, active item, live dose, the PRN
+// registry lookup) belong to the DB tier that takes them; what is pure here is what
+// the two gaps SAY and where they rank. Both name one item, both open its editor, and
+// both count how many others are waiting behind it.
+
+describe("intake-unscheduled detector (#5285)", () => {
+  const unscheduled = (
+    n: number,
+    item: { id: number; name: string; kind: "supplement" | "medication" }
+  ) => ({
+    ...COMPLETE_ADULT,
+    unscheduledObligations: n,
+    unscheduledObligationItem: item,
+  });
+  const IBUPROFEN = { id: 42, name: "Ibuprofen", kind: "medication" } as const;
+
+  it("does NOT fire when every obligation states a time", () => {
+    expect(keysOf(COMPLETE_ADULT)).not.toContain("intake-unscheduled");
+  });
+
+  it("names the item and what setting a time turns on", () => {
+    const gap = detectDataQualityGaps(unscheduled(1, IBUPROFEN)).find(
+      (g) => g.key === "intake-unscheduled"
+    );
+    expect(gap?.label).toBe("Set a dose time for Ibuprofen");
+    expect(gap?.whyLine).toBe(
+      "Ibuprofen has no dose time — set one and it will be due, reminded and counted."
+    );
+  });
+
+  it("names exactly as many consumers as its leverage claims", () => {
+    // The module's own invariant: dueness, the reminder tick and the adherence
+    // denominator are the three that skip an untimed dose, and the copy names three.
+    const gap = detectDataQualityGaps(unscheduled(1, IBUPROFEN)).find(
+      (g) => g.key === "intake-unscheduled"
+    );
+    expect(gap?.leverage).toBe(3);
+    for (const consumer of ["due", "reminded", "counted"])
+      expect(gap?.whyLine).toContain(consumer);
+  });
+
+  it("counts the ones waiting behind the first", () => {
+    const gap = detectDataQualityGaps(unscheduled(3, IBUPROFEN)).find(
+      (g) => g.key === "intake-unscheduled"
+    );
+    expect(gap?.label).toBe("Set 3 dose times");
+    expect(gap?.whyLine).toContain("Ibuprofen and 2 other items have");
+  });
+
+  it("opens the item's own editor for either kind", () => {
+    expect(
+      detectDataQualityGaps(unscheduled(1, IBUPROFEN)).find(
+        (g) => g.key === "intake-unscheduled"
+      )?.ctaHref
+    ).toBe("/medications/42?action=edit");
+    expect(
+      detectDataQualityGaps(
+        unscheduled(1, { id: 7, name: "Magnesium", kind: "supplement" })
+      ).find((g) => g.key === "intake-unscheduled")?.ctaHref
+    ).toBe("/nutrition?tab=supplements");
+  });
+
+  it("ranks ahead of the other leverage-3 gap (a live hole in today's schedule)", () => {
+    const keys = keysOf({ ...unscheduled(1, IBUPROFEN), sexKnown: false });
+    expect(keys.indexOf("intake-unscheduled")).toBeLessThan(
+      keys.indexOf("sex")
+    );
+  });
+});
+
+describe("intake-obligation-mismatch detector (#5285)", () => {
+  const mismatch = (
+    n: number,
+    item: { id: number; name: string; kind: "supplement" | "medication" }
+  ) => ({
+    ...COMPLETE_ADULT,
+    obligationMismatches: n,
+    obligationMismatchItem: item,
+  });
+  const IBUPROFEN = { id: 42, name: "Ibuprofen", kind: "medication" } as const;
+
+  it("does NOT fire when no obligation disagrees with its product", () => {
+    expect(keysOf(COMPLETE_ADULT)).not.toContain("intake-obligation-mismatch");
+  });
+
+  it("offers BOTH answers, because keeping the schedule is one of them", () => {
+    const gap = detectDataQualityGaps(mismatch(1, IBUPROFEN)).find(
+      (g) => g.key === "intake-obligation-mismatch"
+    );
+    expect(gap?.label).toBe("Check how Ibuprofen is taken");
+    expect(gap?.whyLine).toBe(
+      "Ibuprofen is set as a daily obligation; it is usually taken as needed — " +
+        "keep the schedule, or switch it to as-needed."
+    );
+    expect(gap?.ctaHref).toBe("/medications/42?action=edit");
+  });
+
+  it("counts the ones waiting behind the first", () => {
+    const gap = detectDataQualityGaps(mismatch(2, IBUPROFEN)).find(
+      (g) => g.key === "intake-obligation-mismatch"
+    );
+    expect(gap?.label).toBe("Check how 2 items are taken");
+    expect(gap?.whyLine).toContain("Ibuprofen and 1 other item are");
+  });
+
+  it("is read LAST — a suggestion never outranks a gap that unblocks an engine", () => {
+    // Every leverage-1 gap at once. The suggest-only one comes after all of them,
+    // and after the higher tiers by the ranking itself.
+    const keys = keysOf({
+      ...mismatch(1, IBUPROFEN),
+      sex: "female",
+      age: REPRODUCTIVE_STATUS_BAND_MIN_AGE,
+      reproductiveStatusKnown: false,
+      riskAttributesReviewed: false,
+      failedExtractions: 1,
+      phenoAgePresentCount: 1,
+      phenoAgeMissingCount: 8,
+      phenoAgeMissingPrimary: "Creatinine",
+    });
+    expect(keys.at(-1)).toBe("intake-obligation-mismatch");
+    for (const earlier of [
+      "reproductive-status",
+      "risk-attributes",
+      "failed-extractions",
+      "phenoage-inputs",
+    ])
+      expect(keys).toContain(earlier);
   });
 });

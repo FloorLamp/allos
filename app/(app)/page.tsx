@@ -6,8 +6,10 @@ import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
   collectAttentionDashboardData,
+  doseLedgerItems,
   getCycleTrackingRelevance,
   getDaylightOutdoorMinutesByDay,
+  getIntakeItems,
   getFindingSuppressions,
   getLastNightSummary,
   getMetricDailyTotals,
@@ -16,6 +18,8 @@ import {
   getSleepWaitingState,
   getWorkoutPresence,
   gatherCoachingInput,
+  refillCueTargets,
+  type RefillCueTarget,
   typicalBedTime,
   typicalWakeTime,
 } from "@/lib/queries";
@@ -93,11 +97,9 @@ import {
 } from "@/lib/history-format";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
-import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import RefillButton from "@/components/medications/RefillButton";
 import { getActivitiesByDate } from "@/lib/queries/training/activities";
 import type { Activity } from "@/lib/types/training";
-import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
-import { isOnDemand } from "@/lib/intake-schedule";
 import {
   DaySelectToggle,
   DaySelectionBar,
@@ -678,6 +680,25 @@ async function renderHome(
       }
     : null;
 
+  // ── THE LOW-SUPPLY CUE'S TARGET (#5121, §9) ───────────────────────────────────
+  //
+  // "An eligible Home low-supply cue opens the shared refill action; no inventory
+  // strip." The cue itself is already in the shared attention model — `refillItems` and
+  // `poolRefillItems` put a tracked item or bottle that has run down into the same list
+  // the dose rows arrive on — so what Home was missing is the CONTROL, not the fact.
+  //
+  // NO STRIP, and that is a hard exclusion rather than a layout preference: #5121's own
+  // fix put Refilled "on the low-supply strip", and §9 keeps the tap while deleting the
+  // strip it was drawn on. A strip is an inventory READING of every tracked item, which
+  // §2.1 and §2.4 both refuse — the shortage that has arrived is one eligible action in
+  // the Now band, and the rest of the cabinet is the Supplements page's.
+  //
+  // IT COSTS NO READ (§2.5). `getIntakeItems` is the same snapshot-cached list the dose
+  // ledger below already takes, and the target is a PROJECTION over it — pure, ahead of
+  // any JSX and answering to `poolRefillItems` rather than to this page, so it lives in
+  // lib/queries/upcoming/refill-targets.ts and the page hands it the list it read.
+  const refillTargets = refillCueTargets(getIntakeItems(profile.id));
+
   // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
   //
   // Every seat decision below this line is `composeHomeList`'s. It renders nothing,
@@ -690,6 +711,12 @@ async function renderHome(
     minutesOfDay: nowMinutes,
     subject: { scope: "profile", profileId: profile.id },
     attention,
+    // WHAT THIS CALLER CAN ACTUALLY MOUNT THE ACTION ON, which for a read-only viewer
+    // is nothing: the control below renders only with write access, and a cue with no
+    // control is the half-row `isRefillCue` refuses to admit (§2.2/§2.4). The gate is
+    // on the ADMISSION rather than on the render, so the seat and the affordance can
+    // never disagree about whether the fix exists.
+    refillTargets: writable ? new Set(refillTargets.keys()) : new Set(),
     training: {
       live: liveWorkout,
       loggedToday: todaySession != null,
@@ -719,30 +746,6 @@ async function renderHome(
   const dayRows = feed.gather.rows as HistoryRow[];
   const rowCount = dayRows.length;
   const layout = layoutHistoryDay(dayRows, { rollup: false });
-
-  // The dose form's vocabulary, read once: which items exist (a retired item still took
-  // the dose history keeps listing) and which still have a live dose to log against.
-  const dosesByItem = new Map<number, DoseLedgerItem["doses"]>();
-  for (const dose of getIntakeDoses(profile.id)) {
-    const list = dosesByItem.get(dose.item_id) ?? [];
-    list.push({
-      id: dose.id,
-      amount: dose.amount,
-      time_of_day: dose.time_of_day,
-      versions: dose.versions,
-    });
-    dosesByItem.set(dose.item_id, list);
-  }
-  const doseItems: DoseLedgerItem[] = getIntakeItems(profile.id).map(
-    (item) => ({
-      id: item.id,
-      name: item.name,
-      kind: item.kind,
-      product: item.product,
-      asNeeded: isOnDemand(item),
-      doses: dosesByItem.get(item.id) ?? [],
-    })
-  );
 
   // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
   // in the day bar, its boxes on the rows below, over the same per-row correction cores.
@@ -793,9 +796,23 @@ async function renderHome(
             Existing actionable safety items first, then every authorized open illness
             episode in the existing subject/episode order, each keeping the whole
             cockpit. Uncapped, collapsible, non-dismissible. Omitted when empty, with no
-            all-clear claim. */}
+            all-clear claim.
+
+            AND IT DECLARES THE READABLE MEASURE FOR ITS ROWS (#5894, owner ruling
+            2026-09-15 option (a)). #4752 §2 approved ~880px centered for the illness
+            cockpit; #5490 site 3 ruled that the cap may not sit on the cockpit itself,
+            because a centred cap on a ROW steps its edges in from its siblings, and put
+            it on the Now band instead; #5435 §4 deleted that band, leaving the cockpit
+            at the page's 72rem. The measure needed a HOST, and this block is it: the
+            cockpit group below and the Reopen list after it both carry
+            `current-care-measure` (app/globals.css), so Current care frames its rows at
+            one measure with one left edge. Everything below — the day bar and the day
+            view's two columns — stays at the page's `wide`, so #3253 is not reopened. */}
         {illnessCockpits.length > 0 ? (
-          <section data-testid="home-current-care" className="mb-4">
+          <section
+            data-testid="home-current-care"
+            className="current-care-measure mb-4"
+          >
             <IllnessNowGroup
               cockpits={illnessCockpits}
               initialCollapsedActive={illnessUi.collapsedActive}
@@ -813,7 +830,10 @@ async function renderHome(
             one member and read-only on another was offered Reopen on both. Hide stays
             a per-login preference, for read-only viewers too. */}
         {recentlyResolved.length > 0 ? (
-          <ul className={`${LOGGED_EVENT_LIST} mb-4`} data-testid="home-reopen">
+          <ul
+            className={`${LOGGED_EVENT_LIST} current-care-measure mb-4`}
+            data-testid="home-reopen"
+          >
             {recentlyResolved.map((item) => (
               <HomeRow
                 key={`${item.profileId}:${item.episodeId}`}
@@ -920,6 +940,7 @@ async function renderHome(
                 formatPrefs={formatPrefs}
                 today={on}
                 writable={writable}
+                refillTargets={refillTargets}
                 routineControl={routineControl}
                 cycleControl={cycleControl}
                 fastFacts={fastFacts}
@@ -965,7 +986,7 @@ async function renderHome(
                       )}
                       writableProfileIds={writable ? [profile.id] : []}
                       selectionSubjectId={profile.id}
-                      doseItems={doseItems}
+                      doseItems={doseLedgerItems(profile.id)}
                       maxDates={{ [profile.id]: on }}
                       defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
                       subjectNames={{}}
@@ -1140,6 +1161,7 @@ function HomeNowBand({
   formatPrefs,
   today,
   writable,
+  refillTargets,
   routineControl,
   cycleControl,
   fastFacts,
@@ -1152,6 +1174,7 @@ function HomeNowBand({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
+  refillTargets: ReadonlyMap<string, RefillCueTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
@@ -1178,6 +1201,7 @@ function HomeNowBand({
               formatPrefs={formatPrefs}
               today={today}
               writable={writable}
+              refillTargets={refillTargets}
               routineControl={routineControl}
               cycleControl={cycleControl}
               fastFacts={fastFacts}
@@ -1198,6 +1222,7 @@ function HomeNowRowView({
   formatPrefs,
   today,
   writable,
+  refillTargets,
   routineControl,
   cycleControl,
   fastFacts,
@@ -1210,6 +1235,7 @@ function HomeNowRowView({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
+  refillTargets: ReadonlyMap<string, RefillCueTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
@@ -1284,6 +1310,18 @@ function HomeNowRowView({
 
   if (content.kind === "item") {
     const item = content.item;
+    // THE CUE'S OWN CONTROL (#5121, §9): the shared one-tap Refilled, the SAME
+    // component the medication row, the medication card and Manage mount, so a refill
+    // taken from Home goes through the compare-and-set write core and the re-log
+    // question exactly as one taken anywhere else. The composer only seats a cue whose
+    // key is in this map, so a lookup here cannot miss for a seated row.
+    //
+    // `supplyCycleDays` is left unstated rather than guessed: sizing the re-log
+    // question needs `getRefillRates`, a reader Home does not take, and §2.5 admits no
+    // new one. Unstated means the affordance's own shared default cycle, which is what
+    // every surface without a rate to hand already uses.
+    const refillTarget =
+      item.domain === "refill" ? (refillTargets.get(item.key) ?? null) : null;
     return (
       <HomeRow
         id={row.id}
@@ -1293,6 +1331,14 @@ function HomeNowRowView({
         control={
           writable ? (
             <>
+              {refillTarget != null && (
+                <RefillButton
+                  itemId={refillTarget.itemId}
+                  supplyId={refillTarget.supplyId}
+                  hasLastFill={refillTarget.lastFillSize != null}
+                  lastFillSize={refillTarget.lastFillSize}
+                />
+              )}
               {item.doseId != null && (
                 <DoseConfirmButton
                   action={markAttentionDose}

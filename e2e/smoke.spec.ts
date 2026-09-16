@@ -1,6 +1,14 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
+import { appContent } from "./helpers";
 import { followLink, loginAs, openCommandPalette } from "./nav";
-import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_CHILD,
+  E2E_LOGIN_HOME_POOL,
+  E2E_MEMBER_PASSWORD,
+  HOME_POOL_BOTTLE,
+} from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
@@ -178,6 +186,136 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   const badge = refillBadge(page).first(); // eslint-disable-line no-restricted-properties -- first-ok: shared list — asserts the days-left FORMAT on whichever refill badge leads (see comment above), not a specific supplement
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
+});
+
+// #5121 / #5435 §9: "An eligible Home low-supply cue opens the shared refill action;
+// no inventory strip." The composer's seat and the control's arguments are pinned in
+// the DB tier (lib/__db_tests__/dashboard-placement-manifest.test.ts), but that harness
+// cannot RUN a client component — it reads the element's props and records that the
+// component threw. So a refill control that mounted with the wrong boundary, or not at
+// all, would leave every one of those assertions green and red only here. This is that
+// one browser reading: the seeded run-out medication is a row on Home, it says what is
+// wrong, and the tap that fixes it is on the row.
+test("a run-out medication is a Home row carrying the shared Refilled tap (#5121)", async ({
+  page,
+}) => {
+  // PIN THE PRECONDITION, because this fixture is SHARED AND MUTATED. The seeded
+  // "Low Supply Med (e2e)" starts at 3 units against ~10 units/day, so it is out of
+  // supply and its cue is due today. But medications-ux-r2.spec.ts item 3 taps the
+  // very same item's one-tap Refilled, which adds the remembered fill of 30 — and
+  // that item's seed comment says so on purpose, since its own assertion needs the
+  // button to persist across repeated runs. Both files land in shard 5 and the seed
+  // is not reset between them, so whenever that spec runs first this item arrives
+  // here with ~3 days left.
+  //
+  // At which point Home is RIGHT to drop it: "eligible means today" (#5435 §2.1)
+  // keeps a cue that is still days out in the Later fold with no control, which is
+  // exactly what it did — the row rendered as `home-later-entry` reading
+  // "Low Supply Med (e2e) Sep 18". So the product needs no change and the assertion
+  // needs no weakening; what was missing is that the precondition was never pinned.
+  // Restoring the seeded quantity (not zero — the seed's own value) makes this test
+  // order-independent and leaves the item exactly as the seed built it.
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `UPDATE intake_items SET quantity_on_hand = 3
+        WHERE profile_id = 1 AND name = ?`
+    ).run("Low Supply Med (e2e)");
+  } finally {
+    db.close();
+  }
+
+  await page.goto("/");
+  // Scoped to the NOW BAND, not to `main`: a cue that is merely present proves
+  // nothing, because the Later fold renders the same item under the same
+  // `attention.fact:refill:` id and carries no control. Asking the Now band for it is
+  // what separates "the cue is somewhere on Home" from "the cue is an action today",
+  // and it is the assertion that catches a regression in the seat rule itself.
+  //
+  // The named fixture's own row, not "whichever refill row leads": this profile is a
+  // shared seed and a neighbour's dose log can move another item's days-left, so the
+  // claim is about THIS item rather than about how many rows the band holds.
+  const row = appContent(page)
+    .getByTestId("home-now")
+    .locator('[data-candidate-id^="attention.fact:refill:"]')
+    .filter({ hasText: "Low Supply Med (e2e)" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Out of supply");
+  await expect(row.getByTestId("refill-button")).toBeVisible();
+});
+
+// #5435 §9 / PR 4: the same cue for a POOLED bottle, whose tap must ASK FOR A SIZE.
+// A pooled row is titled with the BOTTLE but its control is aimed at a member picked by
+// id order alone, so a one-tap would add that member's remembered fill — a number the
+// bottle never saw, with nothing on screen naming whose it was. The page now hands a
+// pooled cue no remembered fill at all, which the DB tier pins over every member shape.
+// What that tier cannot do is RUN the control: it reads the element's props and records
+// that the client component threw. So "the first tap reveals the size field instead of
+// writing" is a claim about the mounted affordance's own behaviour, and this is the one
+// browser reading of it.
+//
+// Signs in as the dedicated pooled-bottle member in an isolated context with its own
+// fresh session, the way the child-profile case above does: the fixture is a bottle at
+// ZERO, and a cue that exists only while a count is zero has no business living on a
+// seed profile other specs write to.
+test("a pooled Home cue's Refilled tap asks for a size instead of recording one (#5435)", async ({
+  browser,
+}) => {
+  // A fresh context pays for its own login render and then Home, the heaviest page in
+  // the app, both as first hits — past the default budget on a loaded runner.
+  test.slow();
+  // PIN THE PRECONDITION the way the case above does. Nothing else writes this bottle
+  // — it is spec-owned, and the tap asserted below deliberately records nothing — but
+  // the cue exists only while the bottle is empty, so the count is restored to the
+  // seed's own zero rather than trusted to survive a reused server.
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `UPDATE shared_supplies SET quantity_on_hand = 0 WHERE name = ?`
+    ).run(HOME_POOL_BOTTLE);
+  } finally {
+    db.close();
+  }
+
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_HOME_POOL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    // Scoped to the NOW BAND and to the pooled key: `pool-refill:` is minted from the
+    // BOTTLE, so a row under it is the household's one cue rather than one per member.
+    const row = appContent(page)
+      .getByTestId("home-now")
+      .locator('[data-candidate-id^="attention.fact:pool-refill:"]')
+      .filter({ hasText: HOME_POOL_BOTTLE });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("Shared bottle");
+    // Nothing is asked before the tap — the size field is what the tap REVEALS.
+    await expect(row.getByTestId("refill-size")).toHaveCount(0);
+    await row.getByTestId("refill-button").click();
+    await expect(row.getByTestId("refill-size")).toBeVisible();
+    // …and nothing was recorded: the affordance posts its own recency line after a
+    // successful write, and the household's count is still the zero pinned above.
+    await expect(row.getByTestId("refill-recency")).toHaveCount(0);
+    const after = new Database(workerDbPath());
+    try {
+      after.pragma("busy_timeout = 5000");
+      expect(
+        after
+          .prepare(
+            `SELECT quantity_on_hand FROM shared_supplies WHERE name = ?`
+          )
+          .get(HOME_POOL_BOTTLE)
+      ).toMatchObject({ quantity_on_hand: 0 });
+    } finally {
+      after.close();
+    }
+  } finally {
+    await page.context().close();
+  }
 });
 
 // #272: a medication whose name carries a PERCENT strength ("Hydrocortisone

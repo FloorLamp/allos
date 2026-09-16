@@ -164,6 +164,11 @@ export const OWNED_TABLES = [
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
   "protein_daily_totals",
+  // Declared food sensitivities (#5865): one row per "after <trigger>, <effect>"
+  // statement the person wrote themselves — the user-authored half of a paired
+  // observation, never proposed by the app. Directly owned; nothing FKs into it, so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id.
+  "food_sensitivities",
   // Non-food substance consumption ledger (#1078): one row per (date, substance)
   // with a per-use `units` count — nicotine/cannabis one-tap log/undo (alcohol
   // stays on food_daily_totals; the reconciliation is recorded in lib/substance-use.ts).
@@ -175,6 +180,9 @@ export const OWNED_TABLES = [
   // food_daily_totals / food_log_events pairing re-instantiated. Directly owned;
   // nothing FKs into it, so deleteProfile clears it by profile_id.
   "substance_log_events",
+  // The stool ledger (#5872): one row per movement, the Bristol type an optional
+  // fact about it. Born `profile_id INTEGER NOT NULL`, so it joins here.
+  "stool_events",
   // The fasting log (#2756): one row per claimed fast — an interval the user STARTS and
   // ENDS explicitly (never inferred), plus an optional note. Directly owned; nothing FKs
   // into it, so a delete is a plain row delete and deleteProfile clears it by profile_id.

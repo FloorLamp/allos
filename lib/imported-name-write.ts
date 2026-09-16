@@ -1,9 +1,25 @@
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { isCleanerName, isImportedDocumentName } from "./imported-name";
 import { serializeRxcuiIngredients } from "./rxnorm";
 
 // The WRITE half of the imported-name boundary (issue #3480) — the only path in the
 // tree that changes a stored medication name because of an import.
+//
+// THE WRITE CORE TAKES THE ID A WRITE GATE RETURNED: adoptImportedName's profileId is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated holds nothing it takes (#5348). The import is type-only — erased at build — so this
+// module still pulls in no lib/auth runtime, and the read below (importedMedicationName) is
+// unchanged: a branded number is still a number.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
 //
 // It lives in lib/ rather than inside the Server Action for the reason the medical
 // pipeline does (lib/medical-pipeline.ts): the action is auth, a network lookup and
@@ -101,7 +117,7 @@ export type AdoptResult =
 // later — must not overwrite the portal string with the first standardized name. The
 // document's own label is written once and then never again.
 export function adoptImportedName(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   documentId: number,
   itemId: number,
   chosen: string,

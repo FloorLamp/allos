@@ -82,13 +82,12 @@ export interface CurrentSession {
 
 // ── The write-authorized profile id (#5348) ───────────────────────────────────
 //
-// The profile id a write gate answers with, as a type only this module can produce.
-// It is `Tx`'s argument (lib/db.ts, #2133) applied to authorization: a write core that
-// takes `WriteAuthorizedProfileId` instead of `profileId: number` cannot be called
-// from an action that never gated, because nothing outside the three gates below can
-// make one — `tsc` refuses a plain number, and the brand symbol is not exported, so
-// no other file can even spell the type's shape. A branded number is still a number,
-// so it passes anywhere `number` is accepted and no read path changes.
+// The profile id a write gate answers with. It is `Tx`'s argument (lib/db.ts, #2133)
+// applied to authorization: a write core that takes `WriteAuthorizedProfileId` instead
+// of `profileId: number` refuses the ordinary ungated call — `tsc` refuses a plain
+// number at the call site, and the three gates below are the way to obtain one. A
+// branded number is still a number, so it passes anywhere `number` is accepted and no
+// read path changes.
 //
 // Minted by exactly three gates: `requireWriteAccess` (the acting profile),
 // `requireProfileWriteAccess` (the posted target) and `requireAdmin` (the acting

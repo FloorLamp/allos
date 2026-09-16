@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BusyMark } from "@/components/Button";
 
 // ── THE OFFER, AND ITS TWO TONES (issue #4548) ──────────────────────────────
 //
@@ -115,6 +116,7 @@ export function LabeledVerbChip({
   tone,
   clockDoor,
   disabled,
+  busy = false,
   ariaLabel,
   testId,
   data,
@@ -129,6 +131,19 @@ export function LabeledVerbChip({
   /** #4426's statement control, in its seat. Absent renders no seat at all. */
   clockDoor?: ReactNode;
   disabled?: boolean;
+  /**
+   * This tap's write is in flight (#5900). It delegates to `Button`'s treatment
+   * rather than inventing a second one: the same `aria-busy`, the same
+   * `BusyMark`, and a control that refuses a second tap. The chip cannot BE a
+   * `Button` — it is the compact offer's own two-part pill — so it renders the
+   * primitive's mark instead of importing its box.
+   *
+   * THE VERB DOES NOT CHANGE. The mark precedes it inside the nub, so the
+   * payload label and the one-word verb both stay exactly where the finger left
+   * them; a chip that swapped its verb to "Logging…" is the width shift #5900
+   * removes. Callers pass `pipeline.pending(key)` / `ledger.pending(key)`.
+   */
+  busy?: boolean;
   /**
    * The whole sentence for a reader (#2615 item 2), where the visible label
    * abbreviates it. Omitted, the pill's own text — label then verb — is the name.
@@ -151,7 +166,7 @@ export function LabeledVerbChip({
     >
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || busy}
         onClick={labelAction.onAct}
         aria-label={labelAction.ariaLabel}
         aria-expanded={labelAction.expanded}
@@ -164,24 +179,27 @@ export function LabeledVerbChip({
       </button>
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || busy}
         onClick={onAct}
         aria-label={ariaLabel}
+        aria-busy={busy || undefined}
         data-testid={testId}
         data-chip-verb={verb}
         data-fact-chip="tiled"
-        className={`min-h-(--control-box) shrink-0 rounded-e-full px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE[tone]}`}
+        className={`inline-flex min-h-(--control-box) shrink-0 items-center gap-1 rounded-e-full px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE[tone]}`}
         {...data}
       >
+        {busy && <BusyMark />}
         {verb}
       </button>
     </span>
   ) : (
     <button
       type="button"
-      disabled={disabled}
+      disabled={disabled || busy}
       onClick={onAct}
       aria-label={ariaLabel}
+      aria-busy={busy || undefined}
       data-testid={testId}
       data-chip-verb={verb}
       className="chip-base chip-offer"
@@ -189,8 +207,9 @@ export function LabeledVerbChip({
     >
       <span className="min-w-0 truncate">{label}</span>
       <span
-        className={`-mr-1.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${OFFER_VERB_TONE[tone]}`}
+        className={`-mr-1.5 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${OFFER_VERB_TONE[tone]}`}
       >
+        {busy && <BusyMark />}
         {verb}
       </span>
     </button>

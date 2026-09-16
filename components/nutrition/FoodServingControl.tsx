@@ -34,6 +34,18 @@ import RollingNumber from "@/components/RollingNumber";
 // it would need a variant or mode prop, which is the outcome #4542 rules out by name.
 // `ProteinQuickAdd` is the same shape with a per-tap magnitude field in place of the
 // reading; `RpeStepper` is a real stepper still waiting on #4505.
+//
+// AND IT TAKES NO `busy` (#5900, argued here rather than left as an omission). Every
+// other quick-log tap control now reaches `Button`'s one in-flight treatment —
+// `aria-busy`, the shared mark, and a control that refuses a second tap — through the
+// pending key its write already has. This pair cannot take the third half, and the
+// treatment is one thing or it is the five spellings again: a serving tap is ADDITIVE
+// and keyed per tap (#3611), so three quick taps are three servings, and a control
+// that went disabled between the tap and the landing would drop the second and third.
+// What answers "did that register?" here is the `RollingNumber` beside it, which moves
+// on the tap itself rather than on the response — the optimistic paint #3728 owns and
+// the one #5900 explicitly leaves standing. A future ruling that wants a mark here has
+// to say what happens to the burst first.
 
 export default function FoodServingControl({
   slug,

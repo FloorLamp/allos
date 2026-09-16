@@ -8,5 +8,6 @@
 // dynamic no-bleed guard in lib/__db_tests__/upcoming.scoping.test.ts).
 
 export * from "./upcoming/generators";
+export * from "./upcoming/refill-targets";
 export * from "./upcoming/preventive";
 export * from "./upcoming/suppressions";
