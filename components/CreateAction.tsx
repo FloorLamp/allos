@@ -47,6 +47,10 @@ export const CREATE_ACTIONS = {
     label: "Add supplement",
     housing: ["section"],
   },
+  sensitivity: {
+    label: "Add sensitivity",
+    housing: ["section"],
+  },
 } as const satisfies Record<
   string,
   {

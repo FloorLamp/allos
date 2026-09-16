@@ -75,6 +75,7 @@ import {
   getProfileAge,
 } from "@/lib/settings";
 import { isFoodLoggingRelevant, isTrainingRelevant } from "@/lib/life-stage";
+import { getFoodSensitivities } from "@/lib/food-sensitivity-store";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
@@ -111,6 +112,7 @@ import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
+import SensitivitiesSection from "./SensitivitiesSection";
 import {
   indexTakenByDose,
   doseWindowSince,
@@ -227,6 +229,8 @@ export default async function ManageTab({
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
+  // The declared sensitivities (#5865), stopped ones included — the catalog lists both.
+  const foodSensitivities = getFoodSensitivities(profile.id);
   const intakeItems = intakeContext.allIntakeItems;
   const historyDosesBySupp = new Map<number, IntakeDose[]>();
   const dosesBySupp = new Map<number, IntakeDose[]>();
@@ -1039,6 +1043,14 @@ export default async function ManageTab({
                     embedded
                   />
                 </section>
+              )}
+              {/* DECLARED SENSITIVITIES (#5865), beside the preferences they are a
+                neighbour to and a sibling of: both are standing statements about
+                eating, and neither gates a single log. Under the same life-stage gate
+                as the preferences card — the food-group catalog the trigger list is
+                drawn from is meaningless for an infant (#975/#1462). */}
+              {foodPreferencesRelevant && (
+                <SensitivitiesSection sensitivities={foodSensitivities} />
               )}
             </div>
             <aside
