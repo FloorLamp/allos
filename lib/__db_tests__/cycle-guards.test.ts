@@ -29,14 +29,13 @@ import {
 } from "@/lib/rule-finding-prefixes";
 import { CYCLE_BLEEDING_PREFIX } from "@/lib/cycle-observation";
 
-// The cores take the id a write gate minted (#5348), and this tier has no gate to call, so
-// the fixture casts — once, and named here rather than repeated at fourteen call sites.
-// Nothing refuses that cast in production either: the WRITE_BRAND_CAST rule that would
-// (shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is
-// outside this lane's fence. What the brand buys today is that an action which never gated
-// cannot reach these cores by ACCIDENT — `tsc` refuses a plain number, and #5348's
-// perturbation is exactly that. A branded number is still a number, so the reads below
-// take it unchanged.
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at every call site
+// below. A TEST TIER IS ALLOWED THAT CAST: eslint.config.mjs's WRITE_BRAND_CAST bans the
+// `as WriteAuthorizedProfileId` forge in PRODUCTION only (#5852, #5864), the same allowance
+// RPE_BRAND_CAST makes, because a fixture has no request to gate and exporting a minter for
+// it would put the mint in two places. A branded number is still a number, so the reads
+// below take it unchanged.
 function newProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
