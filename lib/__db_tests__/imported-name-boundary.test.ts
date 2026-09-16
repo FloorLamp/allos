@@ -36,6 +36,7 @@
 // is a product label, not anybody's data.
 
 import { describe, it, expect } from "vitest";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
@@ -82,11 +83,18 @@ function medsCcd(name: string): string {
 </ClinicalDocument>`;
 }
 
-function newProfile(name: string): number {
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at every call site
+// below. A TEST TIER IS ALLOWED THAT CAST: eslint.config.mjs's WRITE_BRAND_CAST bans the
+// `as WriteAuthorizedProfileId` forge in PRODUCTION only (#5852, #5864), the same allowance
+// RPE_BRAND_CAST makes, because a fixture has no request to gate and exporting a minter for
+// it would put the mint in two places. A branded number is still a number, so the import
+// pipeline and the offer reads below take it unchanged.
+function newProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
 }
 
 function newDocument(profileId: number): number {
@@ -510,7 +518,11 @@ function importedDosedMedication(
   label: string,
   documentName: string,
   amount: string
-): { profileId: number; documentId: number; itemId: number } {
+): {
+  profileId: WriteAuthorizedProfileId;
+  documentId: number;
+  itemId: number;
+} {
   const profileId = newProfile(label);
   db.prepare(
     `INSERT INTO profile_settings (profile_id, key, value)
