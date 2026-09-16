@@ -36,26 +36,37 @@ import { fileURLToPath } from "node:url";
 // The numbering above keeps its holes on purpose. Rule (ii) banned pref-LESS calls
 // of the pref-taking formatters by counting call arguments in source text against a
 // per-formatter table, with a per-file allowlist for the login-less channels. That
-// invariant is now the compiler's: `prefs` is a REQUIRED parameter on all NINE
+// invariant is now the compiler's: `prefs` is a REQUIRED parameter on all TEN
 // `DisplayFormatPrefs`-taking formatters — `formatLongDate`, `formatMonthDay`,
-// `formatDateWithYear`, `formatWeekdayDate`, `formatTimestampDisplay` and
-// `formatTimestamp` in lib/format-date.ts, `formatRecordDate`,
-// `formatRecordDateTime` and `formatVisitLabel` in lib/record-format.ts — so
-// omitting it is TS2554 at the call site rather than a text match here. The
-// login-less channels (Telegram/push/HA sends, the .ics feed — a profile but no
-// login in context) now pass `DEFAULT_FORMAT_PREFS` by name at the three files
-// entitled to it, which is the point of the conversion: the fixed shape is a stated
-// choice where it is exercised instead of an invisible fallback on the formatter.
+// `formatDateWithYear`, `formatWeekdayDate`, `formatTimestampDisplay`,
+// `formatTimestamp` and `daySwitcherLabel` in lib/format-date.ts,
+// `formatRecordDate`, `formatRecordDateTime` and `formatVisitLabel` in
+// lib/record-format.ts — so omitting it is TS2554 at the call site rather than a
+// text match here. The login-less channels (Telegram/push/HA sends, the .ics feed
+// — a profile but no login in context) now pass `DEFAULT_FORMAT_PREFS` by name at
+// the three files entitled to it, which is the point of the conversion: the fixed
+// shape is a stated choice where it is exercised instead of an invisible fallback
+// on the formatter.
 //
 // The scan's own table is why converting beat trusting it. It named six formatters
-// when ten take a display pref — `formatWeekdayDate`, `formatTimestampDisplay`,
-// `formatVisitLabel` and `formatClockValue` were never in it — and it recorded
-// `formatRecordDateTime`'s prefs as the 3rd argument when the signature puts it
-// 4th, so a three-argument pref-less call passed. That is
+// when eleven take a display pref — `formatWeekdayDate`, `formatTimestampDisplay`,
+// `formatVisitLabel`, `formatClockValue` and `daySwitcherLabel` were never in it —
+// and it recorded `formatRecordDateTime`'s prefs as the 3rd argument when the
+// signature puts it 4th, so a three-argument pref-less call passed. That is
 // docs/internals/verification-failure-modes.md line 83 exactly: a guard that lists
 // a union's members does not track the union.
 //
-// TWO RESIDUES, named rather than claimed away. `formatClockValue` is the tenth,
+// `daySwitcherLabel` is that failure mode caught in the act rather than argued from
+// history: it landed in `a8276e66f` (#5663, 2026-09-15) taking `prefs` with a
+// `= DEFAULT_FORMAT_PREFS` default, THREE DAYS after this table was last read, and
+// the table did not grow. Nothing on main noticed; the merge that brought it here
+// did, because `tsc` counts the parameter rather than the name. Both of its
+// production call sites (`components/BoundedDaySwitcher.tsx`,
+// `components/stool/StoolTypeControl.tsx`) were already threading a real `prefs`,
+// so requiring it cost one signature and three test call sites and changed no
+// behaviour.
+//
+// TWO RESIDUES, named rather than claimed away. `formatClockValue` is the eleventh,
 // and it keeps its `timeFormat = DEFAULT_FORMAT_PREFS.timeFormat` default: no
 // production call omits the argument today, but five pass a `timeFormat?:` carrier
 // that may be `undefined` (four in lib/illness-episode-format.ts, one through

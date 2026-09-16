@@ -178,17 +178,20 @@ describe("daySwitcherLabel", () => {
     ["2026-07-21", "yesterday", "Yesterday"],
     ["2026-07-19", "date", "Sun, Jul 19"],
   ])("%s → %s / %s", (date, kind, label) => {
-    expect(daySwitcherLabel(date, TODAY_LABEL)).toEqual({ kind, label });
+    expect(daySwitcherLabel(date, TODAY_LABEL, DEFAULT_FORMAT_PREFS)).toEqual({
+      kind,
+      label,
+    });
   });
 
   it("keeps the calendar date where formatRelativeDate counts days and weeks", () => {
-    expect(daySwitcherLabel("2026-07-19", TODAY_LABEL).label).toBe(
-      "Sun, Jul 19"
-    );
+    expect(
+      daySwitcherLabel("2026-07-19", TODAY_LABEL, DEFAULT_FORMAT_PREFS).label
+    ).toBe("Sun, Jul 19");
     expect(formatRelativeDate("2026-07-19", TODAY_LABEL)).toBe("3 days ago");
-    expect(daySwitcherLabel("2026-07-12", TODAY_LABEL).label).toBe(
-      "Sun, Jul 12"
-    );
+    expect(
+      daySwitcherLabel("2026-07-12", TODAY_LABEL, DEFAULT_FORMAT_PREFS).label
+    ).toBe("Sun, Jul 12");
     expect(formatRelativeDate("2026-07-12", TODAY_LABEL)).toBe("1 week ago");
   });
 

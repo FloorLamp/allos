@@ -365,7 +365,7 @@ export function formatWeekdayDate(
 export function daySwitcherLabel(
   date: string,
   today: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): { readonly kind: "today" | "yesterday" | "date"; readonly label: string } {
   const back = daysBetweenDateStr(date, today); // today − date
   if (back === 0) return { kind: "today", label: "Today" };
