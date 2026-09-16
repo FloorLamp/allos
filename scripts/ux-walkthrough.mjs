@@ -238,25 +238,54 @@ function pageProbe() {
 const tapCosts = {};
 let tapSpan = null;
 function beginTaps(name) {
-  tapSpan = { name, taps: 0, inputs: 0 };
+  tapSpan = { name, taps: 0, inputs: 0, unreached: [] };
 }
 function endTaps(note) {
   if (!tapSpan) return;
+  // A span that lost a control says so in its own row (#5924): a tap count
+  // measured through a step that never happened is not the cost of doing the
+  // thing, and a reader of taps.json has to be told which one it is.
+  const gap = tapSpan.unreached.length
+    ? `unreached: ${tapSpan.unreached.join("; ")}`
+    : null;
+  const full = [note, gap].filter(Boolean).join(" — ");
   tapCosts[tapSpan.name] = {
     taps: tapSpan.taps,
     inputs: tapSpan.inputs,
-    ...(note ? { note } : {}),
+    ...(full ? { note: full } : {}),
   };
   log(`taps: ${tapSpan.name} = ${tapSpan.taps} taps, ${tapSpan.inputs} inputs`);
   tapSpan = null;
 }
+// A control the counting helpers cannot drive is a GAP, not a crash (#5924).
+// One stale accessible name used to throw out of the FIRST step of the workflows
+// journey and take every later measurement with it, so the census produced no
+// taps.json at all rather than saying what it could not reach. The gesture keeps
+// its own wait budget (the locator's default timeout, the one `click` already
+// spent); only the outcome differs, and it covers a control that never appeared
+// and one that appeared under an overlay alike. The caller gets false and every
+// step already has a completion check, so the step reports itself and the
+// journey carries on. Still measuring, never asserting.
+async function driveControl(target, gesture) {
+  try {
+    await gesture();
+    return true;
+  } catch (err) {
+    const why = `${target} (${err.message.split("\n")[0]})`;
+    log(`UNREACHED CONTROL: ${why} — step not measured`);
+    if (tapSpan) tapSpan.unreached.push(why);
+    return false;
+  }
+}
 async function tapClick(target) {
+  if (!(await driveControl(target, () => target.click()))) return false;
   if (tapSpan) tapSpan.taps++;
-  await target.click();
+  return true;
 }
 async function tapFill(target, value) {
+  if (!(await driveControl(target, () => target.fill(value)))) return false;
   if (tapSpan) tapSpan.inputs++;
-  await target.fill(value);
+  return true;
 }
 // A keyboard gesture used as a commit (Enter on a combobox) counts as a tap.
 function tapGesture() {
@@ -1210,9 +1239,21 @@ async function measureReachCosts(browser) {
     await page.goto(`${BASE}/`);
     await page.waitForTimeout(800);
     beginTaps(`reach: ${name}`);
-    await tapClick(page.getByRole("button", { name: "Open menu" }).first());
+    // The drawer's opener is the dock's More slot — the same locator the e2e
+    // suite drives (#5924). It asked for a button named "Open menu", which this
+    // app has never rendered: the phone's nav trigger left the top bar for the
+    // dock, and "Menu" is the drawer dialog's own label, not a control's.
+    await tapClick(page.getByTestId("dock-slot-more"));
     await page.waitForTimeout(500);
-    const link = page.getByRole("link", { name, exact: true }).first();
+    // SCOPED TO THE DRAWER, and this is why (#5924): unscoped, `.first()` takes
+    // the DOCK's own link to the same hub, which sits under the drawer's
+    // full-screen scrim. It is visible to a geometry check and permanently
+    // unclickable, so the reach measurement waited out its whole timeout on an
+    // element no drawer user is tapping. The drawer is the surface this measures.
+    const link = page
+      .getByTestId("mobile-drawer")
+      .getByRole("link", { name, exact: true })
+      .first();
     if (await link.isVisible().catch(() => false)) {
       await tapClick(link);
       await page.waitForTimeout(800);
@@ -1277,12 +1318,13 @@ async function workflowsJourney(browser) {
     .or(page.getByRole("dialog").getByRole("option"))
     .first();
   if (await paletteResult.isVisible().catch(() => false)) {
-    try {
-      await tapClick(paletteResult);
+    // `tapClick` reports an unclickable control rather than throwing (#5924), so
+    // the "visible but not clickable" case is its return value now, not a catch.
+    if (await tapClick(paletteResult)) {
       await page.waitForTimeout(1200);
       endTaps();
       await shot(page, "workflow-search-opened");
-    } catch {
+    } else {
       endTaps("result visible but not clickable — open-result tap unmeasured");
       await page.keyboard.press("Escape");
     }
