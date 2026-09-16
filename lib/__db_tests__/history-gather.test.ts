@@ -1125,9 +1125,10 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
 //
 // The kind's whole absence was one shape: a movement was visible on the Trends dot
 // strip and correctable nowhere. What only the real schema can prove here is the GRAIN
-// — `metric_samples` files a Bristol reading at instant grain, so a day's three
-// movements are three record rows carrying three clocks, not one collapsed line — and
-// that the row hands the ⋯ an address the correction and the delete can actually use.
+// — `stool_events` files ONE ROW PER MOVEMENT (#5872), so a day's three movements are
+// three record rows carrying three clocks, not one collapsed line, and two stated at the
+// same minute are two of them rather than the merge the old store performed — and that
+// the row hands the ⋯ an address the correction and the delete can actually use.
 describe("stool rows on the record", () => {
   it("lists each movement with its own clock, and earns its chip", () => {
     const p = profile("history stool");
