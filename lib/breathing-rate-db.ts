@@ -533,17 +533,6 @@ export function adoptWearableBreathingRates(
     // record editor takes a hand-typed value verbatim and stamps `edited = 1` - and a
     // locked row is elected AHEAD of the vendor's own stamp, so a mistyped "0" on a
     // wearable reading is precisely the value that arrives here. `metric_samples` IS a
-    // bounded store, the hero and the chart state what they find, and
-    // `formatBreathingRate(0)` renders a truthy "0 br/min". So the move applies the
-    // same 3-80 envelope the ingest applies (`respiratory_rate_bpm`, ingest-bounds),
-    // and a night whose elected reading falls outside it DECLINES rather than
-    // publishing an impossible one. The row keeps its number where it is; nothing is
-    // corrected on the person's behalf.
-    // THE NUMBER THE NIGHT WOULD STATE, BOUNDED. `medical_records` is not a bounded
-    // store on every path into it: the parsers write through `boundedOrNull`, but the
-    // record editor takes a hand-typed value verbatim and stamps `edited = 1` - and a
-    // locked row is elected AHEAD of the vendor's own stamp, so a mistyped "0" on a
-    // wearable reading is precisely the value that arrives here. `metric_samples` IS a
     // bounded store, the hero and the chart state whatever they find, and
     // `formatBreathingRate(0)` renders a truthy "0 br/min". So the move applies the
     // same 3-80 envelope the ingest applies (`respiratory_rate_bpm`, ingest-bounds) and
