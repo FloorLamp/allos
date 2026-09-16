@@ -148,10 +148,10 @@ export async function reprocessAllDocuments(): Promise<ReprocessResult> {
 export async function reprocessDocumentFromRaw(
   formData: FormData
 ): Promise<ReprocessFromRawResult> {
-  const { login, profile } = await requireWriteAccess();
+  const { login, writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { status: "skipped", message: "Unknown document." };
-  return reprocessFromRawById(login.id, profile.id, id);
+  return reprocessFromRawById(login.id, writeProfileId, id);
 }
 
 // Preview what a reprocess would change: re-extract to an in-memory shape, diff it
@@ -172,15 +172,15 @@ export async function previewReprocess(
 export async function applyReprocessPreview(
   formData: FormData
 ): Promise<ReprocessApplyOutcome> {
-  const { login, profile } = await requireWriteAccess();
+  const { login, writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!Number.isSafeInteger(id) || id <= 0)
     return { mode: "refused", error: "Couldn't find this document." };
   const token = formData.get("previewToken");
   if (typeof token === "string" && token)
-    return reprocessDocumentById(login.id, profile.id, id, token);
+    return reprocessDocumentById(login.id, writeProfileId, id, token);
   if (formData.get("force") === "true")
-    return reprocessDocumentById(login.id, profile.id, id);
+    return reprocessDocumentById(login.id, writeProfileId, id);
   return {
     mode: "refused",
     error: "Preview changes again before saving.",
@@ -402,7 +402,7 @@ export async function reassignDocument(
 // registry.
 
 export async function deleteMedicalDocument(formData: FormData) {
-  const { login, profile } = await requireWriteAccess();
+  const { login, profile, writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   // content_hash + filename come back too: they are the TOMBSTONE (#1777), and this read
@@ -464,7 +464,7 @@ export async function deleteMedicalDocument(formData: FormData) {
     // got bytes; there is nothing for an acquirer to match, so there is nothing to
     // block.
     if (doc?.content_hash) {
-      writeDocumentTombstone(profile.id, doc.content_hash, doc.filename);
+      writeDocumentTombstone(writeProfileId, doc.content_hash, doc.filename);
     }
     // Drop stars AND retest/flag dismissals whose biomarker no longer has any
     // remaining records, so a later document reintroducing that name re-pins/

@@ -51,6 +51,15 @@ import {
 } from "@/lib/integrations/connections";
 import { seedActor } from "@/lib/__action_tests__/harness";
 import { testAuthorizedIds } from "../__tests__/authorized-ids";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // zone, an instant, and the calendar day that instant falls on THERE. 22:30Z has
 // already tipped into the next day in Auckland; 02:30Z has not yet reached the stated
@@ -80,7 +89,7 @@ describe("a blocked document's 'Deleted' day is the profile's (#3573)", () => {
     const { profile } = seedActor();
     setTimezone(profile.id, tz);
     const hash = `doc hash sweep ${day}`;
-    writeDocumentTombstone(profile.id, hash, "labs.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "labs.pdf");
     // The store writes through a column DEFAULT, so the instant is set here — this is
     // about which calendar reads it, not about which clock wrote it.
     db.prepare(

@@ -10,6 +10,28 @@ import { invalidatePoolRefillOffers } from "./queries/intake/supply-pool";
 // but it never leaves this same SQLite file — the same trust boundary as the row it
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
+// THE TRASH PURGE CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on purgeDeletedRow
+// and emptyTrash is lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an
+// action that never gated holds nothing they take (#5348). The import is type-only — erased
+// at build — so this module still runs auth-blind and app/(app)/data/trash-actions.ts still
+// owns the gate. A branded number is still a number, so the reads take one unchanged, and so
+// do two writes this conversion deliberately leaves alone: captureDelete, the shared
+// kind-keyed capture every domain's delete routes through (branding it is a repo-wide change,
+// recorded on #5348 rather than taken here), and restoreDeletedRow, whose action is
+// app/(app)/undo-actions.ts — a different domain, and one whose batch path gates a SET of
+// distinct owners before restoring any of them (#2104), so threading the minted ids through
+// it is that lane's change to make.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { OwnedTable } from "./owned-tables";
 import { DEFAULT_TRASH_RETENTION_DAYS, daysAgoModifier } from "./retention";
@@ -771,7 +793,7 @@ export function sweepDeletedRows(
 export type PurgeOutcome = { kind: "purged" } | { kind: "gone" };
 
 export function purgeDeletedRow(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   undoId: number
 ): PurgeOutcome {
   const files = writeTx((): CapturedFiles | null => {
@@ -801,7 +823,7 @@ export function purgeDeletedRow(
 // this is one person saying "clear mine" — emptying a household member's captures
 // from your own Trash button would be someone else's data disappearing on your tap.
 // Same file-unlinking path again. Returns how many captures were purged.
-export function emptyTrash(profileId: number): number {
+export function emptyTrash(profileId: WriteAuthorizedProfileId): number {
   const { purged, files } = writeTx(() => {
     const captured = capturedFilesOf(
       db

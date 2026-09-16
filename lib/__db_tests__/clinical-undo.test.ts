@@ -26,6 +26,15 @@ import {
 import { storeProcessedPhoto, thumbSiblingPath } from "@/lib/photo/store";
 import type { ProcessedPhoto } from "@/lib/photo/ingest";
 import { seedProfile, type SeededProfile } from "./fixtures";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 let p: SeededProfile;
 
@@ -573,7 +582,9 @@ describe("purge reclaims captured lesion photo files (#1847)", () => {
     const lesionId = newLesion("Hand purge");
     const stored = attachPhoto(lesionId, "ffff6666ffff6666", "by hand");
     const undoId = captureDelete("skin-lesion", p.profileId, lesionId)!;
-    expect(purgeDeletedRow(p.profileId, undoId)).toEqual({ kind: "purged" });
+    expect(purgeDeletedRow(gated(p.profileId), undoId)).toEqual({
+      kind: "purged",
+    });
     expect(fs.existsSync(abs(stored))).toBe(false);
     expect(fs.existsSync(abs(thumbSiblingPath(stored)))).toBe(false);
   });
@@ -582,7 +593,7 @@ describe("purge reclaims captured lesion photo files (#1847)", () => {
     const lesionId = newLesion("Empty trash");
     const stored = attachPhoto(lesionId, "9999777799997777", "emptied");
     captureDelete("skin-lesion", p.profileId, lesionId);
-    expect(emptyTrash(p.profileId)).toBeGreaterThanOrEqual(1);
+    expect(emptyTrash(gated(p.profileId))).toBeGreaterThanOrEqual(1);
     expect(fs.existsSync(abs(stored))).toBe(false);
     expect(fs.existsSync(abs(thumbSiblingPath(stored)))).toBe(false);
   });

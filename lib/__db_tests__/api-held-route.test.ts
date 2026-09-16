@@ -35,6 +35,15 @@ import {
 } from "@/lib/portals";
 import { writeDocumentTombstone } from "@/lib/document-tombstones";
 import { recordCoverageMarker } from "@/lib/document-coverage";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 let writerToken: string;
 let otherToken: string;
@@ -171,7 +180,7 @@ beforeAll(() => {
   insertDoc(heldProfile, "inflight.pdf", PROCESSING_HASH, "processing", "");
 
   // A document this profile DELETED.
-  writeDocumentTombstone(heldProfile, DELETED_HASH, "deleted-labs.pdf");
+  writeDocumentTombstone(gated(heldProfile), DELETED_HASH, "deleted-labs.pdf");
 
   // Another profile's stored document, to prove the answer never leaks across.
   insertDoc(

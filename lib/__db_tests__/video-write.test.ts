@@ -38,6 +38,15 @@ import {
   purgeDeletedRow,
   sweepDeletedRows,
 } from "@/lib/undo-delete-db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 let profileId: number;
 let activityId: number;
@@ -416,7 +425,9 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       expect(fs.existsSync(abs(row.stored_path))).toBe(true);
 
       // No backdating, no tick — the user said "permanently" and meant now.
-      expect(purgeDeletedRow(profileId, undoId)).toEqual({ kind: "purged" });
+      expect(purgeDeletedRow(gated(profileId), undoId)).toEqual({
+        kind: "purged",
+      });
       expect(fs.existsSync(abs(row.stored_path))).toBe(false);
       expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });
@@ -441,7 +452,7 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       captureDelete("activity", profileId, act);
       expect(fs.existsSync(abs(row.stored_path))).toBe(true);
 
-      expect(emptyTrash(profileId)).toBeGreaterThanOrEqual(1);
+      expect(emptyTrash(gated(profileId))).toBeGreaterThanOrEqual(1);
       expect(fs.existsSync(abs(row.stored_path))).toBe(false);
       expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });
