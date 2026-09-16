@@ -289,7 +289,11 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
             WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
         )
         .get(p)
-    ).toEqual({ date, occurred_at: `${date}T08:10:00Z`, time_source: "stated" });
+    ).toEqual({
+      date,
+      occurred_at: `${date}T08:10:00Z`,
+      time_source: "stated",
+    });
   });
 
   it("keeps a statement-less Food capture on its T1 day and meal slot", () => {

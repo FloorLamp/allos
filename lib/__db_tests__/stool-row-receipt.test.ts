@@ -60,7 +60,10 @@ function rows(): {
 }
 
 /** The profile-local "HH:MM" the receipt prints for a row — its best-known instant. */
-function shownAt(row: { occurred_at: string | null; recorded_at: string }): string {
+function shownAt(row: {
+  occurred_at: string | null;
+  recorded_at: string;
+}): string {
   return zonedDateParts(
     getTimezone(profileId),
     new Date(row.occurred_at ?? row.recorded_at)

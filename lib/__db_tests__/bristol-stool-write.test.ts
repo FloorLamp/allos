@@ -65,7 +65,9 @@ function rows(): Row[] {
 
 /** The profile-local "HH:MM" a stored canonical instant renders at. */
 function hhmm(at: string | null): string | null {
-  return at === null ? null : zonedDateParts(getTimezone(profileId), new Date(at)).hhmm;
+  return at === null
+    ? null
+    : zonedDateParts(getTimezone(profileId), new Date(at)).hhmm;
 }
 
 beforeEach(() => {
@@ -301,7 +303,9 @@ describe("logBristolStool — any real past day, never the future", () => {
 describe("a logged movement is correctable and deletable (#4433)", () => {
   const onlyRow = () =>
     db
-      .prepare("SELECT id, type FROM stool_events WHERE profile_id = ? ORDER BY id")
+      .prepare(
+        "SELECT id, type FROM stool_events WHERE profile_id = ? ORDER BY id"
+      )
       .all(profileId) as { id: number; type: number | null }[];
 
   // REGRESSION GUARD — this worked through `updateMetricRow` before and must go on
@@ -317,7 +321,12 @@ describe("a logged movement is correctable and deletable (#4433)", () => {
       date,
     });
     expect(rows()).toEqual([
-      { date, occurred_at: rows()[0].occurred_at, time_source: "stated", type: 4 },
+      {
+        date,
+        occurred_at: rows()[0].occurred_at,
+        time_source: "stated",
+        type: 4,
+      },
     ]);
     expect(hhmm(rows()[0].occurred_at)).toBe("08:12");
   });
@@ -330,12 +339,16 @@ describe("a logged movement is correctable and deletable (#4433)", () => {
     logStoolCore(profileId, date, null);
     const [untyped] = onlyRow();
 
-    expect(correctStoolEventCore(profileId, untyped.id, { type: 6 })).toMatchObject({
+    expect(
+      correctStoolEventCore(profileId, untyped.id, { type: 6 })
+    ).toMatchObject({
       kind: "updated",
     });
     expect(onlyRow().map((r) => r.type)).toEqual([6]);
 
-    expect(correctStoolEventCore(profileId, untyped.id, { type: null })).toMatchObject({
+    expect(
+      correctStoolEventCore(profileId, untyped.id, { type: null })
+    ).toMatchObject({
       kind: "updated",
     });
     expect(onlyRow().map((r) => r.type)).toEqual([null]);
@@ -388,11 +401,11 @@ describe("a logged movement is correctable and deletable (#4433)", () => {
     expect(correctStoolEventCore(profileId, theirs.id, { type: 1 })).toEqual({
       kind: "not-found",
     });
-    expect(deleteStoolEventCore(profileId, theirs.id)).toEqual({ undoId: null });
+    expect(deleteStoolEventCore(profileId, theirs.id)).toEqual({
+      undoId: null,
+    });
     expect(
-      db
-        .prepare("SELECT type FROM stool_events WHERE id = ?")
-        .get(theirs.id)
+      db.prepare("SELECT type FROM stool_events WHERE id = ?").get(theirs.id)
     ).toEqual({ type: 4 });
   });
 });
