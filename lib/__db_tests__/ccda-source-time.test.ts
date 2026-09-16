@@ -26,6 +26,15 @@ import { seedActor } from "@/lib/__action_tests__/harness";
 import { parseFhirBundle } from "@/lib/fhir";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // One Results section with three observations, differing ONLY in what their
 // effectiveTime states about when.
@@ -181,7 +190,7 @@ describe("repair is by reprocess, not by migration (#2243 decision 4)", () => {
     expect(doc.stored_path).toBeTruthy();
 
     // The ordinary affordance — no new repair path, no flag.
-    reprocessDocumentById(login.id, profile.id, doc.id);
+    reprocessDocumentById(login.id, gated(profile.id), doc.id);
 
     const after = readings(profile.id);
     expect(after["2093-3"].occurred_at).toBe("2026-08-07T19:30:00Z");

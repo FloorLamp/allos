@@ -199,7 +199,7 @@ export {
   handleSymptomCommand,
   handleSymptomTextIntake,
   handleTempCommand,
-  handleTempReply,
+  handleTypedReply,
 } from "./telegram-quick-log";
 import {
   handleMoodTap,

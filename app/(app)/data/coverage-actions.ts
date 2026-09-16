@@ -18,21 +18,21 @@ function parseKind(raw: unknown): CoverageGapKind | null {
 
 // Opt in to track a derivable gap so it can be filled + watched for coverage.
 export async function trackCoverageGap(formData: FormData) {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const kind = parseKind(formData.get("kind"));
   const itemKey = String(formData.get("item_key") ?? "").trim();
   const label = String(formData.get("label") ?? "").trim();
   if (!kind || !itemKey || !label) return;
-  addCoverageGap(profile.id, kind, itemKey, label);
+  addCoverageGap(writeProfileId, kind, itemKey, label);
   revalidateRoute("/data");
 }
 
 // Stop tracking a gap.
 export async function untrackCoverageGap(formData: FormData) {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return;
-  removeCoverageGap(profile.id, id);
+  removeCoverageGap(writeProfileId, id);
   revalidateRoute("/data");
 }
 

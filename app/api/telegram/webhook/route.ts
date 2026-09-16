@@ -93,8 +93,9 @@ export async function POST(req: Request) {
       await handleCallbackQuery(update.callback_query);
     } else if (update?.message) {
       // Inbound text — the /dose (#797), /symptom + /temp quick-log commands and the
-      // temp reply flow (#859 item 5). handleIncomingMessage routes; each handler
-      // ignores anything that isn't its command.
+      // typed-reply contract every prompt-and-answer flow shares (#5650).
+      // handleIncomingMessage routes; each handler ignores anything that isn't its
+      // command.
       await handleIncomingMessage(update.message);
     }
   } catch (e) {
