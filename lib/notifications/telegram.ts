@@ -282,6 +282,32 @@ function recordPointer(
   // prompt message afterwards. `/temp` and `/weight` carried neither a keyboard nor a
   // prose claim, so nothing could find or edit them once they were sent.
   if (keyboard.length === 0 && !prose && !awaitsTypedReply(msg.kind)) return;
+  // THE INVARIANT THE TYPED-REPLY REGISTRY RESTS ON (#5650): a pointer whose kind awaits
+  // a typed reply belongs to a PROMPT, addressed to one profile.
+  //
+  // `typedPromptAt` resolves an explicit Reply for `temp` and `weight` from the kind on
+  // this row, because those families hold no server-side operation state — there is no
+  // offer row to key on the way refill's receipt is keyed on its own `promptId`, and
+  // inventing one would be a design change rather than a guard. So the kind has to mean
+  // what the registry reads it to mean, and a chat-wide send is the one shape that can
+  // break that: `resolveSubject` gives a CHAT_WIDE message the chat's lowest profile, so
+  // a notice that merely INHERITED its command's kind — the ordinary convention, and two
+  // sibling commands do it — would record a `temp` pointer under a real profile and
+  // become answerable. A number replied to it would then log a reading against a message
+  // that never asked for one.
+  //
+  // Refusing here is what makes that unrepresentable rather than merely absent today.
+  // The prompts are per-profile sends by construction (one per profile, #1995), so this
+  // costs them nothing; the notice that used to contradict it is deleted. Held by
+  // `telegram-quicklog.test.ts`'s "a chat-wide send never becomes an answerable prompt".
+  if (chatWide && awaitsTypedReply(msg.kind)) {
+    log.info("pointer refused: chat-wide send carrying a typed-reply kind", {
+      profile: profileId,
+      chat: String(chatId),
+      kind: msg.kind,
+    });
+    return;
+  }
   recordMessagePointer({
     profileId,
     chatId,

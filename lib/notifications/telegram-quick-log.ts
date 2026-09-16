@@ -708,20 +708,13 @@ export async function handleTempCommand(
   const chatId = message.chat?.id;
   if (chatId == null) return;
 
+  // NO UNLINKED-CHAT NOTICE HERE. This function is unreachable for an unlinked chat:
+  // `temp` is not `worksUnlinked`, so `handleIncomingMessage`'s availability gate answers
+  // with `sendHelp` — the same `What I can do here` /help gives — and returns before the
+  // switch. The notice that used to sit here was a second, never-delivered answer to a
+  // question already answered two files away, and it was the ONE send in the tree that
+  // carried a typed-reply kind chat-wide (#5650). It is gone rather than argued about.
   const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (profileIds.length === 0) {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: "Log a temperature",
-        body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-        kind: "temp",
-      },
-      CHAT_WIDE
-    );
-    return;
-  }
-
   const multi = profileIds.length > 1;
   for (const pid of profileIds) {
     const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";

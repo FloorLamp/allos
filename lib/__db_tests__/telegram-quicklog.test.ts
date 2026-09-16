@@ -25,7 +25,7 @@ import {
   liveMessagePointers,
   liveMessagePointersForKind,
 } from "@/lib/notifications/message-pointers";
-import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -610,6 +610,76 @@ describe("temperature reply quick-log", () => {
     expect(tempCount(victim.profileId)).toBe(before);
     expect(tempCount(outsider.profileId)).toBe(0);
     expect(reactMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 — THE INVARIANT `pointerResolvedFamily` RESTS ON, held here rather than stated
+  // in a comment.
+  //
+  // `temp` and `weight` hold no operation state, so an explicit Reply to one is resolved
+  // from the KIND on its pointer row. That is only sound while a pointer of those kinds
+  // means "a prompt, addressed to one profile" — and the one shape that can break it is a
+  // CHAT-WIDE send, because `resolveSubject` hands a chat-wide message the chat's lowest
+  // profile rather than nobody. A notice that merely inherited its command's kind — the
+  // ordinary convention in `telegram-quick-log.ts`, which two sibling commands follow —
+  // would record a `temp` pointer under a real profile and become answerable, and a
+  // number replied to it would log a reading against a message that never asked for one.
+  //
+  // `recordPointer` refuses that outright. This drives the refusal in a LINKED chat,
+  // which is the case that would actually mint the row; it fails if the guard is removed.
+  it("a chat-wide send never becomes an answerable prompt", async () => {
+    const CHAT4 = "5550155";
+    const solo = seedProfile("TGchatwide");
+    seedLoginTelegram(solo.profileId, CHAT4);
+
+    sendMock.mockClear();
+    const noticeId = await sendTelegramMessage(
+      CHAT4,
+      {
+        title: "Log a temperature",
+        body: "This chat isn't linked to a profile yet — enable Telegram in Settings.",
+        kind: "temp",
+      },
+      CHAT_WIDE
+    );
+    expect(noticeId).toBeTruthy();
+
+    // (a) No pointer at all — not merely one the registry declines to read.
+    expect(
+      liveMessagePointers(solo.profileId).some(
+        (ptr) => ptr.messageId === noticeId
+      )
+    ).toBe(false);
+
+    // (b) An explicit Reply to it writes nothing and is told the prompt is not open.
+    const before = tempCount(solo.profileId);
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 870,
+      chat: { id: CHAT4 },
+      from: { id: 71 },
+      text: "38.5",
+      reply_to_message: { message_id: noticeId },
+    });
+    expect(tempCount(solo.profileId)).toBe(before);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect((sendMock.mock.calls.at(-1)![1] as { title: string }).title).toMatch(
+      /isn't open/i
+    );
+
+    // (c) And it leaves no OPEN prompt behind either, so a bare number in the chat is
+    //     ordinary text rather than an answer to it.
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 871,
+      chat: { id: CHAT4 },
+      from: { id: 71 },
+      text: "38.5",
+    });
+    expect(tempCount(solo.profileId)).toBe(before);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
   });
 
   it("ignores a plain message with no open prompt and no marker", async () => {

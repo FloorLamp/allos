@@ -79,21 +79,30 @@ export function awaitsTypedReply(kind: string | null | undefined): boolean {
 
 // The families whose prompt IS its pointer, so the pointer's `kind` may name the family
 // for an explicit Reply. This is the ONE place a kind is read as a family, and it is a
-// strict subset of the list above rather than the same list, which is the whole point:
+// strict subset of the list above rather than the same list.
 //
-//   - `temp` and `weight` hold no server-side operation state at all. Exactly one message
-//     is ever sent with either kind and a recordable pointer — the prompt — so for them
-//     "this message has a live pointer of kind X" and "this message is an open X prompt"
-//     are the same statement. The settle drops the pointer, which is what closes the
-//     question.
-//   - `refill` is NOT here, and must not be added. Three different messages carry that
-//     kind and record a pointer — the low-supply reminder with its Received button, the
-//     receipt prompt that button opens, and the `Supply update` rebuild — and only the
-//     middle one is a question. A receipt is found through its OFFER ROW's `promptId`
-//     instead, so a number typed under a reminder settles nothing.
+// `temp` and `weight` hold no server-side operation state, so there is no operation row
+// to key admissibility on the way refill's receipt is keyed on its own `promptId`. What
+// carries the meaning instead is an ENFORCED INVARIANT, not a census of the send sites:
+// the send chokepoint REFUSES to record a pointer for a chat-wide message whose kind
+// awaits a typed reply (`recordPointer`, ./telegram). Held by `telegram-quicklog.test.ts`
+// — "a chat-wide send never becomes an answerable prompt".
 //
-// A fifth family (#5124) belongs here only if it can make the same claim temp and weight
-// make. If it cannot, it owes a lookup of its own, the way refill does.
+// That is the proportionate guard rather than the strongest one. Keying these two on
+// promptness the way refill is keyed would mean inventing a record for families that
+// deliberately have none, which is a design change; the invariant buys the same property
+// — a pointer of these kinds is a message addressed to one profile, which the prompts are
+// by construction (one per profile, #1995) — and buys it in a form the tree cannot break
+// silently. A prose comment here could not: a notice that simply inherits its command's
+// kind is the ordinary convention in this file, and two sibling commands do exactly that.
+//
+// `refill` is NOT here, and must not be added: several messages carry that kind — the
+// low-supply reminder with its Received button, the receipt prompt that button opens, the
+// `Supply update` rebuild — and only one is a question. A receipt is found through its
+// offer row's `promptId` instead, so a number typed under a reminder settles nothing.
+//
+// A fifth family (#5124) belongs here only if it can live under the same invariant. If it
+// cannot, it owes a lookup of its own, the way refill does.
 export const POINTER_RESOLVED_FAMILIES = ["temp", "weight"] as const;
 
 export function pointerResolvedFamily(
