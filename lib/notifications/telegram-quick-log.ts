@@ -1244,13 +1244,12 @@ function typedPromptAt(
     const receipt = refillPromptAt(profileId, chatId, messageId);
     if (receipt) return receipt;
     const pointer = messagePointerAt(profileId, chatId, messageId);
-    if (pointer && (pointer.kind === "temp" || pointer.kind === "weight"))
-      return {
-        family: pointer.kind,
-        profileId,
-        operationId: null,
-        promptId: messageId,
-      };
+    // The ONE place a pointer's `kind` names a family, and only for the families that
+    // may make that claim — `pointerResolvedFamily` says which, and why refill is not
+    // among them.
+    const family = pointerResolvedFamily(pointer?.kind);
+    if (family)
+      return { family, profileId, operationId: null, promptId: messageId };
   }
   return null;
 }
@@ -1680,6 +1679,7 @@ import { fmtTemp } from "../units";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
+  pointerResolvedFamily,
   resolveTypedReply,
   TYPED_REPLY_AMBIGUOUS,
   TYPED_REPLY_REACTION,

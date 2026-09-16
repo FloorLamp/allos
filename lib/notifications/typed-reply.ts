@@ -77,6 +77,31 @@ export function awaitsTypedReply(kind: string | null | undefined): boolean {
   return kind != null && TYPED_REPLY_PROMPT_KINDS.includes(kind);
 }
 
+// The families whose prompt IS its pointer, so the pointer's `kind` may name the family
+// for an explicit Reply. This is the ONE place a kind is read as a family, and it is a
+// strict subset of the list above rather than the same list, which is the whole point:
+//
+//   - `temp` and `weight` hold no server-side operation state at all. Exactly one message
+//     is ever sent with either kind and a recordable pointer — the prompt — so for them
+//     "this message has a live pointer of kind X" and "this message is an open X prompt"
+//     are the same statement. The settle drops the pointer, which is what closes the
+//     question.
+//   - `refill` is NOT here, and must not be added. Three different messages carry that
+//     kind and record a pointer — the low-supply reminder with its Received button, the
+//     receipt prompt that button opens, and the `Supply update` rebuild — and only the
+//     middle one is a question. A receipt is found through its OFFER ROW's `promptId`
+//     instead, so a number typed under a reminder settles nothing.
+//
+// A fifth family (#5124) belongs here only if it can make the same claim temp and weight
+// make. If it cannot, it owes a lookup of its own, the way refill does.
+export const POINTER_RESOLVED_FAMILIES = ["temp", "weight"] as const;
+
+export function pointerResolvedFamily(
+  kind: string | null | undefined
+): TypedReplyFamily | null {
+  return POINTER_RESOLVED_FAMILIES.find((family) => family === kind) ?? null;
+}
+
 // ---- The bare-number rule ---------------------------------------------------
 //
 // A POSITIVE, unit-less number and nothing else. This is the test for whether an
