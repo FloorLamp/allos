@@ -67,6 +67,28 @@ function renderRow(props: {
   );
 }
 
+// THE TWO KINDS OF MINUTE A ROW CAN CARRY (#5921), said by the fixture rather than
+// left to be inferred. The store has drawn this line since #5915 — a tap with no
+// stated time records `occurred_at NULL` — and the action hands it over as
+// `clockKind`, so a fixture that omitted it would be describing a row the store
+// cannot produce and the row's voice would be an accident.
+const stated = (id: number, type: number, hhmm: string) => ({
+  id,
+  type,
+  hhmm,
+  clockKind: "stated" as const,
+  filedDay: null,
+});
+// A one-tap row: nobody named the minute, so the only instant it has is the stamp it
+// was filed at. `filedDay` is the day that filing fell on, which is what decides
+// between "logged 8:31 AM" and "logged Jul 8" (#5618 ruling 6).
+const filed = (
+  id: number,
+  type: number,
+  hhmm: string,
+  filedDay = "2026-07-08"
+) => ({ id, type, hhmm, clockKind: "logged" as const, filedDay });
+
 const rows = () => screen.queryAllByTestId("quick-entry-stool-receipt");
 const lines = () =>
   rows().map((row) => [
@@ -90,7 +112,7 @@ beforeEach(() => {
 describe("the sheet lists the day", () => {
   it("states every entry newest first, in the ruled two lines, over the ruled count", async () => {
     loadStoolDay.mockResolvedValue({
-      readings: [{ id: 12, type: 3, hhmm: "06:02" }],
+      readings: [stated(12, 3, "06:02")],
       dayCount: 1,
     });
     logStoolForm.mockResolvedValue({
@@ -98,10 +120,7 @@ describe("the sheet lists the day", () => {
       type: 6,
       dayCount: 2,
       reading: { id: 31 },
-      readings: [
-        { id: 31, type: 6, hhmm: "08:31" },
-        { id: 12, type: 3, hhmm: "06:02" },
-      ],
+      readings: [filed(31, 6, "08:31"), stated(12, 3, "06:02")],
     });
     renderRow({ todayCount: 1, today: "2026-07-08" });
 
@@ -126,11 +145,17 @@ describe("the sheet lists the day", () => {
     // The ruling's worked example, newest first. The LABEL is on the heading line and
     // the scale's own sentence on the facts line — neither was printed anywhere on
     // this surface before.
+    //
+    // AND THE TWO ROWS ARE NOT IN THE SAME VOICE (#5921). The tap named no minute, so
+    // its clock is the stamp it was filed at and the row says so in #5618 ruling 6's
+    // word; the row above it carries a minute somebody stated and stays bare. Before
+    // this they were spelled identically, which is the store's own distinction being
+    // undone in presentation.
     await waitFor(() =>
       expect(lines()).toEqual([
         [
           "Type 6 · Mushy",
-          "Fluffy pieces with ragged edges, a mushy stool · 8:31 AM",
+          "Fluffy pieces with ragged edges, a mushy stool · logged 8:31 AM",
         ],
         [
           "Type 3 · Cracked",
@@ -140,10 +165,13 @@ describe("the sheet lists the day", () => {
     );
     // One count line beneath, in the ruled form.
     expect(count()).toBe("2 today");
-    // And the toast confirms the same landing, carrying the same Undo.
+    // And the toast confirms the same landing, carrying the same Undo. Its `· <time>`
+    // slot is a STATED minute and this tap stated none, so the slot drops rather than
+    // naming the filing minute as the movement's — the claim #5915 stopped the store
+    // making. The row beneath still states it, qualified.
     expect(announce).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "Type 6 logged · 8:31 AM",
+        message: "Type 6 logged",
         undo: expect.objectContaining({ undoneMessage: "Movement removed." }),
       })
     );
@@ -151,10 +179,7 @@ describe("the sheet lists the day", () => {
 
   it("offers Undo on the newest row only, and only for a reading this tap landed", async () => {
     loadStoolDay.mockResolvedValue({
-      readings: [
-        { id: 12, type: 3, hhmm: "06:02" },
-        { id: 9, type: 1, hhmm: "05:10" },
-      ],
+      readings: [stated(12, 3, "06:02"), stated(9, 1, "05:10")],
       dayCount: 2,
     });
     renderRow({ todayCount: 2, today: "2026-07-08" });
@@ -173,9 +198,9 @@ describe("the sheet lists the day", () => {
       dayCount: 3,
       reading: { id: 44 },
       readings: [
-        { id: 44, type: 5, hhmm: "09:40" },
-        { id: 12, type: 3, hhmm: "06:02" },
-        { id: 9, type: 1, hhmm: "05:10" },
+        filed(44, 5, "09:40"),
+        stated(12, 3, "06:02"),
+        stated(9, 1, "05:10"),
       ],
     });
     await tap(5);
@@ -207,10 +232,7 @@ describe("the sheet lists the day", () => {
   // already stands above it.
   it("shows no Undo at all when the reading this tap landed on is not the newest", async () => {
     loadStoolDay.mockResolvedValue({
-      readings: [
-        { id: 99, type: 2, hhmm: "21:15" },
-        { id: 44, type: 3, hhmm: "12:00" },
-      ],
+      readings: [stated(99, 2, "21:15"), stated(44, 3, "12:00")],
       dayCount: 2,
     });
     logStoolForm.mockResolvedValue({
@@ -219,10 +241,7 @@ describe("the sheet lists the day", () => {
       dayCount: 2,
       // The midday reading, corrected from type 3 by restating its minute.
       reading: { id: 44, replacedType: 3 },
-      readings: [
-        { id: 99, type: 2, hhmm: "21:15" },
-        { id: 44, type: 5, hhmm: "12:00" },
-      ],
+      readings: [stated(99, 2, "21:15"), stated(44, 5, "12:00")],
     });
     renderRow({ todayCount: 2, today: "2026-07-08" });
     await waitFor(() => expect(rows()).toHaveLength(2));
@@ -255,7 +274,7 @@ describe("the sheet lists the day", () => {
       ok: true,
       type: 4,
       dayCount: 1,
-      readings: [{ id: 12, type: 4, hhmm: "06:02" }],
+      readings: [stated(12, 4, "06:02")],
     });
     renderRow({ todayCount: 1, today: "2026-07-08" });
 
@@ -281,9 +300,9 @@ describe("the Undo the declaration used to refuse", () => {
       dayCount: 3,
       reading: { id: 77 },
       readings: [
-        { id: 77, type: 6, hhmm: "08:12" },
-        { id: 12, type: 3, hhmm: "06:02" },
-        { id: 9, type: 1, hhmm: "05:10" },
+        filed(77, 6, "08:12"),
+        stated(12, 3, "06:02"),
+        stated(9, 1, "05:10"),
       ],
     });
     deleteStoolReading.mockResolvedValue({ undoId: 500 });
@@ -293,10 +312,7 @@ describe("the Undo the declaration used to refuse", () => {
     await waitFor(() => expect(count()).toBe("3 today"));
 
     loadStoolDay.mockResolvedValue({
-      readings: [
-        { id: 12, type: 3, hhmm: "06:02" },
-        { id: 9, type: 1, hhmm: "05:10" },
-      ],
+      readings: [stated(12, 3, "06:02"), stated(9, 1, "05:10")],
       dayCount: 2,
     });
     await act(async () => {
@@ -322,7 +338,7 @@ describe("the Undo the declaration used to refuse", () => {
       type: 5,
       dayCount: 1,
       reading: { id: 77, replacedType: 3 },
-      readings: [{ id: 77, type: 5, hhmm: "08:12" }],
+      readings: [stated(77, 5, "08:12")],
     });
     correctStoolReading.mockResolvedValue({ ok: true });
     renderRow({ todayCount: 1, today: "2026-07-08" });
@@ -331,7 +347,7 @@ describe("the Undo the declaration used to refuse", () => {
     await waitFor(() => expect(rows()).toHaveLength(1));
 
     loadStoolDay.mockResolvedValue({
-      readings: [{ id: 77, type: 3, hhmm: "08:12" }],
+      readings: [stated(77, 3, "08:12")],
       dayCount: 1,
     });
     await act(async () => {
@@ -363,7 +379,7 @@ describe("the Undo the declaration used to refuse", () => {
       type: 6,
       dayCount: 1,
       reading: { id: 77 },
-      readings: [{ id: 77, type: 6, hhmm: "08:12" }],
+      readings: [filed(77, 6, "08:12")],
     });
     // The action's only refusal shape: the row is gone, not this profile's, or not a
     // Bristol row at all.
@@ -392,7 +408,7 @@ describe("the Undo the declaration used to refuse", () => {
 describe("a sheet showing the day shows ONE person's day", () => {
   it("drops the rows and re-reads when it is re-pointed at another person", async () => {
     loadStoolDay.mockResolvedValue({
-      readings: [{ id: 12, type: 3, hhmm: "06:02" }],
+      readings: [stated(12, 3, "06:02")],
       dayCount: 1,
     });
     const { rerender } = render(
@@ -463,7 +479,7 @@ describe("the count line's day word", () => {
 
   beforeEach(() => {
     loadStoolDay.mockResolvedValue({
-      readings: [{ id: 12, type: 3, hhmm: "06:02" }],
+      readings: [stated(12, 3, "06:02")],
       dayCount: 1,
     });
   });
@@ -489,5 +505,79 @@ describe("the count line's day word", () => {
     expect(tab).toBeTruthy();
     expect(tab).not.toMatch(/today|yesterday/i);
     expect(count()).toBe(`1 on ${tab}`);
+  });
+});
+
+// THE RECEIPT SAYS WHICH MINUTE IT IS NAMING (#5921), on a day that is not today.
+//
+// The sharper half of the defect: standing on Yesterday, a row filed THIS MORNING with
+// no stated time printed `4:19 AM` beside a genuinely stated `8:10 AM`. The minute is
+// true of no minute of the day the reader is looking at, and the record already called
+// that same row "logged Sep 16". #5618 ruling 6 settles it — the filing DAY, no clock —
+// and the owner ruled on 2026-09-10 that the rule belongs to the clock grammar rather
+// than to one page, which is why this asks the same `historyClock` the record asks.
+//
+// THE SWITCHER IS MOUNTED BESIDE THE CONTROL for the same reason the count-line cases
+// mount it: the sheet's day comes from the day context, and a case that faked it would
+// not be standing where the person is.
+describe("a receipt row on a past day", () => {
+  const today = "2026-07-08";
+  const yesterday = shiftDateStr(today, -1);
+  const sheetOn = (day: string) =>
+    render(
+      <FormatPrefsProvider prefs={{ timeFormat: "12h", dateFormat: "mdy" }}>
+        <DayContextProvider
+          profileId={7}
+          today={today}
+          reach={SHEET_REACH}
+          backing={{ kind: "state", initialDay: day }}
+        >
+          <BoundedDaySwitcher />
+          <StoolTypeControl todayCount={2} today={today} />
+        </DayContextProvider>
+      </FormatPrefsProvider>
+    );
+
+  it("names the day it was filed on, never a minute from another day", async () => {
+    loadStoolDay.mockResolvedValue({
+      // Filed today, counted under yesterday, with nobody having named a minute.
+      readings: [filed(30, 5, "04:19", today), stated(31, 3, "08:10")],
+      dayCount: 2,
+    });
+    sheetOn(yesterday);
+
+    await waitFor(() =>
+      expect(lines()).toEqual([
+        [
+          "Type 5 · Soft blobs",
+          "Soft blobs with clear-cut edges, passed easily · logged Jul 8",
+        ],
+        [
+          "Type 3 · Cracked",
+          "Like a sausage but with cracks on the surface · 8:10 AM",
+        ],
+      ])
+    );
+    // No row prints a clock that belongs to a different day than the one beneath it.
+    for (const [, facts] of lines()) expect(facts).not.toMatch(/\b4:19\b/);
+  });
+
+  it("keeps the minute when the filing fell on the day the row sits under", async () => {
+    loadStoolDay.mockResolvedValue({
+      readings: [filed(30, 5, "04:19", yesterday)],
+      dayCount: 1,
+    });
+    sheetOn(yesterday);
+
+    // Same-day filing keeps the clock — it is about the day the reader is looking at
+    // and it orders the row against its neighbours. Only the WORD marks it.
+    await waitFor(() =>
+      expect(lines()).toEqual([
+        [
+          "Type 5 · Soft blobs",
+          "Soft blobs with clear-cut edges, passed easily · logged 4:19 AM",
+        ],
+      ])
+    );
   });
 });
