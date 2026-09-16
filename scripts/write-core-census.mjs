@@ -573,245 +573,129 @@ function trancheTable(rows, label) {
 }
 
 export function report(data) {
-  const out = [];
-  const say = (...s) => out.push(s.join(""));
   const inFence = data.cores.filter((c) => !c.fence);
-
-  say(`WRITE-CORE CENSUS — ${data.root}`);
-  say(`head ${data.head}`);
-  say("");
-  say("PREDICATE, as this script implements it");
-  say(
-    "  scanned    lib/**/*.ts(x), minus __tests__ / __db_tests__ / __action_tests__,"
-  );
-  say("             *.test.*, *.d.ts and lib/migrations/**");
-  say(`  parameter  a parameter named ${[...PROFILE_PARAM_NAMES].join(" / ")}`);
-  say(
-    `             whose WRITTEN type is exactly \`number\` (not \`${BRAND}\`)`
-  );
-  say(
-    "  body       the declaration's own text holds INSERT INTO / REPLACE INTO /"
-  );
-  say(
-    "             DELETE FROM / UPDATE…SET with comments blanked, OR it calls"
-  );
-  say(`             writeTx( / maintenanceWrite( resolved to ${TX_MODULE}`);
-  say(
-    "  callers    every top-level declaration in app/**, components/** and lib/**"
-  );
-  say(
-    "             that references the core under ANY name it is exported as —"
-  );
-  say(
-    "             named re-exports, `export *` barrels and same-module siblings"
-  );
-  say("             included; type-only imports are not references");
-  say("");
-  say("AMBIGUITIES — resolved here, printed so the choice is auditable");
-  say(
-    `  · A profile-shaped parameter written as anything but \`number\` or \`${BRAND}\``
-  );
-  say(
-    `    (\`number | null\`, a union, an object field) is NOT a core. ${plural(
-      data.shape.other.length,
-      "declaration"
-    )}:`
-  );
-  for (const o of data.shape.other.slice(0, 12))
-    say(`      ${o.key}  ${o.type}`);
-  if (data.shape.other.length > 12)
-    say(`      … and ${data.shape.other.length - 12} more (--json for all)`);
-  say(
-    `  · ${plural(
-      data.shape.branded,
-      "exported declaration"
-    )} already take the brand and so are`
-  );
-  say(
-    "    outside the predicate by construction — that is how a converted core"
-  );
-  say("    leaves this census without anyone maintaining a list.");
-  say(
-    "  · Only top-level `function f` and `const f = (…) =>` are considered; a class"
-  );
-  say("    method or an object-literal member is not a core here.");
-  say(
-    "  · A nested helper declared INSIDE a core's body counts as that core's own"
-  );
-  say(
-    "    text, so a core that inlines its SQL in a closure still reads as writing."
-  );
-  say(
-    "  · A caller is a REFERENCE; a site is a bare-identifier CALL. Passing a core"
-  );
-  say(
-    "    as a value makes a caller with no site. `ns.core()` through a namespace"
-  );
-  say("    import makes a caller, and its sites are not counted.");
-  say(
-    "  · A delegating core must HAND ITS OWN profile id to the writer it calls. One"
-  );
-  say(
-    `    hop, argument-checked. Dropping the argument test and walking ${DELEGATE_MAX_DEPTH} hops`
-  );
-  say(
-    `    instead admits ${data.wideReach} further declarations, which is the unusable`
-  );
-  say("    set the manifest measured rather than a bucket anyone can act on.");
-  say("");
-  say("FUNNEL");
-  say(`  lib production files scanned            ${data.scanned}`);
-  say(`  top-level function declarations in them ${data.declarations}`);
-  say(
-    `  exported with a profile-id parameter    ${data.shape.bare}${" ".repeat(
-      5
-    )}(${data.shape.bareFiles} files)`
-  );
-  say(
-    `    − its own body does not write           ${data.shape.bare - data.cores.length}`
-  );
-  say(
-    `  WRITE CORES by the predicate              ${data.cores.length}${" ".repeat(
-      6
-    )}(${uniq(data.cores.map((c) => c.file)).length} files)`
-  );
-  say(
-    `    of which the body holds literal DML     ${
-      data.cores.filter((c) => c.writesBy === "dml").length
-    }`
-  );
-  say(
-    `    of which the body only opens writeTx    ${
-      data.cores.filter((c) => c.writesBy === "writeTx").length
-    }   ← the half a SQL-only predicate misses`
-  );
-  say("");
-  say("  − ownership fences (Ladder assignments, not facts about the code)");
-  for (const [owner] of FENCES) {
-    const slice = data.cores.filter((c) => c.fence === owner);
-    say(
-      `      ${pad(owner, 22)}${pad(
-        plural(uniq(slice.map((c) => c.file)).length, "file"),
-        10
-      )}${plural(slice.length, "core")}`
+  const by = (t, key = "tranche") => inFence.filter((c) => c[key] === t);
+  const split = (key) =>
+    ["A", "B", "N"].map(
+      (t) =>
+        `  ${t}  ${pad(plural(uniq(by(t, key).map((c) => c.file)).length, "file"), 12)}${plural(
+          by(t, key).length,
+          "core"
+        )}`
     );
-  }
-  say(
-    `  REMAINING IN G'S lib FENCE                ${inFence.length}${" ".repeat(
-      6
-    )}(${uniq(inFence.map((c) => c.file)).length} files)`
-  );
-  say("");
-  say(
-    "TRANCHE SPLIT — remaining cores, by where every production caller lives"
-  );
-  say("  A  every production caller is an app/(app) action file");
-  say(
-    "  B  at least one caller is a route, page, migration or other lib module"
-  );
-  say(
-    "  N  no production caller found (NOT a claim of deadness — see the top)"
-  );
-  out.push(...trancheTable(inFence));
-  const bBlockers = new Map();
-  for (const c of inFence.filter((c) => c.tranche === "B"))
-    for (const b of c.blockers) bBlockers.set(b, (bBlockers.get(b) ?? 0) + 1);
-  say(
-    `  B blockers, cores by kind: ${[...bBlockers]
+  const moved = inFence.filter((c) => c.tranche !== c.naiveTranche);
+  const blockers = new Map();
+  for (const c of by("B"))
+    for (const b of c.blockers) blockers.set(b, (blockers.get(b) ?? 0) + 1);
+  const openDelegating = data.delegating.filter((d) => !d.fence);
+  const line = (l, n) => pad(`${l.file}:${l.line}`, 46) + pad(l.name, n);
+
+  return [
+    `WRITE-CORE CENSUS — ${data.root}`,
+    `head ${data.head}`,
+    ``,
+    `PREDICATE, as this script implements it`,
+    `  scanned    lib/**/*.ts(x), minus __tests__ / __db_tests__ / __action_tests__,`,
+    `             *.test.*, *.d.ts and lib/migrations/**`,
+    `  parameter  a parameter named ${[...PROFILE_PARAM_NAMES].join(" / ")}`,
+    `             whose WRITTEN type is exactly \`number\` (not \`${BRAND}\`)`,
+    `  body       the declaration's own text holds INSERT INTO / REPLACE INTO /`,
+    `             DELETE FROM / UPDATE…SET with comments blanked, OR it calls`,
+    `             writeTx( / maintenanceWrite( resolved to ${TX_MODULE}`,
+    `  callers    every top-level declaration in app/**, components/** and lib/**`,
+    `             that references the core under ANY name it is exported as —`,
+    `             named re-exports, \`export *\` barrels and same-module siblings`,
+    `             included; type-only imports are not references`,
+    ``,
+    `AMBIGUITIES — resolved here, printed so the choice is auditable`,
+    `  · A profile-shaped parameter written as anything but \`number\` or \`${BRAND}\``,
+    `    is NOT a core: \`number | null\`, a union, a field of an options object.`,
+    `    ${plural(data.shape.other.length, "declaration")} in this tree:`,
+    ...data.shape.other.slice(0, 12).map((o) => `      ${o.key}  ${o.type}`),
+    ...(data.shape.other.length > 12
+      ? [`      … and ${data.shape.other.length - 12} more (--json for all)`]
+      : []),
+    `  · ${plural(data.shape.branded, "exported declaration")} already take the brand and are outside`,
+    `    the predicate by construction — that is how a converted core leaves this`,
+    `    census with nobody maintaining a list of what has been done.`,
+    `  · Only top-level \`function f\` and \`const f = (…) =>\` are considered; a class`,
+    `    method or an object-literal member is not a core here.`,
+    `  · A nested helper declared INSIDE a core's body counts as that core's own`,
+    `    text, so a core that inlines its SQL in a closure still reads as writing.`,
+    `  · A caller is a REFERENCE; a site is a bare-identifier CALL. Passing a core`,
+    `    as a value makes a caller with no site. \`ns.core()\` through a namespace`,
+    `    import makes a caller, and its sites are not counted.`,
+    `  · A delegating core must HAND ITS OWN profile id to the writer it calls: one`,
+    `    hop, argument-checked. Dropping the argument test and walking ${DELEGATE_MAX_DEPTH} hops`,
+    `    instead admits ${data.wideReach} further declarations, which is the unusable set the`,
+    `    manifest measured rather than a bucket anyone can act on.`,
+    ``,
+    `FUNNEL`,
+    `  lib production files scanned            ${data.scanned}`,
+    `  top-level function declarations in them ${data.declarations}`,
+    `  exported with a profile-id parameter    ${data.shape.bare}     (${data.shape.bareFiles} files)`,
+    `    − its own body does not write           ${data.shape.bare - data.cores.length}`,
+    `  WRITE CORES by the predicate              ${data.cores.length}      (${uniq(data.cores.map((c) => c.file)).length} files)`,
+    `    of which the body holds literal DML     ${data.cores.filter((c) => c.writesBy === "dml").length}`,
+    `    of which the body only opens writeTx    ${data.cores.filter((c) => c.writesBy === "writeTx").length}   ← the half a SQL-only predicate misses`,
+    ``,
+    `  − ownership fences (Ladder assignments, not facts about the code)`,
+    ...FENCES.map(([owner]) => {
+      const s = data.cores.filter((c) => c.fence === owner);
+      return `      ${pad(owner, 22)}${pad(plural(uniq(s.map((c) => c.file)).length, "file"), 10)}${plural(s.length, "core")}`;
+    }),
+    `  REMAINING IN G'S lib FENCE                ${inFence.length}      (${uniq(inFence.map((c) => c.file)).length} files)`,
+    ``,
+    `TRANCHE SPLIT — remaining cores, by where every production caller lives`,
+    `  A  every production caller is an app/(app) action file`,
+    `  B  at least one caller is a route, page, migration or other lib module`,
+    `  N  no production caller found (NOT a claim of deadness — see the top)`,
+    ...split("tranche"),
+    `  B blockers, cores by kind: ${[...blockers]
       .sort((a, b) => b[1] - a[1])
       .map(([k, n]) => `${k} ${n}`)
-      .join(", ")}`
-  );
-  say(
-    `  A call sites in action files: ${inFence
-      .filter((c) => c.tranche === "A")
-      .reduce((n, c) => n + sitesIn(c, c.actionFiles), 0)}`
-  );
-  say("");
-  say(
-    "  THE SAME SPLIT WITH THE HAND INSTRUMENTS' RESOLUTION — named, non-type"
-  );
-  say(
-    "  import of the core's OWN module, called as a bare identifier: no barrel"
-  );
-  say(
-    "  re-export, no same-module call. This is the measurable gap, not a guess."
-  );
-  out.push(...trancheTable(inFence, "naive"));
-  const moved = inFence.filter((c) => c.tranche !== c.naiveTranche);
-  say(
-    `  ${plural(moved.length, "core")} classify differently. Of those, ${
+      .join(", ")}`,
+    `  A call sites in action files: ${by("A").reduce((n, c) => n + sitesIn(c, c.actionFiles), 0)}`,
+    ``,
+    `  THE SAME SPLIT WITH THE HAND INSTRUMENTS' RESOLUTION — a named, non-type`,
+    `  import of the core's OWN module, called as a bare identifier: no barrel`,
+    `  re-export, no same-module call. This is the measurable gap, not a guess.`,
+    ...split("naiveTranche"),
+    `  ${plural(moved.length, "core")} classify differently, ${
       moved.filter((c) => c.naiveTranche === "N").length
-    } fall into the naive`
-  );
-  say(
-    "  instrument's no-caller bucket although a caller exists; the rest change tranche."
-  );
-  const barrelOnly = inFence.filter(
-    (c) => c.callerFiles.length && !c.naiveFiles.length
-  );
-  say(
-    `  ${plural(barrelOnly.length, "core")} have every caller reachable ONLY through a barrel or a`
-  );
-  say("  same-module sibling.");
-  say("");
-  const openDelegating = data.delegating.filter((d) => !d.fence);
-  say(
-    `DELEGATING CORES — ${data.delegating.length} declarations hold neither DML nor writeTx and hand`
-  );
-  say(
-    `  their own profile id to something that does; ${openDelegating.length} of them are in G's fence.`
-  );
-  say(
-    "  This is the manifest's UNMEASURED bucket, and it is NOT added to the counts"
-  );
-  say(
-    "  above: a core whose write is a delegate's is a different predicate, and the"
-  );
-  say(
-    "  transitive form of it is the unusable set counted in the ambiguities."
-  );
-  for (const d of openDelegating)
-    say(`  ${pad(`${d.file}:${d.line}`, 46)}${pad(d.name, 36)}→ ${d.via}`);
-  const fenced = data.delegating.length - openDelegating.length;
-  if (fenced) say(`  (${fenced} behind an ownership fence, --json for them)`);
-  say("");
-  say(
-    `WRITES THROUGH A MODULE-LEVEL PREPARED STATEMENT — ${data.hoisted.length} declarations. The DML`
-  );
-  say(
-    '  sits in a file-level `const S = hoistedStatement("UPDATE …")`, so it is not in'
-  );
-  say(
-    "  the declaration's OWN body and the predicate as written does not reach it."
-  );
-  say(
-    "  Reported rather than counted: folding them in would move the headline away"
-  );
-  say(
-    "  from the predicate the programme agreed, and that is not this script's call."
-  );
-  for (const h of data.hoisted)
-    say(
-      `  ${pad(`${h.file}:${h.line}`, 46)}${pad(h.name, 36)}${h.fence ?? ""}`
-    );
-  say("");
-  say(
-    "PER-ROW MEMBERSHIP — a row is the app/(app) directory of its action callers."
-  );
-  say(
-    "  A core called from two domains appears in both; a core with no action caller"
-  );
-  say(
-    "  is listed last. The manifest's 13 PR rows are these domains grouped, with two"
-  );
-  say(
-    "  of them split again by lib file — that grouping is a SIZING decision and this"
-  );
-  say("  script does not recompute it.");
-  say("");
-  out.push(...rowSection(inFence));
-  return out.join("\n");
+    } of them into the naive instrument's`,
+    `  no-caller bucket although a caller exists. ${
+      inFence.filter((c) => c.callerFiles.length && !c.naiveFiles.length).length
+    } have EVERY caller reachable`,
+    `  only through a barrel or a same-module sibling.`,
+    ``,
+    `DELEGATING CORES — ${data.delegating.length} declarations hold neither DML nor writeTx and hand`,
+    `  their own profile id to something that does; ${openDelegating.length} are in G's fence. This is`,
+    `  the manifest's UNMEASURED bucket, and it is NOT added to the counts above:`,
+    `  a core whose write is a delegate's is a different predicate, and the`,
+    `  transitive form of it is the unusable set counted in the ambiguities.`,
+    ...openDelegating.map((d) => `  ${line(d, 36)}→ ${d.via}`),
+    ...(data.delegating.length > openDelegating.length
+      ? [
+          `  (${data.delegating.length - openDelegating.length} behind an ownership fence, --json for them)`,
+        ]
+      : []),
+    ``,
+    `WRITES THROUGH A MODULE-LEVEL PREPARED STATEMENT — ${data.hoisted.length} declarations. The DML`,
+    `  sits in a file-level \`const S = hoistedStatement("UPDATE …")\`, so it is not`,
+    `  in the declaration's OWN body and the predicate as written does not reach`,
+    `  it. Reported rather than counted: folding them in would move the headline`,
+    `  off the predicate the programme agreed, which is not this script's call.`,
+    ...data.hoisted.map((h) => `  ${line(h, 36)}${h.fence ?? ""}`),
+    ``,
+    `PER-ROW MEMBERSHIP — a row is the app/(app) directory of its action callers.`,
+    `  A core called from two domains appears in both; a core with no action caller`,
+    `  is listed first. The manifest's 13 PR rows are these domains grouped, with`,
+    `  two of them split again by lib file — that grouping is a SIZING decision and`,
+    `  this script does not recompute it.`,
+    ``,
+    ...rowSection(inFence),
+  ].join("\n");
 }
 
 function rowSection(cores, only = null) {
