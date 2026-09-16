@@ -9,6 +9,7 @@ import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdat
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import { QuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import { LabeledVerbChip } from "@/components/OfferRow";
+import { BusyMark } from "@/components/Button";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import {
@@ -194,6 +195,10 @@ export default function QuickLogPrnControl({
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
+  // The arm the finger left, not merely that one of them is in flight (#5900).
+  // `take` posts `now` on a day that still has one and `custom` on a past day, so
+  // the mark follows the same branch the tap does.
+  const takeBusy = ledger.pending(isPrimaryDay ? "now" : "custom");
   // THE WEIGHT THIS ROW IS BANDING FROM, and the one thing on this surface that can
   // change without a navigation: the refusal below mounts the shared one-field weight
   // fixer, whose save posts the real body-metric write and hands back the updated
@@ -332,11 +337,17 @@ export default function QuickLogPrnControl({
         type="button"
         onClick={take}
         disabled={busy}
+        aria-busy={takeBusy || undefined}
         className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
         aria-label={takeName}
         data-testid="prn-log-now"
       >
-        <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+        {/* Icon-only, so the mark takes the glyph's seat and the box holds still. */}
+        {takeBusy ? (
+          <BusyMark />
+        ) : (
+          <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+        )}
         <span className="sr-only">{takeName}</span>
       </button>
       {clockDoor}
@@ -353,6 +364,7 @@ export default function QuickLogPrnControl({
       tone={redosePrimary ? "brand" : "neutral"}
       onAct={take}
       disabled={busy}
+      busy={takeBusy}
       ariaLabel={takeName}
       testId="prn-log-now"
       clockDoor={clockDoor}
@@ -474,10 +486,15 @@ export default function QuickLogPrnControl({
           type="button"
           onClick={() => savedHhmm && log("custom", savedHhmm)}
           disabled={busy || !savedHhmm}
+          aria-busy={ledger.pending("custom") || undefined}
           className="btn btn-sm"
           data-testid="prn-log-custom"
         >
-          <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+          {ledger.pending("custom") ? (
+            <BusyMark />
+          ) : (
+            <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+          )}
           <span>Save dose</span>
         </button>
       </div>
