@@ -1348,10 +1348,14 @@ export async function handleTypedReply(
     if (messageId != null)
       await setMessageReaction(chatId, messageId, TYPED_REPLY_REACTION);
   } else if (outcome.refusal)
-    // The subject is the profile the MARKER named and this chat was just checked against
-    // (#1995) — except when that check FAILED, where naming it would put a name this chat
-    // is not entitled to into the chat. An unauthorized refusal is chat-wide and says
-    // nothing about whose profile was quoted.
+    // The subject is the profile the REGISTRY resolved for the quoted message, which this
+    // chat was just checked against (#1995) — except when that check FAILED, where naming
+    // it would put a name this chat is not entitled to into the chat. An unauthorized
+    // refusal is chat-wide and says nothing about whose profile was quoted.
+    //
+    // NO `kind` HERE, and that is load-bearing rather than incidental: a refusal carrying
+    // a typed-reply kind would record a pointer of its own and become answerable, which
+    // `recordPointer`'s chat-wide refusal does NOT catch on the authorized branch.
     await sendTelegramMessage(
       chatId,
       { title: REFUSAL_TITLE[reply.family], body: outcome.refusal },

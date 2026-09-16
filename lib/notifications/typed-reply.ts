@@ -82,26 +82,37 @@ export function awaitsTypedReply(kind: string | null | undefined): boolean {
 // strict subset of the list above rather than the same list.
 //
 // `temp` and `weight` hold no server-side operation state, so there is no operation row
-// to key admissibility on the way refill's receipt is keyed on its own `promptId`. What
-// carries the meaning instead is an ENFORCED INVARIANT, not a census of the send sites:
-// the send chokepoint REFUSES to record a pointer for a chat-wide message whose kind
-// awaits a typed reply (`recordPointer`, ./telegram). Held by `telegram-quicklog.test.ts`
-// — "a chat-wide send never becomes an answerable prompt".
+// to key admissibility on the way refill's receipt is keyed on its own `promptId`.
 //
-// That is the proportionate guard rather than the strongest one. Keying these two on
-// promptness the way refill is keyed would mean inventing a record for families that
-// deliberately have none, which is a design change; the invariant buys the same property
-// — a pointer of these kinds is a message addressed to one profile, which the prompts are
-// by construction (one per profile, #1995) — and buys it in a form the tree cannot break
-// silently. A prose comment here could not: a notice that simply inherits its command's
-// kind is the ordinary convention in this file, and two sibling commands do exactly that.
+// WHAT IS ENFORCED, AND WHAT IS NOT. One thing is enforced: a pointer of these kinds is
+// addressed to ONE PROFILE, because the send chokepoint refuses to record a pointer for a
+// chat-wide message whose kind awaits a typed reply (`recordPointer`, ./telegram; held by
+// `telegram-quicklog.test.ts` — "a chat-wide send never becomes an answerable prompt").
+// PROMPTNESS IS NOT ENFORCED. Nothing stops a PER-PROFILE send from carrying one of these
+// kinds and so minting an answerable pointer for a message that asked nothing — including
+// two sends in the arm below, the acknowledgement fallback and the refusal, which are
+// safe only because they carry no `kind`, the fallback by a narrowed parameter type and a
+// spec assertion. So this list rests on a guard that covers one shape and on a convention
+// for the other, and a send site added tomorrow can break it. Reading it as stronger than
+// that is how the wrong sentence gets written here: the structural version — a rule over
+// which send sites may carry these kinds — is its own piece of work, not this comment.
+//
+// Keying these two on promptness the way refill is keyed was considered and refused: it
+// would mean inventing an operation record for families that deliberately have none,
+// which is a design change rather than a guard.
 //
 // `refill` is NOT here, and must not be added: several messages carry that kind — the
 // low-supply reminder with its Received button, the receipt prompt that button opens, the
 // `Supply update` rebuild — and only one is a question. A receipt is found through its
 // offer row's `promptId` instead, so a number typed under a reminder settles nothing.
 //
-// A fifth family (#5124) belongs here only if it can live under the same invariant. If it
+// THE SUBSET RELATION IS MACHINE-CAUGHT, but not here and not by the type. Dropping a
+// kind from `TYPED_REPLY_PROMPT_KINDS` while leaving it in this list typechecks, and this
+// module's own spec stays green; `telegram-commands.test.ts` goes red — six cases,
+// including "prompts with a kind that records the pointer the reply resolves against".
+// That is the file to look at when this pair disagrees — executed, not assumed.
+//
+// A fifth family (#5124) belongs here only if it can live under the same limits. If it
 // cannot, it owes a lookup of its own, the way refill does.
 export const POINTER_RESOLVED_FAMILIES = ["temp", "weight"] as const;
 
