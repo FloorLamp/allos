@@ -646,7 +646,30 @@ export default function QuickEntryProvider({
 
   const resume = useVisitResumeWatch();
 
+  // The store is emptied when this host TAKES OVER an identity: on mount (sign-out is
+  // a client navigation, so the next sign-in mounts a new host in the same document)
+  // and again whenever the acting profile changes under a mounted one.
+  //
+  // KEYED ON THE IDENTITY ALREADY CLEARED, not a bare "the effect ran" (#5922).
+  // `clearLastGood` BROADCASTS, and the subscription above turns that broadcast into
+  // `setOpen(false)` + an invalidated visit — so a second clear for an identity this
+  // host has already cleared is not a free no-op, it tears down whatever is open.
+  //
+  // That second clear happens in `next dev` and only there. React StrictMode (Next's
+  // development default; a production build never double-invokes) runs mount effects,
+  // tears them down, and runs them again — and the passive effect that opens a
+  // `?quick=` deep link (components/QuickShortcutHandler.tsx) lands BETWEEN the two
+  // passes, so the re-run closed the overlay the deep link had just opened. The e2e
+  // suite spawns every worker's server as `next start` with NODE_ENV=production
+  // (e2e/fixtures.ts), which is why `/?quick=log-stool` was green at five call sites
+  // in e2e/bristol-stool.spec.ts while the same URL opened nothing for a person on a
+  // dev server. The ref survives the StrictMode remount exactly as the handler's own
+  // `handled` ref does, so the second pass recognizes the identity and stays silent; a
+  // real profile switch, and a real remount, still clear and still broadcast.
+  const clearedFor = useRef<number | null>(null);
   useLayoutEffect(() => {
+    if (clearedFor.current === actingProfileId) return;
+    clearedFor.current = actingProfileId;
     clearLastGood();
   }, [actingProfileId]);
 
