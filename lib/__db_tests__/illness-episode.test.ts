@@ -36,6 +36,15 @@ import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { resolveEpisodeAcrossProfiles } from "@/lib/illness-episode-store";
 import type { IllnessEpisode } from "@/lib/symptom-episode";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -392,7 +401,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     );
     const storedEpisode: IllnessEpisode = { id: episodeId, ...CLOSED };
 
-    const out = promoteEpisodeToConditionCore(p, episodeId);
+    const out = promoteEpisodeToConditionCore(gated(p), episodeId);
     expect(out.kind).toBe("promoted");
     const row = db
       .prepare(
@@ -421,7 +430,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     );
 
     // Re-promote is an idempotent no-op (still one row).
-    const again = promoteEpisodeToConditionCore(p, episodeId);
+    const again = promoteEpisodeToConditionCore(gated(p), episodeId);
     expect(again.kind).toBe("already");
     expect(
       (
@@ -432,7 +441,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     ).toBe(1);
 
     // Undo deletes the episode-sourced row.
-    expect(unpromoteEpisodeConditionCore(p, episodeId)).toBe(true);
+    expect(unpromoteEpisodeConditionCore(gated(p), episodeId)).toBe(true);
     expect(
       (
         db
@@ -452,7 +461,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
         )
         .run(p).lastInsertRowid
     );
-    const out = promoteEpisodeToConditionCore(p, episodeId);
+    const out = promoteEpisodeToConditionCore(gated(p), episodeId);
     expect(out.kind).toBe("promoted");
     const row = db
       .prepare(

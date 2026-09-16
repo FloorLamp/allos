@@ -124,7 +124,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
     expect(v.hasLocation).toBe(true);
     const poster = Buffer.from("SYNTHETIC-POSTER-BYTES");
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-01", symptom: "tremor", caption: "  left hand  " },
       v,
       poster
@@ -161,7 +161,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
 
     // Re-uploading the identical clip reuses the existing row.
     const again = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-01", symptom: null, caption: null },
       v,
       poster
@@ -174,7 +174,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
       buildMp4Fixture({ durationSec: 3, creationDate: "2026-05-05" })
     );
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-05", symptom: null, caption: null },
       v,
       null
@@ -192,13 +192,13 @@ describe("attachSymptomVideoCore / read / delete", () => {
       getSymptomVideosInRange(profileId, "2026-01-01", "2026-01-31")
     ).toHaveLength(0);
 
-    expect(updateSymptomVideoCaptionCore(profileId, out.id, "swaying")).toBe(
-      true
-    );
+    expect(
+      updateSymptomVideoCaptionCore(gated(profileId), out.id, "swaying")
+    ).toBe(true);
     // Forged cross-profile caption edit is a no-op.
-    expect(updateSymptomVideoCaptionCore(profileId + 9999, out.id, "x")).toBe(
-      false
-    );
+    expect(
+      updateSymptomVideoCaptionCore(gated(profileId + 9999), out.id, "x")
+    ).toBe(false);
   });
 
   it("delete removes the row AND both files, path-contained + idempotent", () => {
@@ -206,7 +206,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
       buildMp4Fixture({ durationSec: 4, creationDate: "2026-06-02" })
     );
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-06-02", symptom: null, caption: null },
       v,
       Buffer.from("POSTER-2")
@@ -220,19 +220,19 @@ describe("attachSymptomVideoCore / read / delete", () => {
       .get(out.id, profileId) as { stored_path: string; poster_path: string };
 
     // Forged cross-profile delete is a no-op.
-    expect(deleteSymptomVideoCore(profileId + 9999, out.id)).toBe(false);
+    expect(deleteSymptomVideoCore(gated(profileId + 9999), out.id)).toBe(false);
     expect(fs.existsSync(path.resolve(process.cwd(), row.stored_path))).toBe(
       true
     );
 
-    expect(deleteSymptomVideoCore(profileId, out.id)).toBe(true);
+    expect(deleteSymptomVideoCore(gated(profileId), out.id)).toBe(true);
     expect(fs.existsSync(path.resolve(process.cwd(), row.stored_path))).toBe(
       false
     );
     expect(fs.existsSync(path.resolve(process.cwd(), row.poster_path))).toBe(
       false
     );
-    expect(deleteSymptomVideoCore(profileId, out.id)).toBe(false);
+    expect(deleteSymptomVideoCore(gated(profileId), out.id)).toBe(false);
   });
 });
 

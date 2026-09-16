@@ -17,6 +17,15 @@ import {
 import { persistDocumentImport } from "@/lib/import-persist";
 import type { PersistInput } from "@/lib/import-shape";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function profile(name: string): number {
   return Number(
@@ -53,7 +62,7 @@ function condition(
 }
 
 function promotedCondition(profileId: number, episodeId: number): number {
-  const outcome = promoteEpisodeToConditionCore(profileId, episodeId);
+  const outcome = promoteEpisodeToConditionCore(gated(profileId), episodeId);
   if (outcome.kind === "invalid") throw new Error("promotion fixture failed");
   return outcome.conditionId;
 }
@@ -220,7 +229,7 @@ describe("condition delete intake-link lifecycle (#3648)", () => {
     linkIndication(corruptItem, target);
     conditionPurpose(corruptItem, target);
 
-    expect(() => unpromoteEpisodeConditionCore(owner, ep)).toThrow();
+    expect(() => unpromoteEpisodeConditionCore(gated(owner), ep)).toThrow();
     // The failed root delete rolls the same-profile detaches back with it.
     expect(exists("conditions", target)).toBe(1);
     expect(indication(ownedItem)).toBe(target);
@@ -239,7 +248,7 @@ describe("condition delete intake-link lifecycle (#3648)", () => {
     db.prepare("DELETE FROM intake_item_purposes WHERE item_id = ?").run(
       corruptItem
     );
-    expect(unpromoteEpisodeConditionCore(owner, ep)).toBe(true);
+    expect(unpromoteEpisodeConditionCore(gated(owner), ep)).toBe(true);
     expect(exists("conditions", target)).toBe(0);
     expect(exists("intake_items", ownedItem)).toBe(1);
     expect(indication(ownedItem)).toBeNull();
@@ -276,7 +285,7 @@ describe("condition delete intake-link lifecycle (#3648)", () => {
     linkIndication(dropItem, dropCondition);
     conditionPurpose(dropItem, dropCondition);
 
-    expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
+    expect(mergeEpisodeRows(gated(p), keep, drop)).toBe(keep);
     expect(exists("conditions", keepCondition)).toBe(1);
     expect(indication(keepItem)).toBe(keepCondition);
     expect(purposeTargets(keepItem)).toEqual([keepCondition]);
@@ -294,7 +303,7 @@ describe("condition delete intake-link lifecycle (#3648)", () => {
     linkIndication(supplement, reanchoredCondition);
     conditionPurpose(supplement, reanchoredCondition);
 
-    expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
+    expect(mergeEpisodeRows(gated(p), keep, drop)).toBe(keep);
     expect(exists("conditions", reanchoredCondition)).toBe(1);
     expect(indication(supplement)).toBe(reanchoredCondition);
     expect(purposeTargets(supplement)).toEqual([reanchoredCondition]);

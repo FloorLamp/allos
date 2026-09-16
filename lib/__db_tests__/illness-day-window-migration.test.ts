@@ -30,6 +30,15 @@ import {
   episodeRowToDerived,
   getEpisodeRow,
 } from "@/lib/illness-episode-store";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // The pre-169 shape, as migration 046 created it.
 function legacyDb(): Database.Database {
@@ -239,7 +248,12 @@ describe("was-I-ill-on-D boundaries over the inclusive [start_date, end_date]", 
         .lastInsertRowid
     );
     // Sick 2026-03-01 .. 2026-03-07 — end_date IS the last active day.
-    const id = createEpisodeRow(p, "Illness", "2026-03-01", "2026-03-07");
+    const id = createEpisodeRow(
+      gated(p),
+      "Illness",
+      "2026-03-01",
+      "2026-03-07"
+    );
 
     expect(getEpisodeRowForDate(p, "2026-02-28")).toBeNull();
     expect(getEpisodeRowForDate(p, "2026-03-01")?.id).toBe(id);
