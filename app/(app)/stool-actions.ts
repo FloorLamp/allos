@@ -7,7 +7,7 @@ import { getTimezone } from "@/lib/settings";
 import { revalidateRoute } from "@/lib/revalidate";
 import { logBristolStool } from "@/lib/offline/writes";
 import {
-  getBristolReadings,
+  getBristolDayCount,
   getBristolRows,
   type BristolRow,
 } from "@/lib/queries/bristol-stool";
@@ -33,7 +33,9 @@ import { gateItemProfile } from "./gate-item";
 // It answers with the COUNT ON THE DAY IT WROTE TO, never an average: several movements
 // a day is ordinary, and the count is what the picker shows beside the buttons so a
 // second tap is informed rather than accidental. On a backfill that day is not today,
-// which is why the field is not called one.
+// which is why the field is not called one. It counts EVERY row on that day and the
+// receipt list below carries only the typed ones, which is #5872's invariant and not a
+// disagreement: an untyped movement names no Bristol bar and still happened.
 //
 // Since #5663 it also answers with THE DAY'S READINGS and with which of them this tap
 // landed on. The sheet lists each of today's entries as its own receipt row (the
@@ -221,7 +223,7 @@ export async function logStoolForm(
   return {
     ok: true,
     type,
-    dayCount: getBristolReadings(profileId, date, date).length,
+    dayCount: getBristolDayCount(profileId, date),
     readings: dayReadings(getTimezone(profileId), after),
     ...(reading ? { reading } : {}),
     ...(written.statedTimeRefused
@@ -256,7 +258,7 @@ export async function loadStoolDay(
       getTimezone(profileId),
       getBristolRows(profileId, date, date, RECEIPT_WINDOW)
     ),
-    dayCount: getBristolReadings(profileId, date, date).length,
+    dayCount: getBristolDayCount(profileId, date),
   };
 }
 
