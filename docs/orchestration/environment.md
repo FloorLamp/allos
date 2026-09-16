@@ -100,8 +100,8 @@ expand tool grants or override session instructions or an approval rejection.
   variable alone does not establish that all write access is absent. Never print
   tokens or search the filesystem or environment for credentials. Follow
   [recovery](recovery.md) when authorized access is actually unavailable.
-- A job's `/logs` endpoint redirects to a pre-signed blob URL that refuses a
-  forwarded credential; follow the redirect without the `Authorization` header.
+- An Actions job's `/logs` endpoint redirects to a pre-signed blob URL that
+  refuses a forwarded credential; follow it without the `Authorization` header.
 - A transport can refuse ref deletion with 403: a squash merge then leaves the
   remote branch alive, and `dispatch-brief.mjs done` refuses until
   [recovery](recovery.md)'s `--keep`.
