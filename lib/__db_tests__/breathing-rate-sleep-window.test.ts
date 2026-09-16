@@ -49,6 +49,8 @@ import { reportBreathingRateDeclines } from "@/lib/integrations/breathing-rate-r
 import { trackLabFollowUpCore } from "@/lib/followup-write";
 import { deleteMetricReading } from "@/lib/metric-readings";
 import { followUpItems } from "@/lib/followup-findings";
+import { deleteAllDatasetRows } from "@/app/(app)/data/manage-actions";
+import { actAs, createLogin } from "@/lib/__action_tests__/harness";
 
 const ORIGIN = "com.fitbit.FitbitMobile";
 const WAKE_DAY = "2026-09-05";
@@ -1228,6 +1230,51 @@ describe("deleting the carried sample frees the WHOLE link", () => {
         .get(carePlanItemId)
     ).toBeTruthy();
     expect(followUpItems(profileId, "2026-12-01")).toEqual([]);
+  });
+
+  it("frees it on Data \u2192 Manage's Delete all, which takes no capture", async () => {
+    // THE ONLY PERSON-REACHABLE DELETE OF A SAMPLE THAT IS NOT A CAPTURE. Metric
+    // samples are a deletable dataset (DELETE_POLICY in lib/export.ts), so Data \u2192
+    // Manage offers "Delete all" beside the row checkboxes. The selected-rows delete
+    // routes through captureDelete and inherits the seam; "Delete all" is deliberately
+    // never undoable, so it wipes the table directly and reaches the row with no seam
+    // ahead of it -- landing on exactly the state the positive control below shows.
+    // Four `source_*` pairs older than this one are NO ACTION, so the same button on
+    // their tables THROWS instead; closing it here is what the SET NULL pair buys, and
+    // only once the action runs the seam itself.
+    const { profileId, carePlanItemId } = carriedFollowUp("Delete all, seam");
+    const login = createLogin();
+    db.prepare(
+      "INSERT OR IGNORE INTO login_profiles (login_id, profile_id) VALUES (?, ?)"
+    ).run(login.id, profileId);
+    actAs(login, { id: profileId, name: "Delete all, seam" });
+
+    const res = await deleteAllDatasetRows("metric_samples");
+    expect(res.ok).toBe(true);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM metric_samples WHERE profile_id = ?"
+        )
+        .get(profileId)
+    ).toEqual({ c: 0 });
+
+    expect(followUpRow(carePlanItemId)).toEqual({
+      source_kind: null,
+      source_medical_record_id: null,
+      source_metric_sample_id: null,
+      resolved_by_medical_record_id: null,
+      resolved_by_metric_sample_id: null,
+    });
+    // Same degradation the row delete gives: the planned care survives, the finding
+    // linkage does not.
+    expect(
+      db
+        .prepare("SELECT description FROM care_plan_items WHERE id = ?")
+        .get(carePlanItemId)
+    ).toBeTruthy();
+    expect(followUpItems(profileId, "2026-12-01")).toEqual([]);
+    expect(fkViolations().length).toBe(0);
   });
 
   it("positive control: the backstop alone leaves the discriminator standing", () => {

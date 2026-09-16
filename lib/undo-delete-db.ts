@@ -395,8 +395,12 @@ export function captureDelete(
       // pair is `ON DELETE SET NULL`, so the DELETE below cannot throw — but SQLite
       // nulls only the column the action is declared on, leaving `source_kind` standing
       // over an all-null source. This is the seam that frees BOTH, the way every other
-      // source kind's is freed; centralized here so the readings table's Delete and the
-      // Data → Manage bulk delete inherit it from the one capture they share.
+      // source kind's is freed; centralized here so the readings table's Delete and
+      // Data → Manage's SELECTED-ROWS delete inherit it from the one capture they
+      // share. Data → Manage's "Delete all" is the one person-reachable delete that
+      // never enters a capture, so it calls the same seam itself before its wipe
+      // (app/(app)/data/manage-actions.ts). What is left on the action alone is the
+      // three integration paths, none of which can select this metric.
       unlinkFollowUpsForMetricSample(profileId, rootId);
     }
 

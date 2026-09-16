@@ -16,6 +16,7 @@ import {
 } from "@/lib/queries";
 import { undoKindForTable } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
+import { unlinkFollowUpsForMetricSample } from "@/lib/followup-write";
 import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
@@ -241,6 +242,32 @@ export async function deleteAllDatasetRows(
   // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
   // resurrect the whole set (#653). Captured before the delete.
   const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
+  // `metric_samples` is the one deletable dataset whose rows a care-plan follow-up
+  // can name (#5409), and this is the ONE delete on this page that never enters
+  // captureDelete: the selected-rows path above always takes the undo branch for it
+  // (DATASET_UNDO_KIND maps the table, and the type forces that decision), so the
+  // detach seam runs there. Here it does not. The pair is ON DELETE SET NULL, so the
+  // wipe below would not throw — SQLite would null the id and leave `source_kind`
+  // standing over an all-null source, the dangling discriminator migration 184 exists
+  // to repair. Run the same shared seam, over the rows this wipe is about to remove.
+  // Anchored on `metric_samples` rather than on the follow-ups so it frees exactly
+  // those rows' links and nothing else. The four older source pairs are NO ACTION and
+  // have no equivalent: on their tables this statement still throws.
+  if (resolved.table === "metric_samples") {
+    const linked = db
+      .prepare(
+        `SELECT DISTINCT s.id AS id
+           FROM metric_samples s
+           JOIN care_plan_items c
+             ON c.profile_id = s.profile_id
+            AND (c.source_metric_sample_id = s.id
+                 OR c.resolved_by_metric_sample_id = s.id)
+          WHERE s.profile_id = ?`
+      )
+      .all(profile.id) as { id: number }[];
+    for (const { id } of linked)
+      unlinkFollowUpsForMetricSample(profile.id, id);
+  }
   // "Delete all" is still scoped to this profile — never wipe another profile's
   // rows from the shared table. It is intentionally NOT undoable (the confirm
   // says so): capturing an entire table into the holding store could be huge.
