@@ -11,12 +11,21 @@ import { rawDb as db } from "@/lib/db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up017 } from "@/lib/migrations/versions/017-equipment-retire";
 import { up as up018 } from "@/lib/migrations/versions/018-equipment-category-enum";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import {
   getEquipment,
   createEquipment,
   setEquipmentRetired,
 } from "@/lib/equipment";
 import { EQUIPMENT_CATEGORIES } from "@/lib/types";
+
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the bootstrapped subject is cast once here instead of at every call site;
+// WRITE_BRAND_CAST (eslint.config.mjs) binds production modules and a test tier may cast.
+// A branded number is still a number, so the reads take it unchanged.
+const P1 = 1 as WriteAuthorizedProfileId;
+// A profile that owns none of the rows below, for the scope refusal.
+const P999 = 999 as WriteAuthorizedProfileId;
 
 function equipmentSql(handle: Database.Database): string {
   return (
@@ -63,7 +72,7 @@ describe("equipment schema — migrations 017 + 018", () => {
   });
 
   it("new rows default retired = 0", () => {
-    const e = createEquipment(1, {
+    const e = createEquipment(P1, {
       name: "Fresh Bar",
       weight_kg: 20,
       category: "Barbell",
@@ -78,17 +87,17 @@ describe("getEquipment / setEquipmentRetired — retire semantics", () => {
   });
 
   it("excludes retired rows by default, includes them with includeRetired", () => {
-    const live = createEquipment(1, {
+    const live = createEquipment(P1, {
       name: "Live Bar",
       weight_kg: 20,
       category: "Barbell",
     });
-    const gone = createEquipment(1, {
+    const gone = createEquipment(P1, {
       name: "Old Bar",
       weight_kg: 15,
       category: "Barbell",
     });
-    setEquipmentRetired(1, gone.id, true);
+    setEquipmentRetired(P1, gone.id, true);
 
     const visible = getEquipment(1).map((e) => e.id);
     expect(visible).toContain(live.id);
@@ -100,25 +109,27 @@ describe("getEquipment / setEquipmentRetired — retire semantics", () => {
   });
 
   it("un-retire brings a row back into the default read", () => {
-    const e = createEquipment(1, {
+    const e = createEquipment(P1, {
       name: "Kettlebell 24",
       weight_kg: 24,
       category: "Kettlebell",
     });
-    setEquipmentRetired(1, e.id, true);
+    setEquipmentRetired(P1, e.id, true);
     expect(getEquipment(1).map((x) => x.id)).not.toContain(e.id);
-    setEquipmentRetired(1, e.id, false);
+    setEquipmentRetired(P1, e.id, false);
     expect(getEquipment(1).map((x) => x.id)).toContain(e.id);
   });
 
   it("retire is profile-scoped — a foreign id refuses as not-found", () => {
-    const e = createEquipment(1, {
+    const e = createEquipment(P1, {
       name: "Scoped Bar",
       weight_kg: 20,
       category: "Barbell",
     });
     // wrong profile: nothing flips, and the outcome SAYS so (#2138)
-    expect(setEquipmentRetired(999, e.id, true)).toEqual({ kind: "not-found" });
+    expect(setEquipmentRetired(P999, e.id, true)).toEqual({
+      kind: "not-found",
+    });
     expect(getEquipment(1).map((x) => x.id)).toContain(e.id);
   });
 
@@ -127,16 +138,16 @@ describe("getEquipment / setEquipmentRetired — retire semantics", () => {
   // the same write lock, so a silently-failed retire can no longer keep offering
   // sold gear.
   it("typed outcomes: applied / already / not-found", () => {
-    const e = createEquipment(1, {
+    const e = createEquipment(P1, {
       name: "CAS Bar",
       weight_kg: 20,
       category: "Barbell",
     });
-    expect(setEquipmentRetired(1, e.id, true)).toEqual({ kind: "applied" });
-    expect(setEquipmentRetired(1, e.id, true)).toEqual({ kind: "already" });
-    expect(setEquipmentRetired(1, e.id, false)).toEqual({ kind: "applied" });
-    expect(setEquipmentRetired(1, e.id, false)).toEqual({ kind: "already" });
-    expect(setEquipmentRetired(1, 99999, true)).toEqual({ kind: "not-found" });
+    expect(setEquipmentRetired(P1, e.id, true)).toEqual({ kind: "applied" });
+    expect(setEquipmentRetired(P1, e.id, true)).toEqual({ kind: "already" });
+    expect(setEquipmentRetired(P1, e.id, false)).toEqual({ kind: "applied" });
+    expect(setEquipmentRetired(P1, e.id, false)).toEqual({ kind: "already" });
+    expect(setEquipmentRetired(P1, 99999, true)).toEqual({ kind: "not-found" });
   });
 });
 
