@@ -27,7 +27,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard, isMain } from "./usage.mjs";
-import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
+import {
+  discoverNodeBin,
+  nvmrcMajorAt,
+  resolveReadToken,
+  resolveStateDir,
+} from "./host.mjs";
 import {
   bodySession,
   COMMIT_TRAILER_BRIEF,
@@ -176,18 +181,18 @@ export function branchGitArgs(branch) {
  * Which `.nvmrc` a dispatch's node major comes from. A lane branches from
  * `origin/main`, so that tree's pin governs it, not this checkout's, which may
  * be behind main or hold a lane's own edit (#5906). The working tree is the
- * named FALLBACK; neither read is UNREAD, never a guess.
+ * named FALLBACK; neither read is UNREAD, never a guess. host.mjs reads and
+ * parses both (#5940); this says only which one the brief may quote.
  *
- * @param {string|null} atMain `.nvmrc` at origin/main, null if unreadable
- * @param {string|null} working `.nvmrc` here, null if unreadable
+ * @param {string|null} atMain the major at origin/main, null if unreadable
+ * @param {string|null} working the major here, null if unreadable
  * @returns {{ major: string, at: string } | { unread: string }}
  */
 export function nodePin(atMain, working) {
-  const major = (text) => text.trim().replace(/^v/, "").split(".")[0];
-  if (atMain) return { major: major(atMain), at: "origin/main" };
+  if (atMain) return { major: atMain, at: "origin/main" };
   if (working)
     return {
-      major: major(working),
+      major: working,
       at: "this checkout's working tree — origin/main's could not be read",
     };
   return {
@@ -195,18 +200,7 @@ export function nodePin(atMain, working) {
   };
 }
 
-function nvmrcPin() {
-  let working = null;
-  try {
-    working = fs.readFileSync(path.join(repoRoot, ".nvmrc"), "utf8");
-  } catch {
-    working = null;
-  }
-  return nodePin(
-    git(["show", `${MAIN_REF}:.nvmrc`], { allowFail: true }),
-    working
-  );
-}
+const nvmrcPin = () => nodePin(nvmrcMajorAt(MAIN_REF), nvmrcMajorAt());
 
 /**
  * What a lane may conclude from how much history it can reach.

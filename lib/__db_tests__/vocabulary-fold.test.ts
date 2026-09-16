@@ -32,6 +32,16 @@ import { addSubstanceDailyTotalCore } from "@/lib/substance-daily-totals-write";
 import { getSubstanceDailyTotals } from "@/lib/queries/substance";
 import { substanceLabel, validateSubstanceName } from "@/lib/substance-use";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -86,13 +96,13 @@ describe("profileVocabulary — the profile's own spellings, first-seen first", 
   it("orders substance spellings the same way, from the substance ledger", () => {
     const p = newProfile("first-seen-substance");
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "Kratom",
       { date: "2026-07-20", amount: 1 },
       "page"
     );
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "Kava",
       { date: "2026-07-01", amount: 1 },
       "page"
@@ -105,7 +115,7 @@ describe("profileVocabulary — the profile's own spellings, first-seen first", 
     const theirs = newProfile("theirs");
     logSymptomCore(theirs, "Kratom", 2, "2026-07-01", "page");
     addSubstanceDailyTotalCore(
-      theirs,
+      gated(theirs),
       "Kratom",
       {
         date: "2026-07-01",
@@ -190,7 +200,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
     const p = newProfile("substance-fold");
     expect(trackTypedSubstance(p, "Kratom")).toBe("Kratom");
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "Kratom",
       { date: "2026-07-01", amount: 2 },
       "page"
@@ -208,7 +218,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
   it("puts every casing's day on ONE ledger, not two half-ledgers", () => {
     const p = newProfile("substance-ledger");
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       trackTypedSubstance(p, "Kratom"),
       {
         date: "2026-07-01",
@@ -217,7 +227,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
       "page"
     );
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       trackTypedSubstance(p, "kratom"),
       {
         date: "2026-07-02",
@@ -226,7 +236,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
       "page"
     );
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       trackTypedSubstance(p, "KRATOM"),
       {
         date: "2026-07-03",
@@ -250,7 +260,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
   it("keeps an all-caps custom substance in capitals", () => {
     const p = newProfile("substance-mdma");
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       trackTypedSubstance(p, "MDMA"),
       {
         date: "2026-07-01",
@@ -268,7 +278,7 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
   it("still collapses a typed curated label onto its curated key", () => {
     const p = newProfile("substance-curated");
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       trackTypedSubstance(p, "Kratom"),
       {
         date: "2026-07-01",

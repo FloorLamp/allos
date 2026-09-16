@@ -35,6 +35,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
     expect(tables).toEqual([
       // #2134: the scheduled/completed/cancelled flag — appointments' one-tap
       // status transitions now pass a state-named CAS core.
+      // #5941: the real manifestation list, whose first row IS the cached
+      // allergies.reaction/.severity the drug and contrast cross-checks read; one core
+      // maintains both sides, and the rows carry no profile_id of their own.
+      "allergy_reactions",
       "appointments",
       // #5941: the Data → Coverage opt-in registry. A tracked gap is a durable user
       // decision keyed by UNIQUE(profile_id, kind, item_key); the alias-merge re-key and
@@ -47,6 +51,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // #5941: the acquirer's refused-as-duplicate evidence (#1828); the verdict over it
       // is recomputed on every read, so a second writer has nothing to invalidate.
       "document_coverage_markers",
+      // #5941: the reversal record of an episode's medication reconciliation — the only
+      // thing that can undo "ending this illness closed these courses", and the reason the
+      // med NAME travels as a snapshot (#1808) that survives the med row.
+      "episode_stopped_meds",
       // #2138: the retire flag that gates pickers/availability/suggestions —
       // equipment's state-named CAS core.
       "equipment",
@@ -59,6 +67,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // #5941: the "an import may not put this back" refusal (#507/#1777) — the only
       // trace of a decision about something that has already been deleted.
       "import_tombstones",
+      // #5941: the per-item answers a screening instrument was answered with. The
+      // self-harm item drives a NON-DISMISSIBLE crisis verdict independently of the
+      // total, and counting these rows is what refuses a retyped administered total.
+      "instrument_responses",
       // The dose SCHEDULE's retired flag, added by #2131 — the parent whose gating the
       // ledger below had and it lacked.
       "intake_item_doses",
@@ -73,6 +85,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // and the counters beside it are what a re-queue resumes FROM. Not
       // column-narrowed: the table has no non-lifecycle column.
       "integration_backfill_jobs",
+      // #5941: the symptom_photos custody for a dermatology close-up — the row is the
+      // only pointer to the stripped file and its computed thumbnail sibling, and the
+      // insert dedups on the processed hash (#715/#1844).
+      "lesion_photos",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
       // #2948: the niggle's one transition is a compare-and-set — advance the LIVE
@@ -98,6 +114,20 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "shared_supplies",
       // #2140: the active-situation set rewrite + illness-episode sync machine.
       "situations",
+      // #5941: the substance day COUNTER. Its arithmetic is the shared day-counter
+      // ledger, which names the table interpolated and is invisible here; what this
+      // gates is the two literal merges INTO an existing day row.
+      "substance_daily_totals",
+      // #5941: one row per use, carrying the stated minute (#5026). It moves in the same
+      // transaction as the counter above, and the record reads these rows.
+      "substance_log_events",
+      // #5941: a row is the only pointer to a stripped photo on disk (#1844) — the
+      // delete reclaims the file, the insert dedups on the processed hash, and the
+      // re-key re-parents the #1093 binding rather than cascade-dropping it.
+      "symptom_photos",
+      // #5941: the same custody for a clip and its poster (#1224), plus `has_location`
+      // — the flag that says an embedded GPS atom was detected rather than assumed.
+      "symptom_videos",
     ]);
   });
 

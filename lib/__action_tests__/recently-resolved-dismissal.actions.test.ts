@@ -35,6 +35,15 @@ import {
 import { getRecentlyResolvedDismissed, getLoginSetting } from "@/lib/settings";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 import { createLogin, createProfile, actAs } from "./harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -52,7 +61,7 @@ function seedResolved(
   const profile = createProfile(profileName, loginId);
   const on = today(profile.id);
   const episodeId = createEpisodeRow(
-    profile.id,
+    gated(profile.id),
     situation,
     shiftDateStr(on, -(daysAgo + 5)),
     shiftDateStr(on, -daysAgo)

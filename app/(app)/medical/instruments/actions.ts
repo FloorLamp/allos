@@ -45,7 +45,7 @@ function revalidateInstruments() {
 export async function recordInstrumentAction(
   formData: FormData
 ): Promise<InstrumentActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
 
   const instrumentRaw = String(formData.get("instrument") ?? "");
   if (!isInstrument(instrumentRaw))
@@ -100,7 +100,7 @@ export async function recordInstrumentAction(
   }
 
   const id = recordInstrumentScore(
-    profile.id,
+    writeProfileId,
     { instrument, date, total, answers, notes },
     "page"
   );
@@ -125,7 +125,7 @@ export async function recordInstrumentAction(
 export async function updateInstrumentAction(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that score.");
   const instrument = getInstrumentScoreInstrument(profile.id, id);
@@ -137,7 +137,7 @@ export async function updateInstrumentAction(
   if (!Number.isInteger(total) || total < 0 || total > maxTotal)
     return formError(`Enter a total between 0 and ${maxTotal}.`);
 
-  const outcome = updateInstrumentScore(profile.id, id, {
+  const outcome = updateInstrumentScore(writeProfileId, id, {
     date: dateRaw,
     total,
   });
@@ -156,10 +156,10 @@ export async function updateInstrumentAction(
 export async function deleteInstrumentAction(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
-  const outcome = deleteInstrumentScore(profile.id, id);
+  const outcome = deleteInstrumentScore(writeProfileId, id);
   if (outcome.kind === "not-found") return { undoId: null };
   revalidateInstruments();
   return { undoId: outcome.undoId };

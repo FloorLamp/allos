@@ -38,6 +38,15 @@ import {
   serializeSituationEvents,
   type SituationEvent,
 } from "@/lib/trend-annotations";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -202,7 +211,7 @@ describe("illness_episodes backfill (#856 item 0) through the #2232 conversion",
     // to the inclusive last active day.
     for (const run of episodesForSituation("Illness", events, false)) {
       createEpisodeRow(
-        p,
+        gated(p),
         "Illness",
         run.start,
         run.end == null ? null : shiftDateStr(run.end, -1)
@@ -282,7 +291,7 @@ describe("summarizeEpisodesForProfile hoists getConditions once (#886)", () => {
     // The stored rows a 046→169 replay would produce (see the parity test above).
     for (const run of episodesForSituation("Illness", events, true)) {
       createEpisodeRow(
-        p,
+        gated(p),
         "Illness",
         run.start,
         run.end == null ? null : shiftDateStr(run.end, -1)

@@ -16,6 +16,24 @@
 //     (newest date, highest id), keyed by the domain's identity function
 //     (ttcObservationKey).
 
+// THE OBSERVATION WRITE CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// logLhTestCore, logBbtCore and logMucusCore is lib/auth's WriteAuthorizedProfileId, which
+// only the gates mint, so an action that never gated holds nothing they take (#5348). The
+// import is type-only — erased at build — so this module still runs auth-blind and
+// app/(app)/medical/cycles/ttc-actions.ts still owns the gate. A branded number is still a
+// number, so the gathers take one unchanged, and so does setSymptomSeverityCore, which
+// logMucusCore delegates its whole write to.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { isRealIsoDate, shiftDateStr } from "./date";
@@ -105,7 +123,7 @@ export type TtcWriteOutcome =
 // ranges it has nothing to do with. The optional numeric intensity (a line-ratio some
 // digital readers report) rides value_num; the interpretation rides `value`.
 export function logLhTestCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string,
   result: LhResult,
   loggedVia: LoggedVia,
@@ -193,7 +211,7 @@ export function listLhTests(profileId: number, since: string): DatedLhTest[] {
 // exactly like the manual sleep/HRV quick-add — a re-entry corrects rather than
 // duplicates, and a tracker push can never match the row.
 export function logBbtCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string,
   degF: number
 ): TtcWriteOutcome {
@@ -263,7 +281,7 @@ export function listBbtReadings(
 // setSymptomSeverityCore's contract. Re-tapping the same quality is a no-op write the
 // accounting reports as `unchanged`.
 export function logMucusCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string,
   quality: MucusQuality,
   loggedVia: LoggedVia

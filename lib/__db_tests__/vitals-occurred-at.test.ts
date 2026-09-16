@@ -46,6 +46,15 @@ import {
 } from "@/lib/temperature-log";
 import { getReadingSeries } from "@/lib/queries/readings";
 import { shiftDateStr } from "@/lib/date";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // Late on its own UTC day, so every wall time stated below has already happened (the
 // lib/__db_tests__/bristol-stool-write.test.ts precedent; these profiles are UTC).
@@ -310,13 +319,14 @@ describe("the temperature quick-log core (the notes-hack, retired)", () => {
 
     // The edit sheet re-times the reading; an emptied time clears the statement.
     expect(
-      updateTemperatureCore(profileId, id, 100.6, "2026-03-12", "21:15").kind
+      updateTemperatureCore(gated(profileId), id, 100.6, "2026-03-12", "21:15")
+        .kind
     ).toBe("updated");
     rows = medRows("Body Temperature", "2026-03-12");
     expect(rows[0].occurred_at).toBe("2026-03-12T21:15:00Z");
     expect(rows[0].notes).toBeNull();
     expect(
-      updateTemperatureCore(profileId, id, 100.6, "2026-03-12", "").kind
+      updateTemperatureCore(gated(profileId), id, 100.6, "2026-03-12", "").kind
     ).toBe("updated");
     expect(medRows("Body Temperature", "2026-03-12")[0].occurred_at).toBeNull();
   });
@@ -368,7 +378,7 @@ describe("the temperature cores judge their stated time (#4568)", () => {
 
     // The minute arm: the value edit LANDS, the refused statement is a notice, and
     // `occurred_at` is honest NULL rather than a fact about the future.
-    const kept = updateTemperatureCore(p, id, 100.6, date, "23:50");
+    const kept = updateTemperatureCore(gated(p), id, 100.6, date, "23:50");
     expect(kept).toEqual({
       kind: "updated",
       degF: 100.6,
@@ -383,7 +393,7 @@ describe("the temperature cores judge their stated time (#4568)", () => {
     // The day arm: nothing is written at all, and the reading keeps the value the
     // minute arm just gave it — so this cannot pass by refusing everything.
     expect(
-      updateTemperatureCore(p, id, 101.8, shiftDateStr(date, 1), "08:00")
+      updateTemperatureCore(gated(p), id, 101.8, shiftDateStr(date, 1), "08:00")
     ).toEqual({ kind: "invalid", error: "Enter a valid date." });
     expect(medRows("Body Temperature", date, p)[0]).toMatchObject({
       value_num: 100.6,
@@ -392,7 +402,7 @@ describe("the temperature cores judge their stated time (#4568)", () => {
 
     // And the converse of the minute arm, through the SAME call: a statement the gate
     // ACCEPTS lands on the column and reports nothing.
-    expect(updateTemperatureCore(p, id, 100.6, date, "09:15")).toEqual({
+    expect(updateTemperatureCore(gated(p), id, 100.6, date, "09:15")).toEqual({
       kind: "updated",
       degF: 100.6,
       flag: "high",

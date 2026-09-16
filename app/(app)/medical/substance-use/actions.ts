@@ -125,7 +125,7 @@ function revalidateSubstanceUse() {
 export async function recordSubstanceInstrumentAction(
   formData: FormData
 ): Promise<SubstanceInstrumentActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
 
@@ -186,7 +186,7 @@ export async function recordSubstanceInstrumentAction(
   }
 
   const id = recordInstrumentScore(
-    profile.id,
+    writeProfileId,
     { instrument, date, total, answers, notes },
     "page"
   );
@@ -495,7 +495,7 @@ function statedUseInstant(
 export async function addSubstanceDailyTotalAction(
   formData: StampedFormData
 ): Promise<SubstanceHistoryWriteResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
@@ -504,7 +504,7 @@ export async function addSubstanceDailyTotalAction(
   // said — but the claim is now made by the mounting instead of by this file, which
   // cannot know where its form is rendered.
   const outcome = addSubstanceDailyTotalCore(
-    profile.id,
+    writeProfileId,
     parsed.substance,
     {
       ...parsed,
@@ -703,7 +703,7 @@ export async function clearSubstanceTargetAction(
 export async function updateSubstanceInstrumentAction(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that score.");
@@ -716,7 +716,7 @@ export async function updateSubstanceInstrumentAction(
   if (!Number.isInteger(total) || total < 0 || total > maxTotal)
     return formError(`Enter a total between 0 and ${maxTotal}.`);
 
-  const outcome = updateInstrumentScore(profile.id, id, {
+  const outcome = updateInstrumentScore(writeProfileId, id, {
     date: dateRaw,
     total,
   });
@@ -733,11 +733,11 @@ export async function updateSubstanceInstrumentAction(
 export async function deleteSubstanceInstrumentAction(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return { undoId: null };
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
-  const outcome = deleteInstrumentScore(profile.id, id);
+  const outcome = deleteInstrumentScore(writeProfileId, id);
   if (outcome.kind === "not-found") return { undoId: null };
   revalidateSubstanceUse();
   return { undoId: outcome.undoId };

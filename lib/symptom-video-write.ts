@@ -17,6 +17,23 @@
 // by the episode share/print path (assembleIllnessEpisode) or the export — the
 // exclusion of clips from shares/printables/export is STRUCTURAL, not a flag.
 
+// THE WRITE CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// attachSymptomVideoCore, updateSymptomVideoCaptionCore and deleteSymptomVideoCore is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated holds nothing they take (#5348). The import is type-only — erased at build — so this
+// module still runs auth-blind and app/(app)/medical/episodes/actions.ts still owns the gate.
+// A branded number is still a number, so the gather takes one unchanged.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
 import type { IngestedVideo } from "./video/ingest";
@@ -44,7 +61,7 @@ export type SymptomVideoOutcome =
 // data/uploads/symptom-videos/<profileId>/, and inserts the row. Returns a typed
 // outcome so the caller never unconditionally confirms.
 export function attachSymptomVideoCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   input: { date: string; symptom: string | null; caption: string | null },
   video: IngestedVideo,
   poster: Buffer | null
@@ -113,7 +130,7 @@ export function getSymptomVideosInRange(
 // Update only the user-authored caption. Empty text clears it; the 500-char
 // ceiling matches upload. Profile-scoped by id.
 export function updateSymptomVideoCaptionCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number,
   caption: string | null
 ): boolean {
@@ -129,7 +146,10 @@ export function updateSymptomVideoCaptionCore(
 
 // Delete one symptom clip — the row AND its on-disk files (clip + poster), path-
 // contained (row-op side-state #199). Idempotent; profile-scoped by id.
-export function deleteSymptomVideoCore(profileId: number, id: number): boolean {
+export function deleteSymptomVideoCore(
+  profileId: WriteAuthorizedProfileId,
+  id: number
+): boolean {
   return writeTx(() => {
     const row = db
       .prepare(

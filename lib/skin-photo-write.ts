@@ -17,6 +17,25 @@
 // SCOPE BOUNDARY (#715): the photos are for the USER'S OWN serial comparison and their
 // dermatologist — nothing here assesses a lesion.
 
+// THE TWO TAP CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// attachLesionPhotoCore and deleteLesionPhotoCore is lib/auth's WriteAuthorizedProfileId,
+// which only the gates mint, so an action that never gated holds nothing they take (#5348).
+// The import is type-only — erased at build — so this module still runs auth-blind and
+// app/(app)/records/specialty/skin/actions.ts still owns the gate. A branded number is still
+// a number, so deleteLesionPhotosForLesion takes one unchanged — it has no caller at all at
+// this head, so there is no gated caller holding a minted id to pass, and branding an
+// unreferenced export would be a claim about a call that does not exist.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
 import type { ProcessedPhoto } from "./photo/ingest";
@@ -53,7 +72,7 @@ export interface LesionPhotoRow {
 // thumbnail under data/uploads/lesion-photos/<profileId>/, and inserts the row. Returns
 // a typed outcome so the caller never unconditionally confirms. `caption` is optional.
 export function attachLesionPhotoCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   lesionId: number,
   date: string,
   photo: ProcessedPhoto,
@@ -115,7 +134,10 @@ export function getLesionPhotos(profileId: number): LesionPhotoRow[] {
 // Delete one lesion photo — the row AND its on-disk files (row-op side-state #199):
 // the photo and the thumbnail derived beside it. Path-contained by the core store: a
 // path resolving outside the lesion root is skipped, never followed. Idempotent.
-export function deleteLesionPhotoCore(profileId: number, id: number): boolean {
+export function deleteLesionPhotoCore(
+  profileId: WriteAuthorizedProfileId,
+  id: number
+): boolean {
   return writeTx(() => {
     const row = db
       .prepare(

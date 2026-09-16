@@ -48,15 +48,17 @@ describe("the brief names which .nvmrc its node major came from", () => {
   // THAT tree carries. Read from the working tree, a checkout behind main — or
   // one where a lane is editing .nvmrc — pinned every dispatch to a major the
   // merge target does not use, and nothing downstream re-checked it.
+  // host.mjs's `nvmrcMajorAt` does the reading and the parsing (#5940); these
+  // are the majors it answered, and the order is what survives that move.
   it("prefers origin/main over the checkout it is generated in", () => {
-    expect(nodePin("v22.4.1\n", "24\n")).toEqual({
+    expect(nodePin("22", "24")).toEqual({
       major: "22",
       at: "origin/main",
     });
   });
 
   it("falls back to the working tree and says so", () => {
-    expect(nodePin(null, "24\n")).toMatchObject({
+    expect(nodePin(null, "24")).toMatchObject({
       major: "24",
       at: expect.stringContaining("working tree"),
     });

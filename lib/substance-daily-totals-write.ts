@@ -18,6 +18,28 @@
 // a custom substance "like the curated three" with no branch of its own.
 
 import type { LoggedVia } from "./logged-via";
+// THE HISTORY CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// addSubstanceDailyTotalCore and deleteSubstanceDailyTotalCore is lib/auth's
+// WriteAuthorizedProfileId, which only the gates mint, so an action that never gated holds
+// nothing they take (#5348). The import is type-only — erased at build — so this module still
+// runs auth-blind and app/(app)/medical/substance-use/actions.ts still owns the gate. Neither
+// core spells DML of its own (#4435 is the whole point of this file), so the #5348 census
+// sees only the add through its writeTx and cannot see the delete at all — it is branded on
+// the same argument, that the two history taps are one surface.
+//
+// A branded number is still a number, so logFoodServingCore, logSubstanceUnitCore and
+// captureDelete take one unchanged.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { captureDelete } from "./undo-delete-db";
@@ -117,7 +139,7 @@ function appendUnitTaps(
 }
 
 export function addSubstanceDailyTotalCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   substanceInput: string,
   input: {
     date: string;
@@ -176,7 +198,7 @@ export function addSubstanceDailyTotalCore(
 export const addSubstanceDailyTotalCoreDeclares = SUBSTANCE_USE_WRITE;
 
 export function deleteSubstanceDailyTotalCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   substanceInput: string,
   id: number
 ): SubstanceHistoryMutationOutcome {

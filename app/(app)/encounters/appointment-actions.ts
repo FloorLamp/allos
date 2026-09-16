@@ -144,10 +144,10 @@ async function setStatus(
   formData: FormData,
   status: AppointmentStatus
 ): Promise<AppointmentStatusResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Couldn't find that appointment." };
-  const outcome = setAppointmentStatus(profile.id, id, status);
+  const outcome = setAppointmentStatus(writeProfileId, id, status);
   revalidate();
   switch (outcome.kind) {
     case "done":
@@ -280,7 +280,7 @@ function encounterTypeForKind(kind: string | null): string | null {
 export async function logVisitFromAppointment(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that appointment.");
   // The guard read, the encounter INSERT, and the complete+link CAS share ONE
@@ -322,7 +322,12 @@ export async function logVisitFromAppointment(
         row.notes,
         row.provider_id
       );
-    completeAndLinkEncounterTx(tx, profile.id, id, Number(res.lastInsertRowid));
+    completeAndLinkEncounterTx(
+      tx,
+      writeProfileId,
+      id,
+      Number(res.lastInsertRowid)
+    );
     return { kind: "done" as const };
   });
 

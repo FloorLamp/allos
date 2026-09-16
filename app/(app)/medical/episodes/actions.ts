@@ -2,6 +2,7 @@
 
 import { revalidateRoute } from "@/lib/revalidate";
 import {
+  type WriteAuthorizedProfileId,
   requireWriteAccess,
   requireProfileWriteAccess,
   type CurrentSession,
@@ -105,12 +106,11 @@ export async function updateEpisodeTemperatureAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const episodeId = parseEpisodeId(formData);
   const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
@@ -388,12 +388,11 @@ export async function promoteEpisodeToConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   const row = id ? getEpisodeRow(profileId, id) : null;
@@ -412,12 +411,11 @@ export async function unpromoteEpisodeConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   const row = id ? getEpisodeRow(profileId, id) : null;
@@ -443,12 +441,11 @@ export async function editEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   const row = id ? getEpisodeRow(profileId, id) : null;
@@ -487,7 +484,7 @@ export type EpisodeCreateResult =
 export async function createEpisodeAction(
   formData: FormData
 ): Promise<EpisodeCreateResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const situation = String(formData.get("situation") ?? "").trim() || "Illness";
   const startDate = parseDateOrNull(formData.get("startDate"));
   const endDate = parseDateOrNull(formData.get("endDate"));
@@ -495,7 +492,7 @@ export async function createEpisodeAction(
     return { ok: false, error: "Enter both a start and an end date." };
   if (endDate < startDate)
     return { ok: false, error: "The end date can't be before the start date." };
-  const newId = createEpisodeRow(profile.id, situation, startDate, endDate);
+  const newId = createEpisodeRow(writeProfileId, situation, startDate, endDate);
   revalidateRoute("/medical/episodes");
   return { ok: true, id: newId };
 }
@@ -505,12 +502,12 @@ export async function createEpisodeAction(
 export async function mergeEpisodesAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const keepId = Number(formData.get("keepId"));
   const dropId = Number(formData.get("dropId"));
   if (!Number.isInteger(keepId) || !Number.isInteger(dropId))
     return { ok: false, error: "Pick two episodes to merge." };
-  const merged = mergeEpisodeRows(profile.id, keepId, dropId);
+  const merged = mergeEpisodeRows(writeProfileId, keepId, dropId);
   if (merged == null)
     return {
       ok: false,
@@ -532,12 +529,11 @@ export async function endEpisodeAction(
   // profile is used (requireWriteAccess). endEpisodeCore is profile-scoped by episode id,
   // so a forged id from another profile is dropped even past the gate.
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
@@ -560,12 +556,11 @@ export async function reopenEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
@@ -606,12 +601,11 @@ export async function endStaleEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   const lastActiveDay = parseDateOrNull(formData.get("lastActiveDay"));
@@ -647,12 +641,11 @@ export async function endEpisodeWithMedsAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
@@ -694,12 +687,11 @@ export async function uploadSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const file = formData.get("photo");
   if (!(file instanceof File) || file.size === 0)
@@ -735,12 +727,11 @@ export async function updateSymptomPhotoCaptionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = Number(formData.get("photoId"));
   if (!Number.isInteger(id) || id <= 0)
@@ -756,12 +747,11 @@ export async function deleteSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = Number(formData.get("photoId"));
   if (!Number.isInteger(id) || id <= 0)
@@ -781,12 +771,11 @@ export async function uploadSymptomVideoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const file = formData.get("video");
   if (!(file instanceof File) || file.size === 0)
@@ -825,12 +814,11 @@ export async function updateSymptomVideoCaptionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
@@ -848,12 +836,11 @@ export async function deleteSymptomVideoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const target = Number(formData.get("profileId"));
-  let profileId: number;
+  let profileId: WriteAuthorizedProfileId;
   if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
+    profileId = (await requireProfileWriteAccess(target)).writeProfileId;
   } else {
-    profileId = (await requireWriteAccess()).profile.id;
+    profileId = (await requireWriteAccess()).writeProfileId;
   }
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
