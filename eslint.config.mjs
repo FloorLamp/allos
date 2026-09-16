@@ -36,32 +36,33 @@ const WRITE_BRANDS = ["WriteAuthorizedProfileId"];
 // the `:not(TSTypeLiteral …)` clause is the row-shape exemption, and the selector
 // after it is where that exemption STOPS (#5914).
 //
-// WHAT THIS RULE REFUSES IS CAST SHAPES, NOT EVERY ROUTE TO A BRAND. The difference is
-// load-bearing enough that callers state it rather than saying "a cast is refused",
-// and the residual has THREE separate causes, not one. lib/__tests__/temporal-types.test.ts
-// pins every shape below against the real rule, so the list and the rule cannot drift:
+// WHAT THIS RULE REFUSES IS A CLOSED LIST OF SYNTACTIC POSITIONS — the selectors
+// below, each described where it is built, and nothing else. A brand's NAME is
+// reported when and only when it stands in one of them. That is the whole guarantee,
+// and it is about where the NAME may appear, never about whether a value of brand
+// type can be obtained.
 //
-//   1. A NAME TO RESOLVE. `({ d } as Row).d`, `s as Row["d"]`, `interface Ds extends
-//      Array<LocalDay>`. The brand is never spelled in the cast, so nothing syntactic
-//      can see it, and the row types themselves are legitimate.
-//   2. A VALUE TO FOLLOW. The brand IS spelled in the cast, but it is reached through
-//      something the cast produced rather than off the cast itself: an element of a
-//      cast array, an awaited cast promise, a cast function's return, a spread copy,
-//      or a row bound to a `const` first. Following those needs types, not syntax.
-//   3. A DECISION. `pick<LocalDay>(s)` — a brand named as a CALL's type argument — is
-//      matchable (the same position IS refused on a type alias below). It is left open
-//      because that position is also how honest code parameterises over the brand
-//      (`useState<LocalDay | null>(null)`, `new Map<LocalDay, Row>()`) and the rule
-//      cannot tell those from a launderer. An alias has no such second use.
+// WHAT ESCAPES IS NOT A LIST. A brand-minting cast escapes exactly when a branded
+// object type literal stands between the cast and the brand while not being the
+// cast's own type node, or when the value is taken one node further out than the read
+// positions matched here; shapes that are not casts at all escape for their own
+// reasons. Neither condition bounds how many shapes satisfy it. Witnesses, not a
+// partition — `Readonly<>`, `& {}`, an indexed access, or a `type Keep<T> = T & {}`
+// a contributor adds today; one more `!`, a `satisfies`, a ternary; `as any` into a
+// branded annotation. No family of them is closed, and an example list decays the
+// moment it leaves the file that can execute it (#5851).
+//
+// So: a ratchet over SPELLINGS, never a barrier (#5892, #5914).
 const brandCastSelectors = (brands) => {
   const cast = ":matches(TSAsExpression, TSTypeAssertion)";
   const names = `/^(?:${brands.join("|")})$/`;
   // A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
   // `import("…").LocalDay`.
   const ref = `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
-  // The ways a cast is read STRAIGHT back out, each landing on the cast node itself:
-  // `(c).d`, `(c)!.d` and `const { d } = c`. `satisfies` joins the two cast operators
-  // here only — it does not widen what counts as a cast anywhere else in this builder.
+  // Three positions where a cast is read STRAIGHT back out, each landing on the cast
+  // node itself: `(c).d`, `(c)!.d` and `const { d } = c`. `satisfies` joins the two
+  // cast operators here only — it does not widen what a cast is elsewhere in this
+  // builder.
   const annotated =
     ":matches(TSAsExpression, TSTypeAssertion, TSSatisfiesExpression)";
   const readThrough = [
@@ -80,14 +81,16 @@ const brandCastSelectors = (brands) => {
     // what the exemption is for, and that binds the row first; a value taken off the
     // cast itself mints the brand from the cast alone.
     //
-    // THE CAST'S TYPE MUST BE THE ROW ITSELF, not a container of rows: casting a query
-    // result to `{ d: LocalDay }[]` and mapping it reaches the brand only through a
-    // BOUND row inside the callback, which is the protected idiom, and `.length` is not
-    // a member of the row at all. Both reddened while this matched a brand anywhere
-    // under the cast's type, so it matches the row literal directly — as the cast's
-    // whole type or as a member of its union — and containers stay exempt.
+    // MATCHED ON THE TYPE NODE, not on what the type MEANS: the cast's
+    // `typeAnnotation` must BE the row literal, or a direct member of a top-level
+    // union of them — `{ d: LocalDay } & {}` is the identical type and is allowed,
+    // because its node is an intersection. Drawn there for the container: casting a
+    // query result to `{ d: LocalDay }[]` and mapping it reaches the brand only
+    // through a BOUND row inside the callback, which is the protected idiom, and
+    // `.length` is not a member of the row at all. Both reddened while this matched
+    // a brand anywhere under the cast's type.
     //
-    // Over-approximates in one direction, by design: a selector cannot match the read
+    // Over-approximates, by design: a selector cannot match the read
     // NAME against the branded member's name, so reading a non-branded field off such a
     // cast (`(row as { d: LocalDay; n: number }).n`) is refused too. Binding the row
     // first, which is how a row is ordinarily used, stays allowed.
@@ -192,8 +195,9 @@ const RPE_BRAND_CAST = {
 // #5348 — the write-authorization seam, the RPE seam's twin one level up.
 // `WriteAuthorizedProfileId` is minted by `requireWriteAccess`, `requireProfileWriteAccess`
 // and `requireAdmin` in lib/auth.ts and by nothing else — the brand symbol is not
-// exported, so a CAST is the only way production code can hand a write core an id no
-// gate ever checked, and tsc cannot refuse one. A test tier may cast: a db or action
+// exported, so no other file can spell the type. This rule refuses the cast spellings
+// above; it does not make the brand unforgeable, and the residual is not a list anyone
+// has closed (#5892, #5914, #5939). A test tier may cast: a db or action
 // fixture has no request to gate, and exporting a minter for it would put the mint in
 // two places, which is what the seam exists to prevent.
 const WRITE_BRAND_CAST = WRITE_BRAND_CAST_SELECTORS.map((selector) => ({

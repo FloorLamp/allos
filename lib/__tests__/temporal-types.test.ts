@@ -27,11 +27,9 @@ import type {
 // in eslint.config.mjs refuses every spelling of `x as LocalDay` the 2026-09-05
 // falsifying pass found while leaving a DB row shape alone.
 //
-// The ban is a ratchet over SHAPES, so what it cannot see is pinned here beside what
-// it refuses (`namedLimits` below). That list is the honest reading of the rule, and
-// callers cite it rather than claiming "a cast is refused" (#5914). It has THREE
-// causes, and the tables below keep them apart because collapsing them into one is how
-// the list went stale before: a NAME to resolve, a VALUE to follow, and a DECISION.
+// The ban is a ratchet over SHAPES, so what it does not refuse is pinned here beside
+// what it does (`namedLimits` below) as WITNESSES rather than a census: it does not
+// make the brand unforgeable (#5892, #5914).
 //
 // The type-level half uses `@ts-expect-error`: an assignment the vocabulary must
 // refuse is written out, and `npm run typecheck` fails if it ever starts compiling.
@@ -189,8 +187,7 @@ describe("temporal brands: the cast ban", () => {
   // #5914 — the row-shape exemption ends where the cast is read STRAIGHT back out.
   // `({ d: s } as { d: LocalDay }).d` type-checked and linted clean before this, which
   // made a brand out of a plain string on a production path with nothing to say so.
-  // The cast's type has to BE the row here, which is what keeps the idiom below out of
-  // it; each of these takes the value off the cast node itself.
+  // Each takes the value off the cast node itself; eslint.config.mjs states the boundary.
   const refusedReadThrough: Record<string, string> = {
     propertyOffTheCast: `({ d: s } as { d: LocalDay }).d`,
     methodOffTheCast: `(s as unknown as { toString(): LocalDay }).toString()`,
@@ -239,11 +236,10 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
-  // What the read-through selector refuses WITHOUT a brand being minted. ONE cause: a
-  // selector cannot match the read NAME against the branded member's name, so any read
-  // off a cast whose type is the branded row literal is refused. Measured rather than
-  // estimated — across a 33-shape matrix this is the whole of it, two shapes (four
-  // spellings, counting the destructured and nested-literal forms of each).
+  // What the read-through selector refuses WITHOUT a brand being minted: a selector
+  // cannot match the read NAME against the branded member's name, so a read off a cast
+  // whose type IS the branded row literal is refused either way. Pinned, not left to
+  // be discovered.
   const overApproximated: Record<string, string> = {
     otherFieldOffTheCast: `(get() as { d: LocalDay; n: number }).n`,
     fieldWhoseTypeMerelyContainsTheBrand: `(get() as { row: { d: LocalDay } }).row`,
@@ -348,30 +344,19 @@ describe("temporal brands: the cast ban", () => {
   //
   // MOST OF THEM ARE CASTS (#5914), which is why nothing may claim that the rule
   // refuses a cast. Each was executed past `eslint` AND `tsc` against the write brand,
-  // so every entry here is a working forge and not a theoretical one. They split by
-  // WHY the selector misses them, and the reason matters because it is what says
-  // whether the entry could ever move:
-  //
-  //   A NAME TO RESOLVE — the brand is never spelled in the cast. Unreachable
-  //   syntactically, and the row types themselves are legitimate.
-  //   A VALUE TO FOLLOW — the brand IS spelled in the cast, but it is reached through
-  //   something the cast produced. Needs types, not syntax.
-  //   A DECISION — matchable today, left open on purpose; the comment in
-  //   eslint.config.mjs gives the reason.
+  // so every entry is a working forge rather than a theoretical one. They are
+  // WITNESSES, not a taxonomy and not a census — the set they are drawn from is
+  // infinite, and one line of ordinary user code extends it (eslint.config.mjs).
   const namedLimits: Record<string, string> = {
-    // a name to resolve
     namedRowReadThrough: `type Row = { d: LocalDay }; export const v = ({ d: s } as Row).d`,
     indexedAccessIntoRow: `type Row = { d: LocalDay }; export const v = s as Row["d"]`,
     interfaceHeritage: `interface Ds extends Array<LocalDay> {} export const v = ([s] as Ds)[0]`,
-    // a value to follow
     elementOfCastArray: `export const v = (get() as { d: LocalDay }[])[0].d`,
     awaitedCastPromise: `export const v = async () => (await (get() as unknown as Promise<{ d: LocalDay }>)).d`,
     castFunctionReturn: `export const v = (get as unknown as () => { d: LocalDay })().d`,
     spreadCopyOfCast: `export const v = { ...(get() as { d: LocalDay }) }.d`,
     boundRowThenRead: `const row = get() as { d: LocalDay }; export const v = row.d`,
-    // a decision
     genericLaunderer: `declare function id<T>(x: unknown): T; export const v = id<LocalDay>(s)`,
-    // neither — these launder through what a name resolves to, as for any other type
     lyingPredicate: `function isDay(x: string): x is LocalDay { return true }`,
     asAny: `declare function f(d: LocalDay): void; f(s as any)`,
   };
