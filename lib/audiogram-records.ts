@@ -1,28 +1,19 @@
 // Audiogram WRITE CORE + reads (issue #1600). profileId-first, and the WRITE cores take the
 // id a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which only
-// the three gates mint, so an action that never gated holds nothing these take — `tsc`
-// refuses a call here that passes a plain `number` (#5348). The DELIBERATE forgery, a cast,
-// is refused in EVERY production module: eslint.config.mjs's WRITE_BRAND_CAST (#5852)
-// matches the brand by name, through a type alias or a renaming re-export, and since #5864
-// it reaches lib/revalidate.ts and the repo-root entrypoints too — which is what closed
-// #5856. A coverage test in lib/__tests__ asserts that from ESLint's own resolved config
-// rather than from a list, so a new root file or a new `ignores` entry reds the scan on the
-// commit that adds it. lib/auth.ts, which mints the brand, is the one declared owner,
-// exempted by the config's own `without()` block rather than a disable comment; and a TEST
-// TIER MAY STILL CAST, the same allowance RPE_BRAND_CAST makes.
+// the gates mint, so an action that never gated holds nothing these take (#5348). The import
+// is type-only — erased at build, so this module still pulls in no lib/auth runtime and the
+// calling Server Action is still the only auth boundary. The reads below are unchanged: a
+// branded number is still a number. The sibling of lib/instrument-records.ts, which does the
+// same job for screening-instrument scores.
 //
-// THE RESIDUAL IS NOT A CAST, so no lint coverage closes it: `tsc` alone does not refuse an
-// unbranded call written in METHOD position (an interface member declared `f(id: number)`
-// accepts a branded-parameter function — method parameters stay bivariant even under
-// `strict`, while the property spelling `f: (id: number) => …` is refused at TS2322), nor
-// one whose argument is an implicit `any` from JSON.parse. So "calls a branded core" is
-// EVIDENCE of a gate, not PROOF of one — recorded at
-// lib/__tests__/actions-write-access.test.ts, whose step-aside formally rests on it.
-//
-// The import is type-only — erased at build, so this module still pulls in no lib/auth
-// runtime and the calling Server Action is still the only auth boundary. The reads below are
-// unchanged: a branded number is still a number. The sibling of lib/instrument-records.ts,
-// which does the same job for screening-instrument scores.
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
 //
 // STORE: `medical_records`, category `vitals`, one row per (ear, frequency) under the
 // canonical analyte names lib/canonical-result-definitions.json already curates for the
