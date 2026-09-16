@@ -18,6 +18,7 @@ import {
   deleteProtocol,
 } from "@/app/(app)/protocols/actions";
 import { getProtocols, getFrequencyTargets } from "@/lib/queries";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { createEquipment, deleteEquipment } from "@/lib/equipment";
 import { getActiveSituations, setStoredAge } from "@/lib/settings";
 import {
@@ -33,6 +34,14 @@ vi.mock("next/navigation", () => ({
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
+
+// createEquipment takes the id a write gate minted (#5348). The mocked gate hands the
+// actions one, but this fixture seeds gear directly, so it casts — once, here, rather
+// than at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules
+// and a test tier may cast.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // Protocols are adult-only. Most tests exercise the ordinary allowed path, so
 // make that demographic explicit and reserve unknown/minor profiles for the gate
@@ -502,7 +511,7 @@ describe("deleteProtocol", () => {
 describe("recovery gear + practice adherence (#344)", () => {
   it("stores an equipment reference (and only a real, same-profile row)", async () => {
     const { profile } = seedActor();
-    const sauna = createEquipment(profile.id, {
+    const sauna = createEquipment(gated(profile.id), {
       name: "Home Sauna",
       weight_kg: null,
       category: "Sauna",
@@ -643,7 +652,7 @@ describe("recovery gear + practice adherence (#344)", () => {
 
   it("deleteEquipment nulls a protocol's gear reference (row-ops null-out)", async () => {
     const { profile } = seedActor();
-    const sauna = createEquipment(profile.id, {
+    const sauna = createEquipment(gated(profile.id), {
       name: "Sauna to sell",
       weight_kg: null,
       category: "Sauna",
