@@ -49,7 +49,7 @@
           "pr": 5915,
           "kind": "fix",
           "category": "Medical",
-          "title": "Stool entries are events of their own on the day view",
+          "title": "A stool logged without a time reads “logged” beside its filing clock",
           "issues": [5872]
         },
         {
