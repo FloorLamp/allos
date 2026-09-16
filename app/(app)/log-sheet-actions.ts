@@ -10,6 +10,8 @@ import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlot, collectDueDosesNow } from "@/lib/queries";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
+import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
+import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import { usualRoutineFoodMembers } from "@/lib/usual-routine";
 import type { UsualRoutineControlProps } from "@/components/dashboard/UsualRoutineControl";
 
@@ -65,6 +67,18 @@ export interface LogSheetContext {
    * empty list means no chip; item ids let the label name each item once (#3914).
    */
   dueDoses: { items: { itemId: number; name: string }[] };
+  /**
+   * The profile's two food-window splits (#5902) — NOT an offer, and nothing here
+   * renders them. They ride this gather because the sheet needs to know which
+   * window it opened in to notice, on resume, that the clock has left it, and this
+   * is the read that already runs on every open. The shell holds no boundaries of
+   * its own, so the alternative was a second server read on every layout render.
+   *
+   * The same `profileFoodSlotBoundaries` every food reader and writer derives its
+   * window from, so the sheet's idea of "still Morning" cannot disagree with the
+   * one a tap would be filed under.
+   */
+  slotBoundaries: FoodSlotBoundaries;
 }
 
 export async function loadLogSheetContext(): Promise<LogSheetContext> {
@@ -109,6 +123,7 @@ export async function loadLogSheetContext(): Promise<LogSheetContext> {
 
   return {
     routine,
+    slotBoundaries: profileFoodSlotBoundaries(profile.id),
     dueDoses: {
       // #2853's curated CONTROL labels; full titles remain in the overlay rows.
       items: dueDoses.map((dose) => ({

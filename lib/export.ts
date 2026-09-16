@@ -1510,6 +1510,21 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Declared food sensitivities (#5865): "after <trigger>, I get <effect>", written by
+    // the person and never proposed by the app. User-entered health data, so it is in the
+    // portable export — and it is the one part of this model a new instance cannot
+    // recompute from the logs, since the declaration is the thing that made the logs
+    // worth comparing. id-keyed + owned, so deletable like the other authored datasets.
+    key: "food_sensitivities",
+    label: "Food sensitivities",
+    table: "food_sensitivities",
+    columns: ["trigger_kind", "trigger_slug", "effect", "note", "status"],
+    select: `SELECT id, trigger_kind, trigger_slug, effect, note, status
+       FROM food_sensitivities WHERE profile_id = ?
+       ORDER BY trigger_kind, trigger_slug, effect`,
+    countSql: `SELECT COUNT(*) AS n FROM food_sensitivities WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
     // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
     // User-entered health data, so it's in the portable export.
@@ -1557,6 +1572,20 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, substance, recorded_at, occurred_at, time_source, notes
        FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // The stool ledger (#5872): one row per movement, with the Bristol type NULLABLE
+    // because a movement nobody saw the form of is still a movement. User-entered
+    // health data, id-keyed + owned, deletable like the other logged datasets. The
+    // type travels as the stored number — the scale's labels are the app's rendering
+    // of it, not a second fact.
+    key: "stool_events",
+    label: "Stool log",
+    table: "stool_events",
+    columns: ["date", "type", "recorded_at", "occurred_at", "time_source"],
+    select: `SELECT id, date, type, recorded_at, occurred_at, time_source
+       FROM stool_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
@@ -1827,6 +1856,13 @@ export const DELETE_POLICY = {
   frequency_targets: { revalidate: ["/training", "/"] },
   food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
+  // A declared sensitivity (#5865) is a plain id + profile_id delete: nothing FKs into
+  // the table, no counter sits beside it, and the marks on past meals are facts about
+  // THOSE meals rather than about this row — so removing rows here means exactly "I no
+  // longer say this", with nothing left dangling. Not an undo root (no UNDO_KINDS
+  // entry), so DATASET_UNDO_KIND needs no decision, and the declaration is one line to
+  // write again.
+  food_sensitivities: { revalidate: ["/nutrition", "/"] },
   // `substance_daily_totals` and `substance_log_events` HAVE NO ENTRY, which is what
   // makes the browse-only decision above enforceable rather than remembered: the
   // manage action resolves a dataset through this map, so a key that is absent here is
@@ -1853,6 +1889,12 @@ export const DELETE_POLICY = {
   symptom_logs: { revalidate: ["/", "/history"] },
   cycles: { revalidate: ["/medical/cycles", "/history", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
+  // The stool ledger (#5872). The PLAINEST deletable shape in this map, and it is
+  // plain for a reason worth stating beside the substance pair above: there is no
+  // counter under it. A stool ledger's count IS its rows, so a plain id + profile_id
+  // delete moves the whole fact — there is no second half to leave contradicting the
+  // first, which is the exact argument that makes `substance_log_events` browse-only.
+  stool_events: { revalidate: ["/history", "/trends", "/"] },
   practice_logs: { revalidate: ["/history", "/longevity", "/"] },
 } satisfies Record<string, DatasetDeletePolicy>;
 
