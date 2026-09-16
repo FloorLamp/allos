@@ -690,12 +690,15 @@ export async function handleSymptomSeverity(
   return profileId;
 }
 
-// `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
-// body carries a "(#temp:<profileId>)" marker per profile, which is what attributes an
-// explicit Reply; since #5650 the send also records a POINTER, which is what lets a bare
-// number reach the prompt and what the acknowledgement edits. A multi-profile chat gets
-// one named prompt each — and therefore two open prompts, which is why a bare number in
-// one is refused rather than guessed.
+// `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. Each send
+// records a POINTER under its own subject, and since #5650's pointer-only ruling that
+// pointer is the WHOLE of the prompt's identity — it is what attributes an explicit
+// Reply, what lets a bare number reach the prompt, and what the acknowledgement edits.
+// The body carried a "(#temp:<profileId>)" marker for the attribution until that ruling
+// retired it: the same body renders a profile NAME a person types in-app, so a reader
+// that trusted the marker had to trust the name beside it. A multi-profile chat gets one
+// named prompt each — and therefore two open prompts, which is why a bare number in one
+// is refused rather than guessed.
 export async function handleTempCommand(
   message: TelegramMessage
 ): Promise<void> {
