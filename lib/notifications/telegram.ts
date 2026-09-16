@@ -34,6 +34,7 @@ import { today, writeTx } from "../db";
 import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
+import { awaitsTypedReply } from "./typed-reply";
 import {
   PartialDeliveryError,
   type DispatchOptions,
@@ -92,6 +93,7 @@ export {
   getUpdates,
   messageKeyboard,
   renderMessageHtml,
+  setMessageReaction,
   setMyCommands,
   setWebhook,
   // The per-call transport cap, re-exported because a caller holding a request open
@@ -271,7 +273,48 @@ function recordPointer(
   // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
   // is worth storing. Food also compares its tally independently of its keyboard.
   const prose = proseReconcilerFor(msg.kind);
-  if (keyboard.length === 0 && !prose) return;
+  // A THIRD THING THAT NEEDS A HANDLE AFTER THE SEND (#5650): a prompt awaiting a TYPED
+  // reply. The first two — a keyboard whose tap would now be refused (#1779) and a
+  // sentence an in-app write has since answered (#1913 item 4) — are both about a
+  // message going stale on its own. This one is about answering it: the typed-reply
+  // contract acknowledges a reply by EDITING the prompt in place, and resolves a bare
+  // number to the sender's single open prompt, and both need to be able to name the
+  // prompt message afterwards. `/temp` and `/weight` carried neither a keyboard nor a
+  // prose claim, so nothing could find or edit them once they were sent.
+  if (keyboard.length === 0 && !prose && !awaitsTypedReply(msg.kind)) return;
+  // WHAT THIS REFUSAL ENFORCES, EXACTLY (#5650): a pointer whose kind awaits a typed
+  // reply is addressed to ONE PROFILE. That is the whole of it. It does NOT enforce that
+  // such a pointer belongs to a prompt.
+  //
+  // Why it is here. `typedPromptAt` resolves an explicit Reply for `temp` and `weight`
+  // from the kind on this row, because those families hold no server-side operation state
+  // — there is no offer row to key on the way refill's receipt is keyed on its own
+  // `promptId`. A chat-wide send is the shape that breaks the addressing: `resolveSubject`
+  // gives a CHAT_WIDE message the chat's LOWEST profile rather than nobody, so a notice
+  // that merely inherited its command's kind — the ordinary convention in
+  // `telegram-quick-log.ts`, which sibling commands follow — would record a `temp` pointer
+  // under a real profile and become answerable. Refusing the row is what stops that.
+  //
+  // WHAT IT DOES NOT COVER, named because the gap is inside the contract itself. A
+  // PER-PROFILE send carrying one of these kinds still records an answerable pointer, and
+  // two such sends live in the typed-reply arm: the acknowledgement fallback and the
+  // refusal message. Both are safe today because they carry no `kind` at all — the
+  // fallback because its parameter is narrowed to `Pick<NotificationMessage, "title" |
+  // "body">`, which is a TYPE and a spec assertion rather than anything enforced here.
+  // Adding a kind at either site, or at any other per-profile send, would make a
+  // non-prompt answerable and this guard would not see it. The structural version — a
+  // rule over which send sites may carry these kinds — is its own piece of work.
+  //
+  // Held by `telegram-quicklog.test.ts`'s "a chat-wide send never becomes an answerable
+  // prompt", which goes red if this refusal is removed.
+  if (chatWide && awaitsTypedReply(msg.kind)) {
+    log.info("pointer refused: chat-wide send carrying a typed-reply kind", {
+      profile: profileId,
+      chat: String(chatId),
+      kind: msg.kind,
+    });
+    return;
+  }
   recordMessagePointer({
     profileId,
     chatId,
@@ -749,6 +792,66 @@ export async function rebuildMessage(
         : undefined
     );
   });
+}
+
+// ---- The acknowledgement edit, made failure-safe (#5650) ----
+//
+// Acknowledge a WRITE THAT HAS ALREADY HAPPENED by editing the message that asked for
+// it — and, when that edit cannot land, by SAYING the same result in a message instead.
+//
+// THE FAILURE THIS EXISTS FOR. #5650 ruling 1 turned every typed reply's answer from a
+// `sendMessage` into an edit of the prompt. A send cannot fail for being old; an edit
+// can, and permanently — `PERMANENT_DESCRIPTIONS` (./telegram-error) lists
+// `message can't be edited` for Telegram's ~48h edit horizon, while
+// `MESSAGE_POINTER_RETENTION_DAYS` and `OFFER_RETENTION_DAYS` are both three days, so a
+// prompt is deliberately answerable for longer than it is editable. Awaited un-wrapped,
+// the throw escaped the whole acknowledgement: the reading was written and the chat was
+// told NOTHING, no reaction and no message — the "indistinguishable from the bot being
+// broken" state ruling 4 exists to remove.
+//
+// A PREFERENCE IS NOT A GUARANTEE. "Never a new message" is what ruling 1 buys the
+// reader on the path that works; a silent write is not an acceptable price for keeping
+// it on the path that does not. The fallback is ONE message stating the same result the
+// edit would have — the answer main always sent, spoken only when the edit is refused.
+//
+// THE CLASSIFICATION IS THE ONE EVERY OTHER EDIT-OF-A-POSSIBLY-OLD-MESSAGE SITE READS
+// (#1885, `rotatePointer` above): permanent (deleted, too old, chat lost) against
+// transient (rate limit, 5xx, network). BOTH fall back, and that is deliberate — an
+// acknowledgement has no later retry (nobody re-runs a settled reply) and a reader who
+// was told nothing cannot tell the two apart. What the class buys is the log line
+// saying which happened, in the vocabulary the sweep and the rotation already use.
+//
+// THE FALLBACK IS A SENTENCE, NOT A SECOND PROMPT: the message's OWN title and body,
+// and nothing else of it (`Pick`, so the words cannot drift from the edit's). Carrying the
+// prompt's own `kind` would record a new pointer (`recordPointer`'s `awaitsTypedReply`
+// arm above) and leave a fresh open prompt sitting in the chat — the same double-log
+// this path exists to close, one message further along.
+export async function acknowledgeInPlace(
+  label: string,
+  profileId: number,
+  chatId: number | string,
+  edit: () => Promise<void>,
+  fallback: Pick<NotificationMessage, "title" | "body"> | null
+): Promise<void> {
+  try {
+    await edit();
+  } catch (e) {
+    const permanent = classifyTelegramFailure(e) === "permanent";
+    log.info(
+      permanent
+        ? `${label}: prompt can no longer be edited, stating the result instead`
+        : `${label}: prompt edit did not land (transient), stating the result instead`,
+      {
+        profile: profileId,
+        chat: String(chatId),
+        err: e instanceof Error ? e.message : String(e),
+      }
+    );
+    // Null: this outcome already has a sentence the CALLER sends (every refill refusal
+    // refreshes the prompt too), so a fallback here would put two messages in the chat
+    // for one reply — the noise ruling 1 is about.
+    if (fallback) await sendTelegramMessage(chatId, fallback, profileId);
+  }
 }
 
 // Replace a consumed message's text with a closing line and drop all buttons. The

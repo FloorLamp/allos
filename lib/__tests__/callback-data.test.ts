@@ -49,8 +49,6 @@ import {
   parseRefillCallback,
   parseOrderedRefillCallback,
   orderedRefillToken,
-  parseReceivedAmount,
-  parseRefillReplyMarker,
 } from "../notifications/refill-tokens";
 import { parseEscalationCallback } from "../notifications/escalation-tokens";
 
@@ -862,18 +860,5 @@ describe("which dose answers must be dismissed rather than glanced at", () => {
   });
 });
 
-describe("Received reply input", () => {
-  it.each(["", "0", "-1", "Infinity", "2 bottles", "1,000", "2e3", "1 2"])(
-    "refuses the whole ambiguous or nonpositive input %s",
-    (text) => {
-      expect(parseReceivedAmount(text)).toBeNull();
-    }
-  );
-  it("accepts an explicit positive amount and preserves the named operation", () => {
-    expect(parseReceivedAmount(" 30.5 ")).toBe(30.5);
-    expect(parseRefillReplyMarker("How many arrived? (refill:7:12)")).toEqual({
-      profileId: 7,
-      offerId: 12,
-    });
-  });
-});
+// The receipt's reply marker and its number grammar are the typed-reply contract's since
+// #5650, covered with the other two families in ./telegram-quicklog-parse.test.ts.
