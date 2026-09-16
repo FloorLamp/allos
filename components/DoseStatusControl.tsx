@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/nutrition/intake-actions";
 import { type TimeStatement } from "@/components/TimeStatement";
 import { LabeledVerbChip } from "@/components/OfferRow";
+import { BusyMark } from "@/components/Button";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -168,6 +169,14 @@ export default function DoseStatusControl({
     pipeline.pending(`${state}->clear`);
   const isTaken = state === "taken";
   const isSkipped = state === "skipped";
+  // WHICH ARM IS IN FLIGHT, not merely whether one is (#5900). `busy` above
+  // disables the whole control, which is right — a dose has one status and two
+  // arms that argue about it — but the spinner has to land on the arm the finger
+  // actually left, so each reads the exact transition key its own tap posts.
+  const takeBusy = pipeline.pending(`${state}->${isTaken ? "clear" : "taken"}`);
+  const skipBusy = pipeline.pending(
+    `${state}->${isSkipped ? "clear" : "skipped"}`
+  );
 
   // THE CONFIRM SETTLE (#2654, motion 1). A dose check-off is the app's most
   // tap-shaped confirm, and the control BECOMING its done state is the receipt —
@@ -400,6 +409,7 @@ export default function DoseStatusControl({
           tone="brand"
           onAct={() => apply("taken")}
           disabled={busy}
+          busy={takeBusy}
           // The pill's two spans, said as one sentence, plus WHICH dose when the row
           // does not name it. Spelled rather than left to the default so the name a
           // reader hears is the label they see, in the order they see it.
@@ -411,16 +421,24 @@ export default function DoseStatusControl({
           type="button"
           onClick={() => apply(isTaken ? "clear" : "taken")}
           disabled={busy}
+          aria-busy={takeBusy || undefined}
           data-settling={settling ? "true" : "false"}
           className={`${takeClass}${settling ? " motion-settle" : ""}`}
           aria-pressed={isTaken}
           aria-label={takeName}
           data-testid="dose-take"
         >
-          <IconCheck
-            className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
-            stroke={2.5}
-          />
+          {/* The mark takes the GLYPH'S seat rather than sitting beside it: the
+              circle variant is a fixed-size disc with no room to grow, and the
+              pill's label must not move under the finger (#5900). */}
+          {takeBusy ? (
+            <BusyMark />
+          ) : (
+            <IconCheck
+              className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
+              stroke={2.5}
+            />
+          )}
           {label ? (
             <span className={compact ? "sr-only" : undefined}>{label}</span>
           ) : null}
@@ -430,15 +448,20 @@ export default function DoseStatusControl({
         type="button"
         onClick={() => apply(isSkipped ? "clear" : "skipped")}
         disabled={busy}
+        aria-busy={skipBusy || undefined}
         className={skipClass}
         aria-pressed={isSkipped}
         aria-label={named(isSkipped ? "Undo skip" : "Skip this dose")}
         data-testid="dose-skip"
       >
-        <IconPlayerTrackNext
-          className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
-          stroke={2.5}
-        />
+        {skipBusy ? (
+          <BusyMark />
+        ) : (
+          <IconPlayerTrackNext
+            className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
+            stroke={2.5}
+          />
+        )}
         {variant === "pill" ? (
           <span className={compact ? "sr-only" : undefined}>
             {isSkipped ? "Skipped" : "Skip"}
