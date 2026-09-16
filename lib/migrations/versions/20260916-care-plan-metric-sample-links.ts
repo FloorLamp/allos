@@ -45,6 +45,11 @@ import type { Migration } from "../runner";
 // source id, which is the state `domainFollowUpItems` already skips (it requires a
 // non-null source id) — the item stays in the care plan as the plain item it now is.
 //
+// IT IS ORDERED BEFORE `20260911-breathing-rate-sleep-samples` in versions/index.ts,
+// and that is load-bearing rather than cosmetic: the adoption that migration runs
+// carries a follow-up reference INTO these columns, so they have to exist by then. The
+// array position is the contract, not the date in the file name.
+//
 // REPLAY SAFETY: each ADD COLUMN is guarded behind a column-presence check, the index
 // is IF NOT EXISTS, and the migration reads only the catalog. SQLite permits a
 // REFERENCES clause on a brand-new nullable column (default NULL) — no table rebuild.

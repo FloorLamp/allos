@@ -45,6 +45,7 @@ import { ALL_ROWS } from "@/lib/trends";
 import { gatherHistoryLog } from "@/lib/history";
 import { getLastNightSummary } from "@/lib/queries/sleep";
 import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
+import { reportBreathingRateDeclines } from "@/lib/integrations/breathing-rate-report";
 import { trackLabFollowUpCore } from "@/lib/followup-write";
 import { followUpItems } from "@/lib/followup-findings";
 
@@ -1343,5 +1344,91 @@ describe("the move is bounded, like every write into the stream store", () => {
     adoptWearableBreathingRates(db, profileId);
 
     expect(nightlyRows(profileId)).toMatchObject([{ value: 12.5, edited: 1 }]);
+  });
+});
+
+describe("a decline is disclosed where the person can see it", () => {
+  it("writes one sync event, says it again only when it changes", () => {
+    // A REFUSAL NOBODY CAN SEE IS NOT A POSTURE. Under the refuse-by-default design
+    // this round rejected, `PRAGMA foreign_key_check` came back clean, the runner's
+    // boot warning fired on nothing and the runtime logged only on error — strictly
+    // MORE silent than the dangling reference it replaced. Data → Review is where the
+    // rest of "what this push did and did not do" already lives.
+    const profileId = newProfile("Decline, disclosed");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 12.9,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, kind, name, source_record_id)
+       VALUES (?, 'medication', 'Fictional tablet', ?)`
+    ).run(profileId, recordId);
+    const events = () =>
+      db
+        .prepare(
+          `SELECT ok, skipped, details FROM integration_sync_events
+            WHERE profile_id = ? ORDER BY id`
+        )
+        .all(profileId) as {
+        ok: number;
+        skipped: number | null;
+        details: string | null;
+      }[];
+
+    const first = adoptWearableBreathingRates(db, profileId);
+    reportBreathingRateDeclines(profileId, "health-connect", first);
+    expect(events()).toEqual([
+      {
+        ok: 1, // nothing FAILED — the night is intact, and a red badge would be a lie
+        skipped: 1,
+        details:
+          "breathing rate: 1 night(s) left in medical records — intake_items.source_record_id (1)",
+      },
+    ]);
+
+    // The next push re-derives the same answer, because the decline is permanent by
+    // construction. One row per sync forever would drown the log it is written in.
+    reportBreathingRateDeclines(
+      profileId,
+      "health-connect",
+      adoptWearableBreathingRates(db, profileId)
+    );
+    expect(events()).toHaveLength(1);
+
+    // A SECOND held night is a different answer, and says so.
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: "2026-09-04",
+      start: PRIOR_BED,
+      end: PRIOR_WAKE,
+    });
+    const second = legacyWearableReading(profileId, {
+      date: "2026-09-04",
+      value: 13.1,
+      stamp: PRIOR_WAKE,
+      source: "health-connect",
+    });
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, kind, name, source_record_id)
+       VALUES (?, 'medication', 'Second fictional tablet', ?)`
+    ).run(profileId, second);
+    reportBreathingRateDeclines(
+      profileId,
+      "health-connect",
+      adoptWearableBreathingRates(db, profileId)
+    );
+    const after = events();
+    expect(after).toHaveLength(2);
+    expect(after[1].details).toContain("2 night(s)");
   });
 });

@@ -438,7 +438,9 @@ export function adoptWearableBreathingRates(
 
   // The carry itself, one statement per carried link, profile-scoped like every write
   // in this file. The doomed ids are the night's - a link on a row that STAYS keeps
-  // pointing at the row it always did.
+  // pointing at the row it always did - so this one is per night rather than per set:
+  // each night's reference lands on ITS OWN sample id, which is what carrying means.
+  // The table and column come from the pragma walk, never from input.
   const carryStatements = carriedLinks.map((link) => {
     const carry = CARRIED_LINKS[linkName(link)];
     const column = link.columns[0];
@@ -448,7 +450,7 @@ export function adoptWearableBreathingRates(
         : Number(
             handle
               .prepare(
-                `UPDATE care_plan_items
+                `UPDATE ${link.table}
                     SET ${carry.column} = ?, ${column} = NULL
                         ${carry.restampsKind ? ", source_kind = ?" : ""}
                   WHERE profile_id = ?
