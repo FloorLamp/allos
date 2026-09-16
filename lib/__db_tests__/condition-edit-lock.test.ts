@@ -18,6 +18,15 @@ import {
 } from "@/lib/illness-episode-write";
 import { getEpisodeRow, mergeEpisodeRows } from "@/lib/illness-episode-store";
 import { episodeConditionExternalId } from "@/lib/illness-episode-format";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -93,11 +102,20 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
   it("an unedited promoted condition still follows every episode transition", () => {
     const p = newProfile("lock-unedited");
     const episodeId = newEpisode(p, "2026-06-01", "2026-06-06");
-    expect(promoteEpisodeToConditionCore(p, episodeId).kind).toBe("promoted");
+    expect(promoteEpisodeToConditionCore(gated(p), episodeId).kind).toBe(
+      "promoted"
+    );
 
     // Boundary edit → the derivation moves and the row follows.
     expect(
-      editEpisodeCore(p, episodeId, "2026-06-02", "2026-06-08", null, null)
+      editEpisodeCore(
+        gated(p),
+        episodeId,
+        "2026-06-02",
+        "2026-06-08",
+        null,
+        null
+      )
     ).toBe(true);
     const row = conditionRow(p, episodeId);
     expect(row).toMatchObject({
@@ -116,7 +134,9 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
   it("a hand-corrected promoted condition survives the next transition — full hold-out", () => {
     const p = newProfile("lock-edited");
     const episodeId = newEpisode(p, "2026-06-01", "2026-06-06");
-    expect(promoteEpisodeToConditionCore(p, episodeId).kind).toBe("promoted");
+    expect(promoteEpisodeToConditionCore(gated(p), episodeId).kind).toBe(
+      "promoted"
+    );
 
     // The user corrects the name and marks it inactive by hand.
     handCorrect(p, episodeId, {
@@ -127,7 +147,14 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
     // The episode transitions (boundary edit): the sync detects the lock, skips,
     // and its accounting shows the hold-out.
     expect(
-      editEpisodeCore(p, episodeId, "2026-05-20", "2026-06-10", null, null)
+      editEpisodeCore(
+        gated(p),
+        episodeId,
+        "2026-05-20",
+        "2026-06-10",
+        null,
+        null
+      )
     ).toBe(true);
     expect(conditionRow(p, episodeId)).toMatchObject({
       name: "Chronic sinusitis",
@@ -144,7 +171,9 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
   it("a locked row does not receive the episode's resolved_date on close (the ruling)", () => {
     const p = newProfile("lock-close");
     const episodeId = newEpisode(p, "2026-06-01", null); // ongoing
-    expect(promoteEpisodeToConditionCore(p, episodeId).kind).toBe("promoted");
+    expect(promoteEpisodeToConditionCore(gated(p), episodeId).kind).toBe(
+      "promoted"
+    );
     expect(conditionRow(p, episodeId)).toMatchObject({
       status: "active",
       resolved_date: null,
@@ -156,7 +185,14 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
     // Close the episode via the boundary edit. An unlocked row would flip to
     // resolved with end-1; the locked row receives NOTHING — full hold-out.
     expect(
-      editEpisodeCore(p, episodeId, "2026-06-01", "2026-06-09", null, null)
+      editEpisodeCore(
+        gated(p),
+        episodeId,
+        "2026-06-01",
+        "2026-06-09",
+        null,
+        null
+      )
     ).toBe(true);
     expect(conditionRow(p, episodeId)).toMatchObject({
       status: "inactive",
@@ -176,12 +212,14 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
     // Keeper promoted + hand-edited; loser promoted (unedited).
     const keepId = newEpisode(p, "2026-06-01", "2026-06-04");
     const dropId = newEpisode(p, "2026-06-06", "2026-06-09");
-    expect(promoteEpisodeToConditionCore(p, keepId).kind).toBe("promoted");
+    expect(promoteEpisodeToConditionCore(gated(p), keepId).kind).toBe(
+      "promoted"
+    );
     handCorrect(p, keepId, { name: "Sinus infection", status: "inactive" });
 
     // Merge widens the keeper to the union range. The keeper's LOCKED condition
     // keeps its hand values (the value-sync is `AND edited = 0`).
-    expect(mergeEpisodeRows(p, keepId, dropId)).toBe(keepId);
+    expect(mergeEpisodeRows(gated(p), keepId, dropId)).toBe(keepId);
     expect(conditionRow(p, keepId)).toMatchObject({
       name: "Sinus infection",
       status: "inactive",
@@ -195,9 +233,11 @@ describe("syncPromotedCondition consults the edit lock (#2137)", () => {
     const p2 = newProfile("lock-merge-reanchor");
     const keep2 = newEpisode(p2, "2026-06-01", "2026-06-04");
     const drop2 = newEpisode(p2, "2026-06-06", "2026-06-09");
-    expect(promoteEpisodeToConditionCore(p2, drop2).kind).toBe("promoted");
+    expect(promoteEpisodeToConditionCore(gated(p2), drop2).kind).toBe(
+      "promoted"
+    );
     handCorrect(p2, drop2, { name: "Bronchitis", status: "inactive" });
-    expect(mergeEpisodeRows(p2, keep2, drop2)).toBe(keep2);
+    expect(mergeEpisodeRows(gated(p2), keep2, drop2)).toBe(keep2);
     expect(conditionRow(p2, keep2)).toMatchObject({
       name: "Bronchitis",
       status: "inactive",

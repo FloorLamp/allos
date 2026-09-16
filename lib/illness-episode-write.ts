@@ -9,6 +9,26 @@
 // and merge all synchronize the episode-sourced condition's dates/status; undo removes
 // exactly that row and never a hand-entered condition.
 
+// THE WRITE CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on the seven episode
+// transitions below — promoteEpisodeToConditionCore, endEpisodeCore, reopenEpisodeCore,
+// editEpisodeCore, endEpisodeAsOfCore, endEpisodeWithMedReconciliation and
+// unpromoteEpisodeConditionCore — is lib/auth's WriteAuthorizedProfileId, which only the
+// gates mint, so an action that never gated holds nothing they take (#5348). The import is
+// type-only — erased at build — so this module still runs auth-blind and
+// app/(app)/medical/episodes/actions.ts still owns the gate. A branded number is still a
+// number, so the reads and syncPromotedCondition take one unchanged; that sync has no gated
+// caller of its own, only the cores above.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, today, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import { shiftDateStr } from "./date";
@@ -88,7 +108,7 @@ export function syncPromotedCondition(
 // with status 'resolved'; an ongoing episode stays 'active' with no resolved date.
 // The condition NAME is the situation (e.g. "Illness").
 export function promoteEpisodeToConditionCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number
 ): EpisodePromoteOutcome {
   return writeTx(() => {
@@ -152,7 +172,7 @@ export type EndEpisodeOutcome =
 // history. The row is still closed (`end_date` is non-null), so current/open-episode
 // state remains coherent. Idempotent: an already-closed episode is a no-op.
 export function endEpisodeCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number
 ): EndEpisodeOutcome {
   return writeTx(() => {
@@ -203,7 +223,7 @@ export interface ReopenEpisodeOutcome {
 // single-med Restart uses). Every consumed link row is cleaned up (#203); the reopen
 // leaves the rest of the episode's stopped-med records in place for a later re-decision.
 export function reopenEpisodeCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number,
   restartItemIds: number[] = []
 ): ReopenEpisodeOutcome {
@@ -269,7 +289,7 @@ export function reopenEpisodeCore(
 // One form submission is one IMMEDIATE transaction, so readers never observe a new
 // range paired with an old note/outcome (or vice versa).
 export function editEpisodeCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number,
   startDate: string | null,
   endDate: string | null,
@@ -311,7 +331,7 @@ export function editEpisodeCore(
 // Derived membership follows the new [start_date, end_date] automatically. Idempotent:
 // an already-closed episode is a no-op; a missing one reports missing.
 export function endEpisodeAsOfCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number,
   lastActiveDay: string
 ): EndEpisodeOutcome {
@@ -346,7 +366,7 @@ export interface EndEpisodeWithMedsOutcome {
 // Nested writeTx is a SAVEPOINT (#468), so the episode close and every course close commit
 // or roll back together. An empty `medItemIds` just ends the episode (the no-meds path).
 export function endEpisodeWithMedReconciliation(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number,
   medItemIds: number[],
   lastActiveDay?: string | null
@@ -441,7 +461,7 @@ export function getEpisodeReopenMedRestore(
 // its deterministic external_id AND source='episode'), never a manually-entered row.
 // Returns true when a row was removed.
 export function unpromoteEpisodeConditionCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   episodeId: number
 ): boolean {
   return writeTx(() => {

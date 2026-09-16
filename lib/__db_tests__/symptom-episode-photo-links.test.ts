@@ -39,6 +39,15 @@ import {
   deleteEpisodeRow,
   mergeEpisodeRows,
 } from "@/lib/illness-episode-store";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const createdProfiles: number[] = [];
 
@@ -113,19 +122,19 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const coughLog = logId(p, date, "cough");
 
     const a = attachSymptomPhotoCore(
-      p,
+      gated(p),
       date,
       processedFixture("rash-1"),
       "rash"
     );
     const b = attachSymptomPhotoCore(
-      p,
+      gated(p),
       date,
       processedFixture("rash-2"),
       "rash"
     );
     const c = attachSymptomPhotoCore(
-      p,
+      gated(p),
       date,
       processedFixture("cough-1"),
       "cough"
@@ -147,7 +156,7 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const p = newProfile("Day Photo");
     const date = "2026-05-05";
     logSymptomCore(p, "fever", 2, date, "page");
-    const res = attachSymptomPhotoCore(p, date, processedFixture("day"));
+    const res = attachSymptomPhotoCore(gated(p), date, processedFixture("day"));
     expect(res.kind).toBe("attached");
     const row = getSymptomPhotosInRange(p, date, date)[0];
     expect(row.symptom_log_id).toBeNull();
@@ -157,7 +166,7 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
     const p = newProfile("Unlogged Symptom Photo");
     const date = "2026-05-06";
     const res = attachSymptomPhotoCore(
-      p,
+      gated(p),
       date,
       processedFixture("nolog"),
       "rash"
@@ -171,7 +180,7 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
   it("a symptom logged during an OPEN episode auto-associates; the reverse query returns it", () => {
     const p = newProfile("Episode Assoc");
     const start = "2026-03-03";
-    const epId = createEpisodeRow(p, "Illness", start, null); // open
+    const epId = createEpisodeRow(gated(p), "Illness", start, null); // open
     logSymptomCore(p, "cough", 3, "2026-03-04", "page");
     logSymptomCore(p, "fever", 2, "2026-03-05", "page");
 
@@ -190,14 +199,14 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
 
   it("a CLOSED episode does not retro-claim a freshly logged symptom", () => {
     const p = newProfile("Closed Episode");
-    createEpisodeRow(p, "Illness", "2026-02-01", "2026-02-08"); // closed
+    createEpisodeRow(gated(p), "Illness", "2026-02-01", "2026-02-08"); // closed
     logSymptomCore(p, "cough", 2, "2026-02-05", "page"); // inside the closed range
     expect(episodeIdOfLog(p, "2026-02-05", "cough")).toBeNull();
   });
 
   it("detach nulls the link; re-attach sets it; a foreign episode id is rejected", () => {
     const p = newProfile("Detach");
-    const epId = createEpisodeRow(p, "Illness", "2026-04-01", null);
+    const epId = createEpisodeRow(gated(p), "Illness", "2026-04-01", null);
     logSymptomCore(p, "cough", 2, "2026-04-02", "page");
     expect(episodeIdOfLog(p, "2026-04-02", "cough")).toBe(epId);
 
@@ -212,7 +221,12 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
 
     // A different profile's episode id must be rejected (data-layer ownership gate).
     const other = newProfile("Other");
-    const otherEp = createEpisodeRow(other, "Illness", "2026-04-01", null);
+    const otherEp = createEpisodeRow(
+      gated(other),
+      "Illness",
+      "2026-04-01",
+      null
+    );
     expect(setSymptomEpisodeCore(p, "cough", "2026-04-02", otherEp).kind).toBe(
       "bad-episode"
     );
@@ -224,7 +238,7 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
 describe("#203 row-side-state under foreign_keys=ON", () => {
   it("deleting an episode NULLs its symptoms' links but keeps the symptoms", () => {
     const p = newProfile("Episode Delete");
-    const epId = createEpisodeRow(p, "Illness", "2026-06-01", null);
+    const epId = createEpisodeRow(gated(p), "Illness", "2026-06-01", null);
     logSymptomCore(p, "cough", 3, "2026-06-02", "page");
     logSymptomCore(p, "fever", 2, "2026-06-03", "page");
     expect(getEpisodeSymptomLogs(p, epId)).toHaveLength(2);
@@ -242,15 +256,20 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
 
   it("merging episodes reparents the loser's symptoms onto the keeper", () => {
     const p = newProfile("Episode Merge");
-    const keep = createEpisodeRow(p, "Illness", "2026-06-10", "2026-06-14");
-    const drop = createEpisodeRow(p, "Illness", "2026-06-13", null);
+    const keep = createEpisodeRow(
+      gated(p),
+      "Illness",
+      "2026-06-10",
+      "2026-06-14"
+    );
+    const drop = createEpisodeRow(gated(p), "Illness", "2026-06-13", null);
     // Attach one symptom to each episode explicitly.
     logSymptomCore(p, "cough", 2, "2026-06-11", "page");
     setSymptomEpisodeCore(p, "cough", "2026-06-11", keep);
     logSymptomCore(p, "fever", 3, "2026-06-13", "page");
     setSymptomEpisodeCore(p, "fever", "2026-06-13", drop);
 
-    expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
+    expect(mergeEpisodeRows(gated(p), keep, drop)).toBe(keep);
     // The dropped episode's symptom now points at the keeper; none dangle at the loser.
     const keeperSymptoms = getEpisodeSymptomLogs(p, keep)
       .map((s) => s.symptom)
@@ -264,8 +283,8 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const date = "2026-07-01";
     logSymptomCore(p, "rash", 2, date, "page");
     const rashLog = logId(p, date, "rash");
-    attachSymptomPhotoCore(p, date, processedFixture("del-1"), "rash");
-    attachSymptomPhotoCore(p, date, processedFixture("del-2"), "rash");
+    attachSymptomPhotoCore(gated(p), date, processedFixture("del-1"), "rash");
+    attachSymptomPhotoCore(gated(p), date, processedFixture("del-2"), "rash");
     const before = getSymptomPhotosForLog(p, rashLog);
     expect(before).toHaveLength(2);
     const files = before.map((ph) => {
@@ -317,7 +336,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const p = newProfile("Log Purge Photos");
     const date = "2026-07-05";
     logSymptomCore(p, "rash", 3, date, "page");
-    attachSymptomPhotoCore(p, date, processedFixture("purge-1"), "rash");
+    attachSymptomPhotoCore(gated(p), date, processedFixture("purge-1"), "rash");
     const stored = (
       db
         .prepare(`SELECT stored_path FROM symptom_photos WHERE profile_id = ?`)
@@ -347,7 +366,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     logSymptomCore(p, "weird tingling arm", 2, date, "page");
     const oldLog = logId(p, date, "weird tingling arm");
     attachSymptomPhotoCore(
-      p,
+      gated(p),
       date,
       processedFixture("cust-1"),
       "weird tingling arm"
@@ -384,7 +403,12 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const p = newProfile("Symptom Undo Collide");
     const date = "2026-07-07";
     logSymptomCore(p, "cough", 2, date, "page");
-    attachSymptomPhotoCore(p, date, processedFixture("collide-1"), "cough");
+    attachSymptomPhotoCore(
+      gated(p),
+      date,
+      processedFixture("collide-1"),
+      "cough"
+    );
     const out = removeSymptomCore(p, "cough", date);
     const undoId = out.kind === "removed" ? out.undoId : null;
     expect(undoId).toBeGreaterThan(0);
