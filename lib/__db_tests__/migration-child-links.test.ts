@@ -45,10 +45,12 @@ import ts from "typescript-api";
 import { describe, expect, it, vi } from "vitest";
 import { rawDb as db } from "@/lib/db";
 import {
+  blockingInboundLinks,
   deleteRowsWithCascade,
   foreignKeyViolationTally,
   inboundDeleteLinks,
   introducedViolations,
+  parentIdsNamedBy,
   sweepOrphanedCascadeRows,
 } from "@/lib/migrations/cascade-delete";
 import { runMigrations } from "@/lib/migrations/runner";
@@ -1799,5 +1801,106 @@ describe("a migration whose delete lives in a lib helper is still guarded (#5409
       mem.prepare("SELECT record_id, value FROM medical_record_revisions").all()
     ).toEqual([{ record_id: 4, value: "13.9" }]);
     expect(fkViolations(mem)).toEqual([]);
+  });
+});
+
+// ---- THE BLOCKING HALF IS ENUMERATED, NOT SURVEYED (#5409) -------------------
+//
+// `CHILD_LINKS` is a hand survey of exactly these links, and a hand survey is what
+// failed twice on the #5409 branch — including a header that named two of the three
+// unguarded links as covered. `blockingInboundLinks` is the complement of
+// `inboundDeleteLinks` out of the same pragma walk, so the two together are every
+// inbound key and nothing falls between them.
+//
+// DERIVED THROUGH THE PRAGMA THE MECHANISM READS, with the foreign keys actually
+// declared: this suite runs against the DB tier's real migrated schema. A fixture that
+// builds child tables by hand the way `childTablesDdl` does — bare `INTEGER` columns,
+// no `REFERENCES` — reads zero links and would pass every assertion below vacuously.
+describe("blocking inbound links (#5409)", () => {
+  it("is exactly the complement of the cascading half, over the same keys", () => {
+    for (const parent of ["medical_records", "metric_samples", "activities"]) {
+      const acted = inboundDeleteLinks(db, parent).map(
+        (l) => `${l.table}.${l.columns.join("+")}`
+      );
+      const blocked = blockingInboundLinks(db, parent).map(
+        (l) => `${l.table}.${l.columns.join("+")}`
+      );
+      expect(acted.filter((k) => blocked.includes(k))).toEqual([]);
+      // Every inbound key of this parent, read straight from the pragma, is in one
+      // half or the other — the `action === null` skip is no longer a silent discard.
+      const all: string[] = [];
+      for (const table of (
+        db
+          .prepare(
+            `SELECT name FROM sqlite_master WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%' ORDER BY name`
+          )
+          .all() as { name: string }[]
+      ).map((r) => r.name)) {
+        const byKey = new Map<number, string[]>();
+        for (const fk of db
+          .prepare(`PRAGMA foreign_key_list("${table}")`)
+          .all() as { id: number; table: string; from: string }[])
+          if (fk.table.toLowerCase() === parent)
+            byKey.set(fk.id, [...(byKey.get(fk.id) ?? []), fk.from]);
+        for (const cols of byKey.values())
+          all.push(`${table}.${cols.join("+")}`);
+      }
+      expect([...acted, ...blocked].sort()).toEqual(all.sort());
+    }
+  });
+
+  it("names the three NO ACTION references to medical_records", () => {
+    expect(
+      blockingInboundLinks(db, "medical_records")
+        .map((l) => `${l.table}.${l.columns.join("+")} ${l.onDelete}`)
+        .sort()
+    ).toEqual([
+      "care_plan_items.resolved_by_medical_record_id NO ACTION",
+      "care_plan_items.source_medical_record_id NO ACTION",
+      "intake_items.source_record_id NO ACTION",
+    ]);
+  });
+
+  it("probes the whole delete-set in one query, and refuses what it cannot express", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Link probe")
+        .lastInsertRowid
+    );
+    const record = (value: number): number =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, value_num, source)
+             VALUES (?, '2026-09-05', 'vitals', 'Fictional analyte', ?, ?, 'manual')`
+          )
+          .run(profileId, String(value), value).lastInsertRowid
+      );
+    const named = record(1);
+    const unnamed = record(2);
+    db.prepare(
+      `INSERT INTO care_plan_items (profile_id, description, source_kind,
+                                    source_medical_record_id)
+       VALUES (?, 'Recheck fictional analyte', 'labs', ?)`
+    ).run(profileId, named);
+
+    const link = blockingInboundLinks(db, "medical_records").find(
+      (l) => l.columns[0] === "source_medical_record_id"
+    );
+    if (!link) throw new Error("the source link is no longer in the schema");
+    const hits = parentIdsNamedBy(db, link, [named, unnamed]);
+    expect(hits && [...hits]).toEqual([named]);
+    // An empty delete-set asks nothing and finds nothing — not a null refusal.
+    expect(parentIdsNamedBy(db, link, [])?.size).toBe(0);
+    // A COMPOSITE key names its parent rows by a tuple an id list cannot express, so
+    // the answer is a refusal the caller must handle, never a silent empty set.
+    expect(
+      parentIdsNamedBy(
+        db,
+        { ...link, columns: [...link.columns, "profile_id"] },
+        [named]
+      )
+    ).toBeNull();
   });
 });

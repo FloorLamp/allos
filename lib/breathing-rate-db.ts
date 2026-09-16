@@ -188,7 +188,6 @@ const CARRIED_LINKS: Readonly<
 const linkName = (link: BlockingInboundLink): string =>
   `${link.table}.${link.columns.join("+")}`;
 
-
 /**
  * How a caller takes the adopted observations out of `medical_records`.
  *
@@ -434,7 +433,8 @@ export function adoptWearableBreathingRates(
     // A link the probe cannot express (a composite key, a reference to something other
     // than the row key) holds EVERY night rather than none: the fail-closed direction
     // is the one that leaves data where it is and says which link did it.
-    for (const id of named ?? candidateIds) if (!heldBy.has(id)) heldBy.set(id, name);
+    for (const id of named ?? candidateIds)
+      if (!heldBy.has(id)) heldBy.set(id, name);
   }
 
   // The carry itself, one statement per carried link, profile-scoped like every write
@@ -474,19 +474,44 @@ export function adoptWearableBreathingRates(
     at.rows += rows;
     declined.set(held_by, at);
   };
+  /** One decline entry per REASON per night, however many rows carried that reason. */
+  const declineRows = (
+    rows: readonly (readonly [Candidate, string])[]
+  ): void => {
+    const perReason = new Map<string, number>();
+    for (const [, reason] of rows)
+      perReason.set(reason, (perReason.get(reason) ?? 0) + 1);
+    for (const [reason, n] of perReason) decline(reason, n);
+  };
   for (const target of targets.values()) {
-    // THE NIGHT IS THE UNIT. One row it cannot move means the night does not move:
-    // what is left behind otherwise is a night stated in two stores, and - worse - an
-    // election run over a set the ranking never saw whole.
-    const held =
-      target.rows.map((row) => heldBy.get(row.id)).find((name) => name != null) ??
-      (target.rows.some((row) => row.has_revision === 1)
-        ? "medical_record_revisions"
-        : null);
-    if (held != null) {
-      decline(held, target.rows.length);
+    // WHAT THIS NIGHT CANNOT MOVE, and what that costs depends on whether the night is
+    // about to be ELECTED. A row is unmovable when a blocking link names it or a #1404
+    // lineage hangs off it.
+    const heldReason = (row: Candidate): string | null =>
+      heldBy.get(row.id) ??
+      (row.has_revision === 1 ? "medical_record_revisions" : null);
+    const held = target.rows
+      .map((row) => [row, heldReason(row)] as const)
+      .filter((pair): pair is readonly [Candidate, string] => pair[1] != null);
+    const already = readSample.get(
+      target.profileId,
+      BREATHING_RATE_METRIC,
+      target.source,
+      target.origin,
+      target.startedAt
+    ) as { id: number } | undefined;
+    // THE ELECTION IS THE UNIT. Where the night has no sample yet, its rows are RANKED
+    // and one of them becomes the number - so an unmovable row cannot simply be left
+    // out: dropping the final re-stamp from the set elects the superseded provisional
+    // it replaced, and the night is then stated wrong on every surface while the right
+    // reading sits in `medical_records`. The whole night declines instead, untouched,
+    // and says which link held it. Where the night ALREADY states its own number
+    // nothing is elected, so the unmovable rows stay and the rest still leave.
+    if (held.length > 0 && !already) {
+      decline(held[0][1], target.rows.length);
       continue;
     }
+    declineRows(held);
     // THE #133 LOCK ELECTS BEFORE THE STAMP DOES. A locked row is a person's own
     // statement about this night, and `upsertVitals` refuses to let any re-send
     // overwrite it; ranking the vendor's later re-stamp above it would write a number
@@ -502,13 +527,6 @@ export function adoptWearableBreathingRates(
         ? row
         : best
     );
-    const already = readSample.get(
-      target.profileId,
-      BREATHING_RATE_METRIC,
-      target.source,
-      target.origin,
-      target.startedAt
-    ) as { id: number } | undefined;
     const insertNight = (): number => {
       const written = insertSample.run(
         target.profileId,
@@ -534,7 +552,9 @@ export function adoptWearableBreathingRates(
     // own - so a night that already held a sample drops no locked row at all, and a
     // night with two locked rows keeps the one it did not adopt.
     const doomed = target.rows.filter(
-      (row) => !isEditLocked(row.edited) || (!already && row.id === latest.id)
+      (row) =>
+        heldReason(row) == null &&
+        (!isEditLocked(row.edited) || (!already && row.id === latest.id))
     );
     // THE REFERENCE MOVES FIRST, and to the row the night now states. At runtime this
     // is what keeps the delete below from raising SQLITE_CONSTRAINT_FOREIGNKEY inside

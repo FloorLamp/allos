@@ -44,6 +44,9 @@ import { getMetricDailyTotals } from "@/lib/queries/metrics";
 import { ALL_ROWS } from "@/lib/trends";
 import { gatherHistoryLog } from "@/lib/history";
 import { getLastNightSummary } from "@/lib/queries/sleep";
+import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
+import { trackLabFollowUpCore } from "@/lib/followup-write";
+import { followUpItems } from "@/lib/followup-findings";
 
 const ORIGIN = "com.fitbit.FitbitMobile";
 const WAKE_DAY = "2026-09-05";
@@ -988,5 +991,297 @@ describe("the body census states one number per night (#5409)", () => {
     expect(
       getMetricDailyTotals(profileId, BREATHING_RATE_METRIC, ALL_ROWS)
     ).toEqual([{ date: WAKE_DAY, value: 13.5 }]);
+  });
+});
+
+// ---- THE FOLLOW-UP A PERSON TRACKED TRAVELS WITH THE READING (#5409, option 4) ----
+//
+// THE PATH, driven through production write cores rather than asserted: an ordinary
+// night flags `low` against the curated clinical 12-20 band (`reconcileFlags` has no
+// source filter), the results page offers "Track follow-up" on any out-of-range
+// reading, one tap runs `trackLabFollowUpCore`, and the reading is now named by
+// `care_plan_items.source_medical_record_id` — a NO ACTION link. Before this round the
+// adoption then either orphaned it (migration posture, keys off) or raised
+// SQLITE_CONSTRAINT_FOREIGNKEY inside the whole profile's push (runtime, keys on).
+//
+// THE FIXTURE IS THE REAL MIGRATED SCHEMA, deliberately. The DB tier's `db` has every
+// migration applied, so `PRAGMA foreign_key_list` reads the REFERENCES clauses the app
+// actually ships. A fixture that builds child tables by hand — the repo's own
+// `childTablesDdl` exemplar emits bare `INTEGER` columns with no `REFERENCES` — reads
+// zero inbound links, refuses nothing, and passes every "the row survived" assertion
+// vacuously.
+
+/** The care-plan row a tap on "Track follow-up" leaves behind. */
+function followUpRow(carePlanItemId: number) {
+  return db
+    .prepare(
+      `SELECT source_kind, source_medical_record_id, source_metric_sample_id,
+              resolved_by_medical_record_id, resolved_by_metric_sample_id
+         FROM care_plan_items WHERE id = ?`
+    )
+    .get(carePlanItemId) as {
+    source_kind: string | null;
+    source_medical_record_id: number | null;
+    source_metric_sample_id: number | null;
+    resolved_by_medical_record_id: number | null;
+    resolved_by_metric_sample_id: number | null;
+  };
+}
+
+/** Whatever `PRAGMA foreign_key_check` can see right now. */
+function fkViolations() {
+  return db.pragma("foreign_key_check") as unknown[];
+}
+
+function trackFollowUp(profileId: number, recordId: number): number {
+  const outcome = trackLabFollowUpCore(profileId, recordId, 90, "2026-09-06");
+  if (outcome.kind !== "created")
+    throw new Error(`follow-up not created: ${outcome.kind}`);
+  return outcome.carePlanItemId;
+}
+
+describe("a tracked follow-up is carried onto the night's sample", () => {
+  it("moves the reference, in the migration's posture — foreign keys OFF", () => {
+    const profileId = newProfile("Carry, keys off");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const provisional = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 17.9,
+      stamp: PROVISIONAL_STAMP,
+      source: "health-connect",
+    });
+    const finalStamp = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 11.4,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    // The tap lands on the reading the person was shown — the final one.
+    const carePlanItemId = trackFollowUp(profileId, finalStamp);
+    expect(followUpRow(carePlanItemId).source_medical_record_id).toBe(
+      finalStamp
+    );
+
+    const before = fkViolations().length;
+    const fkWasOn = db.pragma("foreign_keys", { simple: true }) === 1;
+    if (fkWasOn) db.pragma("foreign_keys = OFF");
+    try {
+      runBreathingRateMigration();
+    } finally {
+      if (fkWasOn) db.pragma("foreign_keys = ON");
+    }
+
+    const nights = nightlyRows(profileId);
+    expect(nights).toMatchObject([{ value: 11.4, date: WAKE_DAY }]);
+    const sampleId = (
+      db
+        .prepare(
+          `SELECT id FROM metric_samples
+            WHERE profile_id = ? AND metric = ? ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId, BREATHING_RATE_METRIC) as { id: number }
+    ).id;
+    // CARRIED: the reference names the night's sample, the old link is cleared, and the
+    // discriminator says which adapter reads it now.
+    expect(followUpRow(carePlanItemId)).toEqual({
+      source_kind: "breathing-rate",
+      source_medical_record_id: null,
+      source_metric_sample_id: sampleId,
+      resolved_by_medical_record_id: null,
+      resolved_by_metric_sample_id: null,
+    });
+    // Both observations left, and nothing dangles: this is the exact state the old
+    // delete produced a `foreign_key_check` finding for.
+    expect(respiratoryObservations(profileId)).toEqual([]);
+    expect(fkViolations().length).toBe(before);
+    expect(provisional).toBeGreaterThan(0);
+  });
+
+  it("moves it on the live push path, where the delete used to throw", () => {
+    // RUNTIME POSTURE, keys ON, through the shipped ingest. The old bare
+    // `DELETE FROM medical_records` raised SQLITE_CONSTRAINT_FOREIGNKEY here, and
+    // because `remove()` runs inside one `writeTx`, ONE linked row failed the whole
+    // profile's adoption — every later push failing identically.
+    const profileId = newProfile("Carry, keys on");
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+    push(profileId, {
+      stamp: "2026-09-05T07:24:00Z",
+      breathing: [{ time: PROVISIONAL_STAMP, rate: 11.4 }],
+    });
+    const observation = respiratoryObservations(profileId)[0];
+    const carePlanItemId = trackFollowUp(profileId, observation.id);
+
+    // The session lands and contains that stamp: the reading is adopted into the night.
+    push(profileId, {
+      stamp: "2026-09-05T08:27:00Z",
+      sessions: [{ start: BED, end: FIRST_WAKE }],
+    });
+
+    const nights = nightlyRows(profileId);
+    expect(nights).toMatchObject([{ value: 11.4 }]);
+    const carried = followUpRow(carePlanItemId);
+    expect(carried.source_medical_record_id).toBeNull();
+    expect(carried.source_kind).toBe("breathing-rate");
+    expect(carried.source_metric_sample_id).not.toBeNull();
+    expect(respiratoryObservations(profileId)).toEqual([]);
+  });
+
+  it("keeps rendering as a follow-up once carried, rather than degrading", () => {
+    // THE POINT OF CARRYING. A freed link leaves a live "Recheck …" as an ordinary
+    // care-plan item; a carried one stays the follow-up it was, on the metric page
+    // where its reading now lives.
+    const profileId = newProfile("Carry, still a follow-up");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 11.4,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    trackFollowUp(profileId, recordId);
+    runBreathingRateMigration();
+
+    const items = followUpItems(profileId, "2026-12-01");
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toContain("Recheck breathing rate");
+    expect(items[0].href).toBe("/trends/metric/breathing-rate");
+  });
+});
+
+describe("a link it cannot carry declines the night, and names it", () => {
+  it("leaves the night alone and reports which link held it", () => {
+    // `intake_items.source_record_id` is the third NO ACTION link into
+    // `medical_records` and there is nowhere on a sample to carry it to. The rule is
+    // not a list — `blockingInboundLinks` reads it out of the schema — so a link nobody
+    // remembered holds its night just as loudly as one that was thought about.
+    const profileId = newProfile("Decline, intake link");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 12.9,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, kind, name, source_record_id)
+       VALUES (?, 'medication', 'Fictional tablet', ?)`
+    ).run(profileId, recordId);
+
+    const before = fkViolations().length;
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    expect(result).toMatchObject({ adopted: 0, removed: 0, carried: 0 });
+    expect(result.declined).toEqual([
+      { held_by: "intake_items.source_record_id", nights: 1, rows: 1 },
+    ]);
+    expect(nightlyRows(profileId)).toEqual([]);
+    expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([
+      recordId,
+    ]);
+    expect(fkViolations().length).toBe(before);
+  });
+});
+
+describe("the night is elected over every row it has", () => {
+  it("never publishes the superseded provisional because a later row was filtered out", () => {
+    // THE DEFECT THIS CLOSES, reproduced on the PR head unmodified: the candidate query
+    // held a row with a #1404 correction lineage OUT of the set, and the set is a
+    // RANKED election. Planting a revision on the FINAL re-stamp elected the superseded
+    // provisional (17.9) and wrote it to the night, while the correct 11.4 stayed in
+    // `medical_records` as the follow-up's source — the sleep hero, the record's Sleep
+    // row and the chart all stating a number the vendor had already replaced.
+    const profileId = newProfile("Election, lineage on the final stamp");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const provisional = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 17.9,
+      stamp: PROVISIONAL_STAMP,
+      source: "health-connect",
+    });
+    const finalStamp = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 11.4,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    priorState(finalStamp, 11.9);
+
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    // The night declines WHOLE: nothing it states can be the superseded number, and
+    // nothing is removed either, so the lineage keeps the row it hangs off.
+    expect(nightlyRows(profileId).map((r) => r.value)).toEqual([]);
+    expect(result).toMatchObject({ adopted: 0, removed: 0 });
+    expect(result.declined).toEqual([
+      { held_by: "medical_record_revisions", nights: 1, rows: 2 },
+    ]);
+    expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([
+      provisional,
+      finalStamp,
+    ]);
+    expect(revisionsOf(finalStamp).map((r) => r.value_num)).toEqual([11.9]);
+  });
+
+  it("still collapses a neighbouring night that carries no lineage", () => {
+    // The decline is the NIGHT's, not the profile's: a clean night beside a held one
+    // is adopted in the same run.
+    const profileId = newProfile("Election, one held night and one clean");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const held = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 11.4,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    priorState(held, 11.9);
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: "2026-09-04",
+      start: PRIOR_BED,
+      end: PRIOR_WAKE,
+    });
+    legacyWearableReading(profileId, {
+      date: "2026-09-04",
+      value: 14.2,
+      stamp: PRIOR_WAKE,
+      source: "health-connect",
+    });
+
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    expect(result).toMatchObject({ adopted: 1, removed: 1 });
+    expect(nightlyRows(profileId).map((r) => r.value)).toEqual([14.2]);
+    expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([held]);
   });
 });
