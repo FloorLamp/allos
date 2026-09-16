@@ -23,9 +23,9 @@ import type { SessionProfile } from "@/lib/auth";
 // the two mounts cannot drift into two vocabularies for the same form; the registry
 // below is the single answer and the provider only chooses where to render it.
 //
-// Moved out of components/QuickEntryProvider.tsx verbatim. That file is the visit and
-// gather owner and is long enough that its chrome was hard to find inside it; nothing
-// here changed in the move, which the relocation control in the PR records.
+// Moved out of components/QuickEntryProvider.tsx verbatim. That file owns the visit
+// and the gather, and was long enough that its chrome was hard to find inside it.
+// Nothing below changed in the move; the declarations are the same bytes.
 
 // WHAT THIS FILE READS OFF A SESSION, and nothing more. `QuickEntrySession` is the
 // provider's own record and stays there — these are the four fields the chrome
