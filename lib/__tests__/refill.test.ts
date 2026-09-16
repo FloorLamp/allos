@@ -12,6 +12,7 @@ import {
   sharedSuppliesLinkLabel,
   refillBasisLabel,
   resolveOnHandWrite,
+  rememberedFillFor,
   resolveRefillWrite,
   runOutDateStr,
   selectLowSupplyItems,
@@ -337,6 +338,65 @@ describe("resolveRefillWrite (#852 item 3 — CAS increment)", () => {
     expect(resolveRefillWrite(4, 0)).toBe(4);
     expect(resolveRefillWrite(4, -5)).toBe(4);
     expect(resolveRefillWrite(null, 30)).toBeNull();
+  });
+});
+
+describe("rememberedFillFor (#5121 owner ruling 2026-09-16, #5911)", () => {
+  it("answers a PRIVATE target with the item's own remembered fill", () => {
+    expect(
+      rememberedFillFor({
+        supplyId: null,
+        itemLastFillSize: 90,
+        poolLastFillSize: 500,
+      })
+    ).toBe(90);
+  });
+
+  it("answers a POOLED target with the BOTTLE's remembered fill", () => {
+    // "Both private and shared bottles have a usual refill" — and the shared bottle's
+    // usual refill is its own 500, not the 90 its member buys for itself.
+    expect(
+      rememberedFillFor({
+        supplyId: 7,
+        itemLastFillSize: 90,
+        poolLastFillSize: 500,
+      })
+    ).toBe(500);
+  });
+
+  it("never falls back to a member's fill when the bottle remembers nothing (#5911)", () => {
+    // THE WHOLE ISSUE, as one assertion. A member refilled at 30 while it was still
+    // private, then linked: `linkItemToPool` drops the private count and KEEPS the 30,
+    // so a fallback arm here would one-tap 30 into a household jar nobody ever filled
+    // with 30 of anything. Null is "ask for a size", which is the only correct answer
+    // the first time this bottle is refilled.
+    expect(
+      rememberedFillFor({
+        supplyId: 7,
+        itemLastFillSize: 30,
+        poolLastFillSize: null,
+      })
+    ).toBeNull();
+  });
+
+  it("reads a non-positive remembered size as nothing remembered, on either side", () => {
+    // ONE definition of "remembered", shared by the write core and every surface that
+    // decides whether to reveal the size input — so a control can never offer a one-tap
+    // the core would answer with "needs-size".
+    expect(
+      rememberedFillFor({
+        supplyId: null,
+        itemLastFillSize: 0,
+        poolLastFillSize: null,
+      })
+    ).toBeNull();
+    expect(
+      rememberedFillFor({
+        supplyId: 7,
+        itemLastFillSize: null,
+        poolLastFillSize: -5,
+      })
+    ).toBeNull();
   });
 });
 
