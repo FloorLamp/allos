@@ -1285,3 +1285,63 @@ describe("the night is elected over every row it has", () => {
     expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([held]);
   });
 });
+
+describe("the move is bounded, like every write into the stream store", () => {
+  it("declines a night whose elected reading is a mistyped zero", () => {
+    // THE PATH, through shipped code: the record editor takes a hand-typed value
+    // VERBATIM (no bounds, app/(app)/results/clinical-result-actions.ts) and stamps
+    // `edited = 1`, and a locked row is elected ahead of the vendor's own stamp. So a
+    // "0" typed over a wearable reading is exactly the value that reaches the move —
+    // and `formatBreathingRate(0)` returns a truthy "0 br/min", so the hero and the
+    // chart would both state it. The 3–80 envelope is the same one the parsers apply.
+    const profileId = newProfile("Bounds, mistyped zero");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.6,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    handCorrect(recordId, 0, "typed by hand");
+
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    expect(nightlyRows(profileId)).toEqual([]);
+    expect(result).toMatchObject({ adopted: 0, removed: 0 });
+    expect(result.declined).toEqual([
+      { held_by: "out-of-bounds value", nights: 1, rows: 1 },
+    ]);
+    // The person's own number is left exactly where they typed it.
+    expect(
+      respiratoryObservations(profileId).map((r) => [r.id, r.value_num])
+    ).toEqual([[recordId, 0]]);
+  });
+
+  it("still adopts a hand correction inside the envelope, lock and all", () => {
+    const profileId = newProfile("Bounds, plausible correction");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.6,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    handCorrect(recordId, 12.5, "the tracker read high");
+
+    adoptWearableBreathingRates(db, profileId);
+
+    expect(nightlyRows(profileId)).toMatchObject([{ value: 12.5, edited: 1 }]);
+  });
+});

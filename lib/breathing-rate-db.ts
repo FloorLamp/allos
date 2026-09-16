@@ -8,7 +8,7 @@ import {
   sessionForStamp,
   type BreathingRateSession,
 } from "@/lib/breathing-rate";
-import { roundForMetric } from "@/lib/ingest-bounds";
+import { boundedOrNull } from "@/lib/ingest-bounds";
 import {
   blockingInboundLinks,
   parentIdsNamedBy,
@@ -527,7 +527,30 @@ export function adoptWearableBreathingRates(
         ? row
         : best
     );
-    const insertNight = (): number => {
+    // THE NUMBER THE NIGHT WOULD STATE, BOUNDED. `medical_records` is not a bounded
+    // store on every path into it: the parsers write through `boundedOrNull`, but the
+    // record editor takes a hand-typed value verbatim and stamps `edited = 1` - and a
+    // locked row is elected AHEAD of the vendor's own stamp, so a mistyped "0" on a
+    // wearable reading is precisely the value that arrives here. `metric_samples` IS a
+    // bounded store, the hero and the chart state what they find, and
+    // `formatBreathingRate(0)` renders a truthy "0 br/min". So the move applies the
+    // same 3-80 envelope the ingest applies (`respiratory_rate_bpm`, ingest-bounds),
+    // and a night whose elected reading falls outside it DECLINES rather than
+    // publishing an impossible one. The row keeps its number where it is; nothing is
+    // corrected on the person's behalf.
+    // THE NUMBER THE NIGHT WOULD STATE, BOUNDED. `medical_records` is not a bounded
+    // store on every path into it: the parsers write through `boundedOrNull`, but the
+    // record editor takes a hand-typed value verbatim and stamps `edited = 1` - and a
+    // locked row is elected AHEAD of the vendor's own stamp, so a mistyped "0" on a
+    // wearable reading is precisely the value that arrives here. `metric_samples` IS a
+    // bounded store, the hero and the chart state whatever they find, and
+    // `formatBreathingRate(0)` renders a truthy "0 br/min". So the move applies the
+    // same 3-80 envelope the ingest applies (`respiratory_rate_bpm`, ingest-bounds) and
+    // a night whose elected reading falls outside it DECLINES rather than publishing an
+    // impossible one. The row keeps its number where it is: nothing is corrected on the
+    // person's behalf, and the decline is reported like every other.
+    const value = boundedOrNull(BREATHING_RATE_METRIC, latest.value_num);
+    const insertNight = (night: number): number => {
       const written = insertSample.run(
         target.profileId,
         target.source,
@@ -536,7 +559,7 @@ export function adoptWearableBreathingRates(
         target.date,
         target.startedAt,
         target.endedAt,
-        roundForMetric(BREATHING_RATE_METRIC, latest.value_num),
+        night,
         // The #133 lock travels with the reading it is ON: a hand-corrected observation
         // must not be re-clobbered by the next push now that it lives in the other
         // store. It is read off the ELECTED row, never off the night, so the lock can
@@ -546,7 +569,11 @@ export function adoptWearableBreathingRates(
       adopted++;
       return Number(written.lastInsertRowid);
     };
-    const sampleId = already?.id ?? insertNight();
+    const sampleId = already?.id ?? (value == null ? null : insertNight(value));
+    if (sampleId == null) {
+      decline("out-of-bounds value", target.rows.length);
+      continue;
+    }
     // WHAT MAY LEAVE `medical_records`. An unlocked row is superseded by the night's
     // sample either way. A LOCKED row leaves only when the value just written is its
     // own - so a night that already held a sample drops no locked row at all, and a

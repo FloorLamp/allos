@@ -325,6 +325,34 @@ function doomedChild(
 }
 
 /**
+ * Throw if any blocking inbound link still names one of `ids` — the guard that makes
+ * an unresolved blocking link impossible to delete THROUGH rather than merely
+ * discouraged. One set query per link over the whole id set (`parentIdsNamedBy`).
+ */
+function refuseBlockedRows(
+  db: Database.Database,
+  table: string,
+  ids: readonly number[]
+): void {
+  for (const link of blockingInboundLinks(db, table)) {
+    const named = parentIdsNamedBy(db, link, ids);
+    // A link the probe cannot express is refused rather than assumed empty: a
+    // composite key into the delete target is a case nobody has written the answer
+    // for, and guessing it is how the #2444 class returns.
+    const blocked = named === null ? ids.length : named.size;
+    if (blocked === 0) continue;
+    throw new Error(
+      `deleteRowsWithCascade: ${blocked} row(s) of ${table} are still referenced ` +
+        `by ${link.table}.${link.columns.join("+")} (ON DELETE ${link.onDelete})` +
+        `${named === null ? " — a composite key this probe cannot express" : ""}. ` +
+        `A runtime delete would be REFUSED and this one would dangle, because ` +
+        `migrations apply with foreign_keys = OFF. Carry the reference onto its ` +
+        `replacement, free it, or decline the row — before calling this.`
+    );
+  }
+}
+
+/**
  * Delete `ids` from `table` the way a RUNTIME delete would: cascading children go
  * first (depth-first, so a grandchild never outlives its parent), SET NULL
  * references are nulled, and only then do the named rows go.
@@ -332,9 +360,23 @@ function doomedChild(
  * `ids` are values of `table`'s single-column primary key. A migration calls this
  * INSTEAD of a bare `DELETE FROM table`, so the row it removes leaves the same
  * graph behind that the app's own delete path would (issue #2680). It does NOT
- * decide WHICH rows to delete, and it does not consider the non-cascading parents
- * a delete must be blocked ON — that is still the migration's own `CHILD_LINKS`
- * probe, and the two halves are independent.
+ * decide WHICH rows to delete.
+ *
+ * IT REFUSES A ROW A BLOCKING LINK STILL NAMES (#5409), and that refusal is the
+ * policy half arriving in the one place it cannot be forgotten. A runtime delete of
+ * such a row raises SQLITE_CONSTRAINT_FOREIGNKEY; inside a migration, where
+ * `foreign_keys = OFF`, the same delete succeeds and leaves a dangling reference
+ * `PRAGMA foreign_key_check` reports and `sweepOrphanedCascadeRows` cannot clear. So
+ * the helper asks, before deleting, and throws naming the link — a migration that
+ * has not decided what to do about its blocking links rolls back and stops the boot
+ * rather than quietly making the graph inconsistent.
+ *
+ * WHY NOT A POLICY ARGUMENT. An argument can be passed wrong, and a default is what
+ * makes an omission silent — while "whoever deletes must first carry, free, or
+ * decline" is not a per-caller choice at all. The caller resolves its blocking links
+ * before calling (the #5409 adoption carries the follow-up pair onto the sample and
+ * declines the nights it cannot carry), and the helper's only job is to make the
+ * unresolved case impossible to reach by accident.
  */
 export function deleteRowsWithCascade(
   db: Database.Database,
@@ -342,6 +384,7 @@ export function deleteRowsWithCascade(
   ids: readonly number[]
 ): CascadeDeleteEffect[] {
   if (ids.length === 0) return [];
+  refuseBlockedRows(db, table, ids);
   const key = rowKeyOf(db, table);
   const effects: CascadeDeleteEffect[] = [];
   const tally = (

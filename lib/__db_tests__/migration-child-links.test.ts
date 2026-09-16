@@ -472,7 +472,14 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     ).toEqual([{ id: 1, activity_id: null, label: "Sit and reach" }]);
   });
 
-  it("leaves the NON-cascading half alone — blocking is still CHILD_LINKS' job", () => {
+  it("REFUSES a row a NO ACTION parent still names (#5409)", () => {
+    // IT USED TO DELETE IT. The helper was the cascading half only, and the blocking
+    // half was the migration's own hand-written `CHILD_LINKS` — which two of the six
+    // shipped migrations that needed it declared. So this delete removed the row, the
+    // reference dangled (keys are OFF in a migration), `foreign_key_check` reported it
+    // from then on and the orphan sweep could not clear it. The unresolved case is now
+    // unreachable: the helper asks the same pragma the cascading half reads and throws
+    // naming the link.
     const mem = cascadeDb();
     mem.pragma("foreign_keys = OFF");
     mem
@@ -480,12 +487,31 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
         "INSERT INTO care_plan_items (id, profile_id, source_medical_record_id) VALUES (1, 1, 4)"
       )
       .run();
-    // The helper deletes what it was told to; it does not notice that a NO ACTION
-    // parent still points at the row. That check belongs to the migration.
-    deleteRowsWithCascade(mem, "medical_records", [4]);
+    expect(() => deleteRowsWithCascade(mem, "medical_records", [4])).toThrow(
+      /care_plan_items\.source_medical_record_id \(ON DELETE NO ACTION\)/
+    );
+    // Nothing happened: the row, its cascading child and the reference all stand.
     expect(
-      inboundDeleteLinks(mem, "medical_records").map((l) => l.table)
-    ).toEqual(["medical_record_revisions"]);
+      (
+        mem
+          .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE id = 4")
+          .get() as { n: number }
+      ).n
+    ).toBe(1);
+    expect(mem.pragma("foreign_key_check")).toEqual([]);
+
+    // RESOLVED — here by freeing it, as the record-delete path does; the #5409
+    // adoption carries it instead. Either way the delete then proceeds.
+    mem
+      .prepare(
+        "UPDATE care_plan_items SET source_medical_record_id = NULL WHERE id = 1"
+      )
+      .run();
+    expect(deleteRowsWithCascade(mem, "medical_records", [4])).toContainEqual({
+      table: "medical_records",
+      action: "parent",
+      rows: 1,
+    });
     expect(
       (
         mem.prepare("SELECT COUNT(*) AS n FROM care_plan_items").get() as {
@@ -595,16 +621,19 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     }
     expect(
       offenders,
-      "lib/migrations/cascade-delete.ts skips every action but CASCADE and SET " +
-        "NULL. ON DELETE SET DEFAULT / RESTRICT would be skipped SILENTLY, so the " +
-        "helper would delete the parent and leave the child dangling where the " +
-        "runtime delete aborts. Implement the branch before adding the link."
+      "lib/migrations/cascade-delete.ts acts on CASCADE and SET NULL and REFUSES " +
+        "everything else, so ON DELETE SET DEFAULT / RESTRICT would block every " +
+        "delete of this parent through the helper rather than being cleaned up. " +
+        "Implement the branch before adding the link."
     ).toEqual([]);
   });
 
   it("SET DEFAULT really is the failure this pin prevents", () => {
-    // Not a hypothetical: the helper's skip is demonstrated, beside SQLite's own
-    // answer to the same delete.
+    // Not a hypothetical: the helper's answer is demonstrated beside SQLite's own
+    // answer to the same delete. They now AGREE — a SET DEFAULT link is in the
+    // blocking half, so the helper refuses where the runtime aborts. Before #5409 it
+    // deleted the parent and left the child pointing at a row that was gone, which
+    // this module's header already called worse than the cycle it refuses loudly.
     const mem = new Database(":memory:");
     mem.pragma("foreign_keys = OFF");
     const schema = `
@@ -618,11 +647,11 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     `;
     mem.exec(schema);
     expect(inboundDeleteLinks(mem, "parents")).toEqual([]);
-    expect(deleteRowsWithCascade(mem, "parents", [1])).toEqual([
-      { table: "parents", action: "parent", rows: 1 },
-    ]);
+    expect(() => deleteRowsWithCascade(mem, "parents", [1])).toThrow(
+      /kids\.p \(ON DELETE SET DEFAULT\)/
+    );
     expect(mem.prepare("SELECT p FROM kids").all()).toEqual([{ p: 1 }]);
-    expect(mem.pragma("foreign_key_check")).not.toEqual([]);
+    expect(mem.pragma("foreign_key_check")).toEqual([]);
 
     const runtime = new Database(":memory:");
     runtime.pragma("foreign_keys = OFF");
