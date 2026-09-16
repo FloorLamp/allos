@@ -80,23 +80,24 @@ import { fileURLToPath } from "node:url";
 // wrapper that passes its own default satisfies an argument COUNT. Neither is
 // protection this slice gave up; both are what a later slice would take.
 //
-// lib/__tests__/format-locale-leak.test.ts (44 lines) went in the same commit. Its
-// ban on `toLocale*(undefined` across four formatter modules is a strict SUBSET of
-// rule (i) above, which bans every non-"en-US" `.toLocale*String(` call in all of
-// app/, components/ and lib/ against an EMPTY allowlist — a live successor already
-// in this file, not a deletion into thin air. Verified by planting
-// `.toLocaleDateString(undefined, {})` in each of its four modules
-// (lib/record-format.ts, lib/administration-format.ts, lib/format-date.ts,
-// lib/training-log-card.ts) in turn: rule (i) below reds on all four.
+// lib/__tests__/format-locale-leak.test.ts STAYS. An earlier pass of this branch
+// deleted it as subsumed by rule (i); that was wrong and is reverted. Rule (i) is a
+// strict superset of it on the FILE axis — 2,715 scanned files against its four —
+// but NOT on the call-shape axis: rule (i)'s `TOLOCALE_RE` requires a literal `.`
+// before `toLocale`, and that file's `LOCALE_LEAK` does not. So a bare
+// `toLocaleDateString(undefined, {})`, reached through a same-named binding, reds
+// that file and passes rule (i) while passing both tsc and prettier. #5351's table
+// routes this ban to lint; until that rule exists, dropping the four-module ban
+// would remove live coverage with nothing behind it.
 //
 // ---- Rule (i) STAYS, and is waiting on lint --------------------------------
 //
 // #5351's table routes the `toLocale*` ban to an ESLint rule. `eslint.config.mjs`
 // has no such rule today, and no TYPE can state "this module contains no
-// `.toLocaleDateString(` call", so until that lint rule exists this scan is the
-// only thing holding the ban and it stays. Whoever owns eslint.config.mjs retires
-// rule (i) — and only rule (i) — by porting TOLOCALE_RE to a `no-restricted-syntax`
-// selector and deleting its block here. Rule (iii) is neither lint's nor a type's:
+// `.toLocaleDateString(` call", so until that lint rule exists this scan holds the
+// app-wide ban and it stays. Whoever owns eslint.config.mjs retires rule (i) — and
+// only rule (i) — by porting TOLOCALE_RE to a `no-restricted-syntax` selector and
+// deleting its block here. Rule (iii) is neither lint's nor a type's:
 // its subject is a JSX attribute on a native element, so it stays either way.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
