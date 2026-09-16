@@ -46,7 +46,16 @@ export default function HomeReceipt({ rowId }: { rowId: string | null }) {
       () => row.classList.remove(...HIGHLIGHT_CLASSES),
       HIGHLIGHT_MS
     );
-    return () => clearTimeout(timer);
+    // THE CLEANUP UNMARKS THE ROW, NOT JUST THE CLOCK (#5899). Two writes inside the
+    // window — two due doses taken back to back — run this cleanup for the FIRST row
+    // and then mark the second. Cancelling only the timer left the first row wearing
+    // "just written" until a reload, which is the one thing a receipt may not say.
+    // `row` is this run's element, so a superseded row is unmarked and the current
+    // one is untouched.
+    return () => {
+      clearTimeout(timer);
+      row.classList.remove(...HIGHLIGHT_CLASSES);
+    };
   }, [rowId]);
 
   return null;
