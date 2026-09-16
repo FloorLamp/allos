@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { zonedDateParts } from "@/lib/date";
-import { foodSlotForHhmm, type FoodSlotBoundaries } from "@/lib/food-slot";
+import {
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
 import { useUnsavedInputWithin } from "@/components/DirtyFormRegistry";
 
 // ── THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (issue #5902) ────────
@@ -19,11 +23,11 @@ import { useUnsavedInputWithin } from "@/components/DirtyFormRegistry";
 // was considered and reversed for size, so nothing here re-reads anything — the
 // next puck tap gathers fresh, exactly as it does today.
 //
-// WHY A MODULE AND NOT A BLOCK INSIDE THE VISIT OWNER. `QuickEntryProvider.tsx` is
-// the visit owner and is where this hook is CALLED, but it is also 2,200 non-comment
-// lines, which docs/change-policy.md holds to a shrink rule. Resume staleness is its
-// own subject — a clock, two windows and a draft question — so it gets its own file
-// rather than another concern folded into that one.
+// WHY A MODULE AND NOT A BLOCK INSIDE THE VISIT OWNER. Resume staleness is its own
+// subject — a profile clock, two food windows and a draft question — and it shares
+// nothing with the visit machinery beyond the flag it ends at. `QuickEntryProvider`
+// CALLS this and keeps the ref pair alive; it does not need to carry the reasoning,
+// and it is already long enough that folding one more concern in would bury both.
 //
 // TWO GUARDS, AND NO TIMER. Nothing runs while the sheet is closed or while the
 // document is hidden: the facts are taken once on the way out and compared once on
@@ -40,7 +44,7 @@ interface VisitBoundaryFacts {
   // Null until the open-time gather publishes boundaries (it failed, or nothing has
   // gathered yet). Null on BOTH sides compares equal, so the profile day stays a
   // live boundary even then.
-  slot: string | null;
+  slot: FoodSlot | null;
 }
 
 /**
