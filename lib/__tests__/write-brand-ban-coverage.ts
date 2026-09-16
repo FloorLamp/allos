@@ -3,9 +3,17 @@
 // eslint-config-composition.test.ts names files one at a time and asks which bans
 // reach each. That answers "did this file LOSE a rule" and structurally cannot
 // answer "does every production file HAVE one" — and the second question is what
-// #5348's composite defence rests on, because actions-write-access.test.ts
-// lets an action that calls a branded core drop its allowlist entry on the strength
-// of production code being unable to forge the brand.
+// #5348's composite defence rests on, because actions-write-access.test.ts lets an
+// action that calls a branded core drop its allowlist entry.
+//
+// That step-aside rests on the reading actions-write-access.test.ts states for
+// itself — "calls a branded core" is EVIDENCE of a gate, not PROOF of one — and the
+// evidence is what the seam positively refuses: `tsc` refuses a plain number at a
+// call site, the ordinary accident, and eslint.config.mjs's WRITE_BRAND_CAST refuses
+// production code the `as WriteAuthorizedProfileId` forge, across every production
+// module (#5852, #5864). "Across every production module" is the half no other test
+// measures, which is why this file exists — where the rule does not reach, the second
+// refusal is absent and the dropped allowlist entry records nothing.
 //
 // Three shipped modules were outside WRITE_BRAND_CAST while every sampled row stayed
 // green: lib/revalidate.ts, whose `no-restricted-imports` exemption took the syntax
