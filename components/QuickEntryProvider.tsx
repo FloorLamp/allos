@@ -7,7 +7,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -48,13 +47,13 @@ import { CREATE_ACTIONS } from "./CreateAction";
 import { bristolScaleLines } from "@/lib/bristol-stool";
 import { isWithinReach, logHeading, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
-import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import { shiftDateStr } from "@/lib/date";
+import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import {
-  foodSlotForHhmm,
-  type FoodSlot,
-  type FoodSlotBoundaries,
-} from "@/lib/food-slot";
-import { useUnsavedInputWithin } from "./DirtyFormRegistry";
+  useVisitResumeBoundary,
+  useVisitResumeWatch,
+  type VisitResumeWatch,
+} from "./quick-entry/visit-resume";
 import { formatRelativeTime, formatWeekdayDate } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { TimezoneProvider } from "./TimezoneProvider";
@@ -205,12 +204,9 @@ interface QuickEntryHostApi extends QuickEntryApi {
   visit: QuickEntryVisitHostApi;
   actingProfileId: number;
   writableProfiles: SessionProfile[];
-  // Read at event time, never rendered: see `noteSlotBoundaries`.
-  slotBoundariesRef: { current: FoodSlotBoundaries | null };
-  // The element the visited bodies render inside — the subtree the resume check
-  // asks the dirty-form registry about. Null while the menu is the whole sheet,
-  // which is also the honest answer: a menu of buttons holds no draft.
-  visitBodiesRef: { current: HTMLDivElement | null };
+  // The resume check's two event-time reads (#5902), owned by
+  // components/quick-entry/visit-resume.ts.
+  resume: VisitResumeWatch;
 }
 
 interface QuickEntrySession {
@@ -384,29 +380,6 @@ function sheetForEntry(
     : SHEET[entry.form];
 }
 
-// The two facts a visit is allowed to go stale against (#5902): which profile-local
-// DAY it is, and which food WINDOW that day is in. Both read from the profile's own
-// clock, never the device's.
-interface VisitBoundaryFacts {
-  day: string;
-  // Null while the open-time gather has not published boundaries (it failed, or the
-  // sheet was backgrounded before it landed). Two nulls compare equal, so the day
-  // stays a live boundary even then; a null on one side alone decides nothing.
-  slot: FoodSlot | null;
-}
-
-// Did the clock leave the window this visit was gathered in? Day first, because a
-// day change is a boundary crossing whether or not the window happens to match.
-function crossedVisitBoundary(
-  before: VisitBoundaryFacts,
-  after: VisitBoundaryFacts
-): boolean {
-  if (before.day !== after.day) return true;
-  return (
-    before.slot !== null && after.slot !== null && before.slot !== after.slot
-  );
-}
-
 export function useQuickEntryVisit(
   outerOpen: boolean,
   onInvalidated: () => void
@@ -415,9 +388,6 @@ export function useQuickEntryVisit(
   const dayContext = useOptionalDayContext();
   const ownerId = useId();
   const liveProfileClocks = useLiveProfileClocks();
-  const hasUnsavedInputWithin = useUnsavedInputWithin();
-  const backgroundedAt = useRef<VisitBoundaryFacts | null>(null);
-  const readBoundaryFacts = useRef<() => VisitBoundaryFacts | null>(() => null);
   const [edge, setEdge] = useState(() => ({
     open: outerOpen,
     serial: outerOpen ? 1 : 0,
@@ -455,77 +425,19 @@ export function useQuickEntryVisit(
       onInvalidated();
   }, [ctx.visit.state.invalidated, currentVisit, onInvalidated, outerOpen]);
 
-  // ── THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (#5902) ────────────
+  // THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (#5902). One listener,
+  // here in the visit owner, so `QuickLogSheet` needs not one line of it and neither
+  // does any future host that takes a visit. What it watches, why the day is derived
+  // at event time and why a draft holds the sheet open: visit-resume.ts.
   //
-  // Backgrounding a PWA and returning hours later leaves a surviving page exactly
-  // as it was, and nothing in the sheet notices: the morning's "Due & usual now"
-  // chips still stand, a visited body still holds the morning's rows, and the food
-  // header still says "Add to Morning" while a bare tap files the serving there.
-  // Owner ruling 2026-09-15: the sheet CLOSES on that return, and never over a
-  // draft. Regathering in place was considered and reversed for size.
-  //
-  // WHY THE VISIT OWNER AND NOT EITHER HOST. Both the phone sheet and the desktop
-  // panel's overlay path run through this hook, so one listener here is the whole
-  // behaviour and neither host file learns a thing about clocks.
-  //
-  // TWO GUARDS, AND NO TIMER. Nothing runs while the sheet is closed or while the
-  // document is hidden — the facts are taken once on the way out and compared once
-  // on the way back — and a return INSIDE the same window on the same day does
-  // nothing at all. An ordinary app switch is therefore free; only a crossing
-  // closes. There is no minute threshold, because "long enough to matter" is
-  // exactly "the clock left the window", which is a fact rather than a guess.
-  //
-  // THE DAY IS DERIVED AT EVENT TIME, not read off the last render. The live clock
-  // (`RouteDayContext`) advances on its own midnight timer, which also fires on
-  // resume — but nothing orders that timer against this listener, so reading its
-  // rendered `today` here would decide a midnight crossing on a race. The ZONE is
-  // the live clock's; the day is `dateStrInTz`'s own derivation from it, which is
-  // what the clock itself renders.
-  readBoundaryFacts.current = () => {
-    const clock = liveProfileClocks.get(ctx.actingProfileId);
-    if (!clock) return null;
-    const { date, hhmm } = zonedDateParts(clock.timeZone, new Date());
-    const boundaries = ctx.slotBoundariesRef.current;
-    return {
-      day: date,
-      slot: boundaries ? foodSlotForHhmm(hhmm, boundaries) : null,
-    };
-  };
-
-  const invalidateVisit = ctx.visit.invalidate;
-  const visitBodiesRef = ctx.visitBodiesRef;
-  useEffect(() => {
-    if (!outerOpen || !currentVisit) return;
-    backgroundedAt.current = null;
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        backgroundedAt.current = readBoundaryFacts.current();
-        return;
-      }
-      const before = backgroundedAt.current;
-      backgroundedAt.current = null;
-      const after = readBoundaryFacts.current();
-      if (!before || !after || !crossedVisitBoundary(before, after)) return;
-      // NEVER OVER A DRAFT. The header keeps naming the old window, which is the
-      // accepted cost of not putting a confirm in front of someone who has just
-      // picked their phone back up. The registry is asked about the visited
-      // bodies' subtree only: a dirty form on the page BEHIND the sheet is not
-      // this sheet's unsaved work.
-      if (hasUnsavedInputWithin(visitBodiesRef.current)) return;
-      invalidateVisit();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      backgroundedAt.current = null;
-    };
-  }, [
-    currentVisit,
-    hasUnsavedInputWithin,
-    invalidateVisit,
-    outerOpen,
-    visitBodiesRef,
-  ]);
+  // (The desktop panel reaches these forms through the provider's DIRECT overlay
+  // rather than a visit, so it has no visit to invalidate and is not covered.)
+  useVisitResumeBoundary({
+    watching: outerOpen && currentVisit,
+    timeZone: liveProfileClocks.get(ctx.actingProfileId)?.timeZone ?? null,
+    watch: ctx.resume,
+    onCrossed: ctx.visit.invalidate,
+  });
 
   const activeEntry = (currentVisit ? ctx.visit.state.entries : []).find(
     (entry) => entry.id === ctx.visit.state.activeId
@@ -891,17 +803,7 @@ export default function QuickEntryProvider({
     return subscribeLastGoodInvalidation(invalidate);
   }, [invalidateVisit]);
 
-  // The last food-window splits anybody gathered for this sheet (#5902). A ref,
-  // not state: only the resume listener reads it, at event time, and a re-render
-  // of the whole provider on every sheet open would buy nothing.
-  const slotBoundariesRef = useRef<FoodSlotBoundaries | null>(null);
-  const noteSlotBoundaries = useCallback(
-    (boundaries: FoodSlotBoundaries | null) => {
-      slotBoundariesRef.current = boundaries;
-    },
-    []
-  );
-  const visitBodiesRef = useRef<HTMLDivElement | null>(null);
+  const resume = useVisitResumeWatch();
 
   useLayoutEffect(() => {
     clearLastGood();
@@ -1928,11 +1830,10 @@ export default function QuickEntryProvider({
     () => ({
       open: openForm,
       close,
-      noteSlotBoundaries,
+      noteSlotBoundaries: resume.noteSlotBoundaries,
       actingProfileId,
       writableProfiles,
-      slotBoundariesRef,
-      visitBodiesRef,
+      resume,
       visit: {
         state: visitState,
         start: startVisit,
@@ -1964,7 +1865,7 @@ export default function QuickEntryProvider({
       exitIntake,
       acceptIntakeSave,
       invalidateVisit,
-      noteSlotBoundaries,
+      resume,
       refreshDose,
       focusDoseReturn,
       retryVisitEntry,
@@ -2298,7 +2199,7 @@ export function QuickEntryVisitBodies({
   // (#5902) asks the dirty-form registry whether this subtree holds unsaved input,
   // and that question needs a root. Nothing else reads it.
   return (
-    <div className="contents" ref={ctx.visitBodiesRef}>
+    <div className="contents" ref={ctx.resume.bodiesRef}>
       {state.entries.map((entry) => (
         <Activity
           key={`${state.identity}:${state.generation}:${entry.id}`}
