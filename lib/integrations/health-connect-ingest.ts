@@ -1,8 +1,6 @@
 import { db, writeTx } from "@/lib/db";
-import {
-  adoptWearableBreathingRates,
-  reportBreathingRateDeclines,
-} from "@/lib/breathing-rate-db";
+import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
+import { reportBreathingRateDeclines } from "./breathing-rate-report";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { compareWindowStarts, pushStampFor } from "@/lib/metric-window-overlap";

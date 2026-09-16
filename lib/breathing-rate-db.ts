@@ -15,7 +15,6 @@ import {
   type BlockingInboundLink,
 } from "@/lib/migrations/cascade-delete";
 import { BREATHING_RATE_FOLLOWUP_KIND } from "@/lib/followup-breathing-rate";
-import { recordSyncEvent } from "@/lib/integrations/connections";
 import { isEditLocked } from "@/lib/integrations/sync-log";
 import { parseUtcSql } from "@/lib/date";
 
@@ -594,39 +593,4 @@ export function adoptWearableBreathingRates(
     removed += doomed.length;
   }
   return { adopted, removed, carried, declined: [...declined.values()] };
-}
-
-/**
- * Put an adoption's DECLINES where a person can see them: one
- * `integration_sync_events` row naming the link that held a night and how many nights
- * it held.
- *
- * WHY A SYNC EVENT AND NOT A LOG LINE. Server logs are the one surface a user of this
- * app never reads, and the adoption's declines are about THEIR data - a night that
- * stays in the vitals fold because a reference on it has nowhere to go. Data → Review
- * renders `integration_sync_events` per source, which is where the rest of "what this
- * push did and did not do" already lives (`suppressed`, `edited`, `superseded`).
- *
- * `ok: true` and `skipped`, deliberately: nothing FAILED. The push wrote what it could,
- * the declined nights are intact where they were, and every later push re-derives the
- * same answer - so this is a disclosure, not an error, and it must not put a red badge
- * on a sync that worked. A run with nothing to decline writes no row at all.
- *
- * Best-effort like every other `recordSyncEvent` caller: it can neither break nor
- * meaningfully slow the ingest it observes.
- */
-export function reportBreathingRateDeclines(
-  profileId: number,
-  sourceId: string,
-  adoption: BreathingRateAdoption
-): void {
-  if (adoption.declined.length === 0) return;
-  const nights = adoption.declined.reduce((n, d) => n + d.nights, 0);
-  recordSyncEvent(profileId, sourceId, {
-    ok: true,
-    skipped: nights,
-    details: `breathing rate: ${nights} night(s) left in medical records — ${adoption.declined
-      .map((d) => `${d.held_by} (${d.nights})`)
-      .join(", ")}`,
-  });
 }
