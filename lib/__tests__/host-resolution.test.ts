@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   discoverNodeBin,
   LEDGER_FILE,
+  nodePinRefusal,
+  nvmrcMajorAt,
   resolveReadToken,
   resolveStateDir,
 } from "../../scripts/orchestration/host.mjs";
@@ -189,5 +191,85 @@ describe("resolveReadToken", () => {
     };
     expect(resolveReadToken({}, throwing as never)).toBeNull();
     expect(resolveReadToken({}, (() => "\n") as unknown as never)).toBeNull();
+  });
+});
+
+// THE PINNED MAJOR, READ ONCE (#5940). The read and the parsing used to live
+// inside host.mjs's CLI block where nothing could import them, so
+// dispatch-brief.mjs kept a second copy and the gate guard would have been a
+// third. What is pinned here is the PARSING and the null, not `.nvmrc`'s
+// contents: a test that asserted the file says 24 would be the dev-config
+// restatement docs/change-policy.md forbids.
+describe("nvmrcMajorAt", () => {
+  it.each([
+    ["24\n", "24", "a bare major, as this repo pins it"],
+    ["v24.21.0\n", "24", "an nvm-style full version"],
+    ["  22  \n", "22", "surrounding whitespace"],
+    ["", null, "an empty file — no major, rather than an empty string"],
+    ["\n", null, "whitespace only"],
+  ])("reads %j as %j (%s)", (text, expected) => {
+    expect(nvmrcMajorAt(undefined, () => text)).toBe(expected);
+  });
+
+  it("answers null when the read fails, and asks for the ref it was given", () => {
+    // A clone that has never fetched origin/main misses ORDINARILY; the caller
+    // decides whether to fall back, so this must not throw or invent a major.
+    const asked: (string | undefined)[] = [];
+    const read = (ref?: string) => {
+      asked.push(ref);
+      return null;
+    };
+    expect(nvmrcMajorAt("refs/remotes/origin/main", read)).toBeNull();
+    expect(nvmrcMajorAt(undefined, read)).toBeNull();
+    expect(asked).toEqual(["refs/remotes/origin/main", undefined]);
+  });
+});
+
+// THE GATE GUARD'S DECISION (#5940). Its failure mode is PASSING: a run let
+// through on the wrong major produces a false red naming an innocent file and
+// a false green on a tier that never ran, so the mismatch and the match are
+// pinned together. The message is asserted by what an operator must act on —
+// both majors and the binary that was actually resolved — not by its wording.
+describe("nodePinRefusal", () => {
+  const found = {
+    pinned: "24",
+    at: "at origin/main",
+    version: "v22.22.2",
+    execPath: "/opt/node22/bin/node",
+    bin: "/opt/nvm/versions/node/v24.21.0/bin",
+  };
+
+  it("lets the run proceed when the running major IS the pinned one", () => {
+    expect(
+      nodePinRefusal({ ...found, version: "v24.21.0", execPath: "/x/node" })
+    ).toBeNull();
+    // Only the MAJOR is pinned; a different patch is the same interpreter.
+    expect(
+      nodePinRefusal({ ...found, version: "v24.0.0", execPath: "/x/node" })
+    ).toBeNull();
+  });
+
+  it("refuses a wrong major, naming both versions, the binary and the export", () => {
+    const refusal = nodePinRefusal(found);
+    expect(refusal).toContain("v22.22.2");
+    expect(refusal).toContain("/opt/node22/bin/node");
+    expect(refusal).toContain("24");
+    expect(refusal).toContain(
+      "export PATH=/opt/nvm/versions/node/v24.21.0/bin:$PATH"
+    );
+  });
+
+  it("says no PATH fixes it when the pinned major is not installed", () => {
+    // Prescribing an export over a host that has no such node sends the
+    // operator round a loop; the remedy is an install, and it must say so.
+    const refusal = nodePinRefusal({ ...found, bin: null });
+    expect(refusal).toContain("install");
+    expect(refusal).not.toContain("export PATH");
+  });
+
+  it("refuses rather than assumes when no .nvmrc could be read at all", () => {
+    const refusal = nodePinRefusal({ ...found, pinned: null });
+    expect(refusal).toContain("could not be read");
+    expect(refusal).toContain("/opt/node22/bin/node");
   });
 });

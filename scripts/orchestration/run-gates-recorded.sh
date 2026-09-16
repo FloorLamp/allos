@@ -52,8 +52,8 @@
 # the newest run of any branch, or a file this script did not name.
 #
 # Exit code: the gates' own (from the `.exit` file); 1 if the run died without
-# writing one; 2 for a usage or state-dir failure before anything ran, and for a
-# report with no log at all — nothing ran, which is not a killed run.
+# writing one; 2 for a usage, node-pin or state-dir failure before anything ran,
+# and for a report with no log at all — nothing ran, which is not a killed run.
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ] || [ -z "${1:-}" ]; then # the header IS the usage (usage.mjs is the JS twin)
   sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
@@ -70,6 +70,24 @@ case "$MODE" in start | --wait) ;; *)
   echo "run-gates-recorded.sh: unknown mode $MODE — see --help" >&2
   exit 2 ;;
 esac
+
+# THE INTERPRETER IS PART OF THE RESULT (#5940). Every gate below runs bare
+# `node` from PATH and nothing compared it to .nvmrc, so a wrong-major shell
+# produced results that looked ordinary and meant nothing in BOTH directions —
+# a false red naming an innocent file (`readDataWriteRevision is not a
+# function`, at commits CI had certified green) and a false green on a tier
+# whose real behaviour never ran. host.mjs owns the comparison and the message;
+# this refuses on it, because a warning atop a 2,500-line log is not read.
+#
+# Before the state dir and in BOTH modes. `--wait` only reads a record, but a
+# shell that cannot run gates cannot act on their verdict either, and the
+# refusal names the one `export` that fixes it — so re-collecting afterwards
+# costs a line, while reading a verdict in a shell that cannot reproduce it
+# costs a bisect.
+if ! node "$HELPERS/host.mjs" node-check; then
+  echo "=== GATES: NODE PIN — the interpreter is not .nvmrc's (above); nothing ran ===" >&2
+  exit 2
+fi
 
 # The state dir is the resolver's answer or nothing: a guessed one writes the
 # .pid where no later shell will look, which is the defect this file replaces.
