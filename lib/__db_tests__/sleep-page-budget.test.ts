@@ -106,12 +106,20 @@ describe("/sleep route query budget (#3993)", () => {
     household: 64,
     pregnant: 64,
     "diabetic-cgm": 64,
-    biohacker: 105,
+    // +1 for #5409's Sleep-hero cell: `getLastNightSummary` now resolves the night's
+    // breathing rate onto the shared last-night model, and this is THE route that
+    // renders it. `biohacker` alone, because `ouraNight` is the only writer of a
+    // `sleep_min` row in the persona seed and only this persona calls it — every
+    // other persona has no sleep session, and the read is gated on having one, which
+    // is why the five 64s do not move. Home pays the same +1 for the same gather
+    // without rendering the fact; that one is recorded in
+    // dashboard-placement-manifest.test.ts.
+    biohacker: 106,
   };
 
   // The dashboard's backstop, borrowed and kept in step with it (#5435 §7 lowered it
   // to 269). /sleep is one domain page; reaching this would mean it costs what the
-  // entire dashboard census costs. The heaviest persona is 105 against it — the answer
+  // entire dashboard census costs. The heaviest persona is 106 against it — the answer
   // to the question nobody had asked, which was whether this route could exceed a
   // ceiling no gate applies to it.
   const QUERY_CEILING = 269;
