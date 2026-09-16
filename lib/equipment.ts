@@ -11,8 +11,8 @@
 // What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a
 // call site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses
 // production code the `as WriteAuthorizedProfileId` forge, across every production module
-// (#5864). It does NOT refuse a method-position bivariant call or an implicit `any`; that
-// residual is tracked at #5892 and this seam does not close it.
+// (#5852, #5864). Those are the accidents it catches; it does not make the brand
+// unforgeable, and the residual is not a list anyone has closed (#5892, #5914).
 
 import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
