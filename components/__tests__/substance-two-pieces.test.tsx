@@ -391,6 +391,36 @@ describe("SubstanceUnitControl is ONE row control", () => {
     expect(payload("undo").substance).toBe("nicotine");
   });
 
+  // THE BODY'S OWN SPELLING, RETIRED (#5900). This row answered a tap in flight
+  // by swapping its label to "Logging…" — one of the five answers the eleven
+  // quick-log bodies gave to "did that register?", and the one that also moved
+  // the word out from under the finger. The failure this catches is a body that
+  // reaches the primitive's treatment in name only: `aria-busy`, the shared
+  // mark and the refusal all have to arrive together, and the label has to stay.
+  it("answers a tap in flight with the one treatment, not a swapped label", async () => {
+    const flight = Promise.withResolvers<typeof logResult>();
+    logReply = () => flight.promise;
+    control(null, 2);
+    const tap = screen.getByTestId("substance-log-nicotine");
+    const idleLabel = tap.textContent;
+    expect(tap.querySelector("svg")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(tap);
+    });
+    expect(tap.getAttribute("aria-busy")).toBe("true");
+    expect((tap as HTMLButtonElement).disabled).toBe(true);
+    expect(tap.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(tap.textContent).toBe(idleLabel);
+    expect(tap.textContent).not.toContain("Logging");
+
+    await act(async () => {
+      flight.resolve(logResult);
+      await flight.promise;
+    });
+    expect(tap.getAttribute("aria-busy")).toBeNull();
+  });
+
   it("renders the cap verdict beside the tap, and NOTHING for a profile with no cap", () => {
     control("2 of 7 this week.", 2);
     expect(
