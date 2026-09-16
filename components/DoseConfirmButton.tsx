@@ -157,6 +157,7 @@ export default function DoseConfirmButton({
         verb="Take"
         tone="brand"
         disabled={pending}
+        busy={pending}
         ariaLabel={takeName}
         testId={testid}
         onAct={() => {

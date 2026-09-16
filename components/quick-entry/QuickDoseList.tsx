@@ -626,6 +626,7 @@ function OtherItemRow({
             tone="neutral"
             onAct={take}
             disabled={busy}
+            busy={busy}
             ariaLabel={`Take ${item.name}${item.detail ? ` · ${item.detail}` : ""}`}
             testId={`quick-entry-other-take-${item.itemId}`}
             clockDoor={statement.door}

@@ -591,8 +591,9 @@ export default function MoodForm({
               <SubmitButton
                 variant="primary"
                 disabled={busy || valence == null}
+                busy={busy}
               >
-                {busy ? "Saving…" : "Save"}
+                Save
               </SubmitButton>
               {onCancel ? (
                 <FormDismissAction disabled={busy} onClick={onCancel}>

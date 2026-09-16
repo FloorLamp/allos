@@ -14,6 +14,7 @@ import {
   endPeriodAction,
   reopenPeriodAction,
 } from "@/app/(app)/medical/cycles/actions";
+import { BusyMark } from "@/components/Button";
 
 // THE one-tap period affordance (issue #1892), rendered by every surface that offers
 // one: the Cycle page's quick actions, the dashboard control atom, and the quick-log
@@ -137,10 +138,16 @@ export default function PeriodOfferButton({
         // of silently ignored (the substance-card posture; lib/one-tap.ts).
         disabled={ledger.blocked()}
         data-testid={TEST_IDS[write]}
+        aria-busy={ledger.pending() || undefined}
         data-period-write={write}
         onClick={run}
       >
-        {ledger.pending() ? "Saving…" : offer.label}
+        {/* THE LABEL STAYS PUT (#5900). This control used to swap its whole
+            sentence — "Start period" became "Saving…" — which changed the
+            button's width under the finger on the one control the sheet's cycle
+            body offers. The shared mark precedes the offer's own label instead. */}
+        {ledger.pending() ? <BusyMark /> : null}
+        {offer.label}
       </button>
       <InlineError>{error}</InlineError>
     </div>

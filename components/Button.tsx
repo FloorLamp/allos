@@ -29,6 +29,27 @@ export interface ButtonProps {
   onClick?: MouseEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
   pendingLabel?: ReactNode;
+  /**
+   * THE SAME IN-FLIGHT TREATMENT, REACHED FROM OUTSIDE A FORM (#5900). The
+   * primitive already owned one — `aria-busy`, the spinner, and a control that
+   * refuses a second tap — but derived it solely from `useFormStatus`, which
+   * reports pending only INSIDE a form. So the eleven quick-log tap bodies,
+   * which post through `useWritePipeline` rather than a form action, could not
+   * reach it and grew five spellings of their own instead. A tap body hands its
+   * `pipeline.pending(key)` (or `ledger.pending()`) here.
+   *
+   * It ORs into the form derivation and defaults to `false`; it never replaces
+   * it, because every current form submit gets its spinner from `useFormStatus`
+   * and nothing else (orchestrator A's clearance, constraint 1, #5903).
+   *
+   * DO NOT PASS `pendingLabel` WITH THIS. The busy path below renders
+   * `pendingLabel ?? children`, so a tap body that states both would swap its
+   * label mid-write and change width under the finger — the defect #5900 exists
+   * to remove. `pendingLabel` remains the form callers' own spelling; this is a
+   * caller rule rather than a runtime guard, because the two props are
+   * independently legitimate and only their combination is wrong.
+   */
+  busy?: boolean;
   "aria-label"?: string;
   "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-expanded"?: boolean;
@@ -102,6 +123,23 @@ type ButtonShapeProps = { dashed?: false } | { dashed: true; variant?: never };
 
 type ButtonMountProps = ButtonProps & ButtonShapeProps;
 
+/**
+ * THE ONE IN-FLIGHT MARK (#5900), exported because three of the quick-log tap
+ * controls cannot be this primitive and must still show the SAME thing. The
+ * dose circles, the bristol tiles and the protein pair carry bespoke geometry
+ * that `button-control` does not spell, so they render their own element — and
+ * copying `IconLoader2`'s class string into each of them is how a surface grows
+ * a sixth spelling of "in flight". A control with a label PRECEDES the label
+ * with this, exactly as the render below does; an icon-only control SWAPS its
+ * glyph for it, so its box does not move under the finger.
+ *
+ * `aria-hidden`, always: `aria-busy` on the control is what a reader is told,
+ * and the spinner is the same fact drawn.
+ */
+export const BusyMark = () => (
+  <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
+);
+
 // `hidden sm:inline-flex` beats the `button-control` utility's own
 // `inline-flex` because Tailwind emits custom `@utility` rules BEFORE the core
 // ones (checked against the compiled sheet, not assumed), so the later `hidden`
@@ -129,6 +167,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
     onClick,
     onKeyDown,
     pendingLabel,
+    busy: busyProp = false,
     "aria-label": ariaLabel,
     "aria-haspopup": ariaHasPopup,
     "aria-expanded": ariaExpanded,
@@ -142,7 +181,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
   ref
 ) {
   const { pending } = useFormStatus();
-  const busy = pending && type === "submit";
+  const busy = busyProp || (pending && type === "submit");
 
   return (
     <button
@@ -170,9 +209,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
         .join(" ")}
       {...data}
     >
-      {busy && (
-        <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
-      )}
+      {busy && <BusyMark />}
       {busy ? (pendingLabel ?? children) : children}
     </button>
   );

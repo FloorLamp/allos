@@ -357,6 +357,7 @@ export default function DoseHistoryPanel({
                       : undefined
                   }
                   disabled={ledger.blocked(date)}
+                  busy={ledger.pending(date)}
                   onAct={() => logMissedDay(date)}
                 />
                 {offer.amountAssumed ? (
