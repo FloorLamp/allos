@@ -215,6 +215,8 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   injuries: "user-write ledger, outside #3087's first tranche",
   intake_item_side_effects: "user-write ledger, outside #3087's first tranche",
   metric_samples: "user-write ledger, outside #3087's first tranche",
+  stool_events:
+    "user-write ledger with exactly ONE door (#5872). `logged_via` records WHICH surface a tap came from, and stool has no second surface to distinguish: the Telegram vocabulary excludes it by argued reach policy and the palette by affordance, so every row is the app's seven-icon picker. A column whose only value is a constant is a claim about provenance nobody made.",
   milestones: "user-write ledger, outside #3087's first tranche",
   mood_logs: "user-write ledger, outside #3087's first tranche",
   niggles: "user-write ledger, outside #3087's first tranche",

@@ -51,7 +51,7 @@ import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot, FoodSlotBoundaries } from "@/lib/food-slot";
 import type { TemperatureUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
-import { getBristolReadings } from "@/lib/queries/bristol-stool";
+import { getBristolDayCount } from "@/lib/queries/bristol-stool";
 import {
   getLoggedSubstanceKeys,
   getSubstanceWeekState,
@@ -343,6 +343,8 @@ export type QuickEntryData =
   | {
       // Bristol stool form (#2785). The picker needs nothing gathered but the day's
       // running count — the seven types are a committed vocabulary, not server state.
+      // EVERY movement on the day (#5872): an occurrence nobody saw the form of names
+      // no type and is still one of the day's movements.
       form: "stool";
       todayCount: number;
       // The acting profile's today — the day a tap files under, and the day the
@@ -525,8 +527,7 @@ async function gatherQuickEntry(
   if (form === "stool") {
     return {
       form: "stool",
-      todayCount: getBristolReadings(profile.id, requestedDate, requestedDate)
-        .length,
+      todayCount: getBristolDayCount(profile.id, requestedDate),
       today: date,
     };
   }

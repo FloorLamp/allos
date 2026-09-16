@@ -10,7 +10,6 @@ import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
 import EventCalendar from "@/components/EventCalendar";
-import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import { HistoryUsualOffers } from "./HistoryAddDoor";
@@ -25,10 +24,9 @@ import {
   withPrimedSettings,
 } from "@/lib/settings";
 import {
+  doseLedgerItems,
   getCustomSymptomNames,
   getDaylightOutdoorMinutesByDay,
-  getIntakeDoses,
-  getIntakeItems,
   getMoodOnDate,
   getSymptomLogOrder,
   isAnxietyScaleRelevant,
@@ -42,7 +40,6 @@ import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
-import { isOnDemand } from "@/lib/intake-schedule";
 import {
   formatClockMinutes,
   formatLongDate,
@@ -466,26 +463,7 @@ async function renderHistory(
   // The dose form's vocabulary, read once for the whole page: which items exist (an
   // item retired since the dose was taken still took it, so history keeps listing it)
   // and which of them still have a live dose to log against.
-  const allItems = getIntakeItems(actingProfileId);
-  const dosesByItem = new Map<number, DoseLedgerItem["doses"]>();
-  for (const dose of getIntakeDoses(actingProfileId)) {
-    const list = dosesByItem.get(dose.item_id) ?? [];
-    list.push({
-      id: dose.id,
-      amount: dose.amount,
-      time_of_day: dose.time_of_day,
-      versions: dose.versions,
-    });
-    dosesByItem.set(dose.item_id, list);
-  }
-  const doseItems: DoseLedgerItem[] = allItems.map((item) => ({
-    id: item.id,
-    name: item.name,
-    kind: item.kind,
-    product: item.product,
-    asNeeded: isOnDemand(item),
-    doses: dosesByItem.get(item.id) ?? [],
-  }));
+  const doseItems = doseLedgerItems(actingProfileId);
   const loggable = doseItems.filter((item) => item.doses.length > 0);
   const canWrite = scope.access.get(actingProfileId) === "write";
   // WHICH PROFILES IN VIEW THIS LOGIN MAY WRITE (#4009 item 1 / #2106). Resolved once

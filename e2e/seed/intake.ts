@@ -20,6 +20,10 @@ import {
   SUPPLY_CHILD_LOW_MED,
   SUPPLY_EDIT_BOTTLE,
   SUPPLY_PARENT_EDIT_MED,
+  E2E_LOGIN_HOME_POOL,
+  HOME_POOL_PROFILE,
+  HOME_POOL_BOTTLE,
+  HOME_POOL_MED,
   E2E_LOGIN_DRUG_ALLERGY,
   DRUG_ALLERGY_PROFILE,
   E2E_LOGIN_DOSE_LEDGER_PHONE,
@@ -577,6 +581,72 @@ export function seedSharedSupplyPools(): void {
     grantProfile(supplyLoginId, supplyChildId, "write");
     console.log(
       `e2e: seeded shared-supply-pool fixture — ${E2E_LOGIN_SUPPLY} granted ${SUPPLY_PARENT_PROFILE} (${supplyParentId}) + ${SUPPLY_CHILD_PROFILE} (${supplyChildId}); bottles ${sharedBottleId}/${lowBottleId} (#1374)`
+    );
+  }
+
+  // ── #5435 §9 pooled Home cue fixture ─────────────────────────────────────────
+  // A DEDICATED member login with its own dedicated adult profile carrying ONE EMPTY
+  // bottle and ONE member linked to it, so a POOLED low-supply cue lands in Home's Now
+  // band as an action. The bottles above sit at ~2 days, which left the pooled cue with
+  // no browser reading of its own.
+  //
+  // ITS OWN PROFILE, the same shape the #1374 fixture uses. A pooled cue on a SHARED
+  // seed profile is a fixture two specs can move: this branch already had the private
+  // low-supply cue pushed out of the Now band by a neighbour's Refilled tap, and a
+  // second member on a shared profile joins whatever time-of-day stack Home groups,
+  // where a neighbour addressing that stack by the one item it expected there breaks on
+  // the second button. Spec-owned end to end (smoke.spec.ts): nothing else reads this
+  // profile, so the member is an ordinary ACTIVE DAILY medication rather than a shape
+  // chosen to dodge a neighbour.
+  //
+  // The member REMEMBERS a 30-unit fill — the state a one-tap would have written onto
+  // the household bottle. The spec's claim is that the tap asks for a size instead, so
+  // it never writes and this fixture is repeat-safe by construction. Idempotent
+  // hard-clear for a reused dev server. Synthetic, no PHI.
+  {
+    const homePoolId = adultFixtureProfileId(HOME_POOL_PROFILE);
+    db.prepare(
+      `DELETE FROM intake_item_logs WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(homePoolId);
+    db.prepare(
+      `DELETE FROM intake_item_doses WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(homePoolId);
+    db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(homePoolId);
+    db.prepare(`DELETE FROM shared_supplies WHERE name = ?`).run(
+      HOME_POOL_BOTTLE
+    );
+    const homePoolBottleId = Number(
+      db
+        .prepare(
+          `INSERT INTO shared_supplies (name, strength, form, quantity_on_hand)
+           VALUES (?, '10 mg', 'tablet', 0)`
+        )
+        .run(HOME_POOL_BOTTLE).lastInsertRowid
+    );
+    // quantity_on_hand NULL because the bottle is the truth for a linked item (#1374);
+    // one daily dose at 1 unit gives the pool a rate of 1/day, so 0 on hand is 0 days
+    // left and the cue is due TODAY rather than folded into Later. `should`, because
+    // the pooled cue exists only while some active member is pushable (#1505).
+    const homePoolMedId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, notes, condition, obligation, kind, active, source,
+              quantity_on_hand, qty_per_dose, last_fill_size, supply_id)
+           VALUES (?, ?, 'e2e pooled Home cue fixture', 'daily', 'should',
+                   'medication', 1, 'manual', NULL, 1, 30, ?)`
+        )
+        .run(homePoolId, HOME_POOL_MED, homePoolBottleId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 tablet', 'Morning', 'any', 0)`
+    ).run(homePoolMedId);
+    seedMemberLogin(E2E_LOGIN_HOME_POOL, homePoolId, "write");
+    console.log(
+      `e2e: seeded pooled Home-cue fixture — ${E2E_LOGIN_HOME_POOL} granted ${HOME_POOL_PROFILE} (${homePoolId}); bottle ${homePoolBottleId} (#5435 §9)`
     );
   }
 }

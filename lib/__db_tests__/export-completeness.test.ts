@@ -579,6 +579,12 @@ const COLUMN_EXPORT_ALLOWLIST: ColumnExclusion[] = [
     why: "write stamp, as food_daily_totals",
   },
   {
+    table: "stool_events",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "bookkeeping write stamp; the dataset exports recorded_at (the tap) and occurred_at (the movement), which are the two instants that answer anything",
+  },
+  {
     table: "immunization_overrides",
     columns: ["created_at"],
     kind: "argued",

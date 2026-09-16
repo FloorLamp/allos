@@ -75,7 +75,7 @@ import { getIntegration } from "./integrations/registry";
 import type { IntegrationId } from "./types/integrations";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getBristolRows } from "./queries/bristol-stool";
-import { BRISTOL_STOOL_METRIC, bristolStoolType } from "./bristol-stool";
+import { bristolStoolType } from "./bristol-stool";
 import { getSymptomPhotosInRange } from "./symptom-photo-write";
 import { symptomLabel, severityLabelFor } from "./symptoms";
 import { getMoodLogs, getMoodOnDate, hasMoodLogs } from "./queries/mood";
@@ -409,13 +409,11 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
     .prepare("SELECT 1 FROM symptom_logs WHERE profile_id = ? LIMIT 1")
     .get(profileId);
   if (symptom != null) out.push("symptom");
-  // STOOL IS A `metric_samples` KIND, so the probe names the metric as well as the
-  // profile — the same reason sleep's does one block up.
+  // STOOL HAS ITS OWN LEDGER SINCE #5872, so the probe is the plain one every other
+  // owned table's is — no metric key to name.
   const stool = db
-    .prepare(
-      "SELECT 1 FROM metric_samples WHERE profile_id = ? AND metric = ? LIMIT 1"
-    )
-    .get(profileId, BRISTOL_STOOL_METRIC);
+    .prepare("SELECT 1 FROM stool_events WHERE profile_id = ? LIMIT 1")
+    .get(profileId);
   if (stool != null) out.push("stool");
   const cycle = db
     .prepare("SELECT 1 FROM cycles WHERE profile_id = ? LIMIT 1")
@@ -1283,38 +1281,51 @@ export function gatherHistoryLog(
 
   // ── STOOL ────────────────────────────────────────────────────────────────
   //
-  // ONE ROW PER READING (#4433). A Bristol reading is filed at INSTANT grain because
-  // several movements a day is ordinary and each is its own observation — the reason
-  // it lives in `metric_samples` rather than in `body_metrics` — so the record lists
-  // them individually and the day's rollup absorbs a bad day's six.
+  // ONE ROW PER MOVEMENT (#4433, #5872). Several movements a day is ordinary and each
+  // is its own occurrence, so the record lists them individually and the day's rollup
+  // absorbs a bad day's six. Two in the same minute are two rows: the ledger is
+  // append-only and has no natural key to collapse them onto.
   //
-  // THE CLOCK IS ALWAYS THE EVENT'S OWN. There is no filing-time fallback to
-  // distinguish: a tap states "the moment IS now" and the fold states a minute, so
-  // both write the observation's instant into `started_at` and the row renders bare.
+  // THE TYPE IS OPTIONAL AND THE ROW IS NOT. An occurrence nobody saw the form of is
+  // titled `Stool` with no scale sentence beneath it — the honest rendering of "this
+  // happened, and the type is not known" — rather than being dropped from the record it
+  // belongs to. An out-of-scale number lands in the same state, because the vocabulary
+  // is the one guard (`bristolStoolType`) rather than a range comparison per surface.
+  //
+  // AND THE CLOCK SAYS WHICH IT IS. A stated minute renders bare; a movement nobody
+  // timed renders "logged 7:41am", because `occurred_at` is NULL and the only instant
+  // the row has is the tap that filed it. The old store could not tell those apart and
+  // printed every row in the stated grammar.
   if (wants(opts, "stool")) {
     const readings = getBristolRows(profileId, since, until, limit + 1);
     if (readings.length > limit) truncated = true;
     for (const reading of readings.slice(0, limit)) {
-      // A value outside the scale names no type, and the vocabulary is the one guard
-      // (`isBristolType`) rather than a range comparison repeated per surface.
       const scale = bristolStoolType(reading.type);
-      if (!scale) continue;
+      const when = bestKnownInstant("stool_events", { ...reading });
+      const hhmm = when.known ? localClock(tz, when.at) : null;
+      const stated = when.known && when.semantic === "event";
       rows.push({
         id: `stool:${reading.id}`,
         kind: "stool",
         profileId,
         tz,
         date: reading.date,
-        ...historyClockFields(reading.hhmm, "stated", prefs),
-        title: `Type ${scale.type} — ${scale.label}`,
+        ...historyClockFields(
+          hhmm,
+          stated ? "stated" : "logged",
+          prefs,
+          filedOn(tz, when, reading.date)
+        ),
+        title: scale ? `Type ${scale.type} — ${scale.label}` : "Stool",
         // Plain, like the food groups and the substances beside it (#4045 §5): the
         // Trends panel is a page-level destination every stool row would share.
         href: null,
         // NO VERDICT (#2785). The scale's own description is context, not a finding —
-        // nothing here says a type is good or bad.
-        detail: detailSegment([scale.description]),
+        // nothing here says a type is good or bad, and an untyped row says nothing at
+        // all rather than reaching for a stand-in sentence.
+        detail: detailSegment([scale?.description]),
         media: 0,
-        edit: { kind: "stool", rowId: reading.id, type: scale.type },
+        edit: { kind: "stool", rowId: reading.id, type: scale?.type ?? null },
       });
     }
   }

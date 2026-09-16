@@ -2,6 +2,10 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import StoolTypeControl from "@/components/stool/StoolTypeControl";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
+import { DayContextProvider } from "@/components/DayContext";
+import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
+import { shiftDateStr } from "@/lib/date";
 
 // THE STOOL SHEET'S RECEIPT ROWS (#5663 ruling 1, and the owner's 2026-09-11 ruling).
 //
@@ -103,11 +107,16 @@ describe("the sheet lists the day", () => {
 
     // THE ROWS PREDATE THE TAP. The sheet's own gather answers with a count, so a row
     // logged earlier today would be invisible until the next tap without this read.
+    //
+    // AND THE CLOCK IS THE ONE RULED VOICE (#5663 ruling 1, owner 2026-09-15): this is
+    // a 12-hour login, so the trailing slot reads `6:02 AM`. It shipped `6:02am` beneath
+    // an illness card printing `8:00 AM` on the same screen; the owner ruled the
+    // `upper-space` spelling for both rather than a third one.
     await waitFor(() =>
       expect(lines()).toEqual([
         [
           "Type 3 · Cracked",
-          "Like a sausage but with cracks on the surface · 6:02am",
+          "Like a sausage but with cracks on the surface · 6:02 AM",
         ],
       ])
     );
@@ -121,11 +130,11 @@ describe("the sheet lists the day", () => {
       expect(lines()).toEqual([
         [
           "Type 6 · Mushy",
-          "Fluffy pieces with ragged edges, a mushy stool · 8:31am",
+          "Fluffy pieces with ragged edges, a mushy stool · 8:31 AM",
         ],
         [
           "Type 3 · Cracked",
-          "Like a sausage but with cracks on the surface · 6:02am",
+          "Like a sausage but with cracks on the surface · 6:02 AM",
         ],
       ])
     );
@@ -134,7 +143,7 @@ describe("the sheet lists the day", () => {
     // And the toast confirms the same landing, carrying the same Undo.
     expect(announce).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "Type 6 logged · 8:31am",
+        message: "Type 6 logged · 8:31 AM",
         undo: expect.objectContaining({ undoneMessage: "Movement removed." }),
       })
     );
@@ -339,7 +348,7 @@ describe("the Undo the declaration used to refuse", () => {
       expect(lines()).toEqual([
         [
           "Type 3 · Cracked",
-          "Like a sausage but with cracks on the surface · 8:12am",
+          "Like a sausage but with cracks on the surface · 8:12 AM",
         ],
       ])
     );
@@ -419,5 +428,66 @@ describe("a sheet showing the day shows ONE person's day", () => {
         (loadStoolDay.mock.calls.at(-1)?.[0] as FormData).get("profile_id")
       ).toBe("5")
     );
+  });
+});
+
+// THE COUNT LINE TAKES THE DAY SWITCHER'S OWN WORD (#5663 ruling 5, owner 2026-09-15).
+//
+// `count` counts `writeDate` — the day the sheet is POINTED AT — while the line read a
+// hard-coded `N today`, so standing on Yesterday the sheet said "1 today" directly under
+// rows naming yesterday's clock times. Two statements about one day, on one screen,
+// disagreeing. The ruled word is the one `BoundedDaySwitcher` is already showing on the
+// selected tab, and never "today" for a past day.
+//
+// THE SWITCHER IS MOUNTED BESIDE THE CONTROL HERE, which is the point of the case: the
+// earlier-day arm asserts the line against the label the tab is actually rendering
+// rather than against a weekday string written out below. A literal would pin today's
+// spelling of that label and go red the day the switcher's own wording moves — which is
+// exactly the drift this ruling exists to close.
+describe("the count line's day word", () => {
+  const today = "2026-07-08";
+  const sheetOn = (day: string) =>
+    render(
+      <FormatPrefsProvider prefs={{ timeFormat: "12h", dateFormat: "mdy" }}>
+        <DayContextProvider
+          profileId={7}
+          today={today}
+          reach={SHEET_REACH}
+          backing={{ kind: "state", initialDay: day }}
+        >
+          <BoundedDaySwitcher />
+          <StoolTypeControl todayCount={1} today={today} />
+        </DayContextProvider>
+      </FormatPrefsProvider>
+    );
+
+  beforeEach(() => {
+    loadStoolDay.mockResolvedValue({
+      readings: [{ id: 12, type: 3, hhmm: "06:02" }],
+      dayCount: 1,
+    });
+  });
+
+  it("says today on today", async () => {
+    sheetOn(today);
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(count()).toBe("1 today");
+  });
+
+  it("says yesterday on yesterday, never today", async () => {
+    sheetOn(shiftDateStr(today, -1));
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(count()).toBe("1 yesterday");
+  });
+
+  it("names an earlier day with the label its own tab is showing", async () => {
+    const earlier = shiftDateStr(today, -2);
+    sheetOn(earlier);
+    await waitFor(() => expect(rows()).toHaveLength(1));
+
+    const tab = screen.getByTestId("day-context-2").textContent;
+    expect(tab).toBeTruthy();
+    expect(tab).not.toMatch(/today|yesterday/i);
+    expect(count()).toBe(`1 on ${tab}`);
   });
 });
