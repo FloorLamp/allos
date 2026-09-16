@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { createEquipment } from "@/lib/equipment";
 import {
   getProtocol,
@@ -19,6 +20,12 @@ import {
   getProtocolPractice,
   getProtocolAdherence,
 } from "@/lib/queries";
+
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the bootstrapped subject is cast once here instead of at every call site;
+// WRITE_BRAND_CAST (eslint.config.mjs) binds production modules and a test tier may cast.
+// A branded number is still a number, so the reads take it unchanged.
+const P1 = 1 as WriteAuthorizedProfileId;
 
 function insertTypeTarget(profileId: number, type: string, perWeek: number) {
   return Number(
@@ -120,7 +127,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
   });
 
   it("counts in-window activity events, including multiple sessions on one day", () => {
-    const sauna = createEquipment(1, {
+    const sauna = createEquipment(P1, {
       name: "Sauna",
       weight_kg: null,
       category: "Sauna",
@@ -301,7 +308,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
   });
 
   it("keeps a gear-linked protocol on the activity ledger even when it also names an intake item", () => {
-    const sauna = createEquipment(1, {
+    const sauna = createEquipment(P1, {
       name: "Sauna",
       weight_kg: null,
       category: "Sauna",
@@ -473,7 +480,7 @@ describe("the protocol list's batched heatmap gather (#1655)", () => {
 
   // The interventions and the ledger rows they measure — created once per test.
   function seedLedgers() {
-    const sauna = createEquipment(1, {
+    const sauna = createEquipment(P1, {
       name: "Sauna",
       weight_kg: null,
       category: "Sauna",

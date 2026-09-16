@@ -10,12 +10,19 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { createEquipment } from "@/lib/equipment";
 import {
   getEquipmentUsage,
   getEquipmentUsageById,
   getEquipmentSessions,
 } from "@/lib/queries/equipment";
+
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the bootstrapped subject is cast once here instead of at every call site;
+// WRITE_BRAND_CAST (eslint.config.mjs) binds production modules and a test tier may cast.
+// A branded number is still a number, so the reads take it unchanged.
+const P1 = 1 as WriteAuthorizedProfileId;
 
 function newActivity(
   profileId: number,
@@ -73,7 +80,7 @@ describe("getEquipmentUsage", () => {
   });
 
   it("sums set-level volume (both sides) and counts distinct sessions", () => {
-    const bar = createEquipment(1, {
+    const bar = createEquipment(P1, {
       name: "PR Bar",
       weight_kg: 20,
       category: "Barbell",
@@ -92,7 +99,7 @@ describe("getEquipmentUsage", () => {
   });
 
   it("sums session-level distance for a bike/shoes gear", () => {
-    const bike = createEquipment(1, {
+    const bike = createEquipment(P1, {
       name: "Road Bike",
       weight_kg: null,
       category: "Bike",
@@ -116,7 +123,7 @@ describe("getEquipmentUsage", () => {
   });
 
   it("counts a session once even when used at both set and session level", () => {
-    const bar = createEquipment(1, {
+    const bar = createEquipment(P1, {
       name: "Dual Bar",
       weight_kg: 20,
       category: "Barbell",
@@ -130,7 +137,7 @@ describe("getEquipmentUsage", () => {
   });
 
   it("returns null for gear with no usage and is profile-scoped", () => {
-    const bar = createEquipment(1, {
+    const bar = createEquipment(P1, {
       name: "Unused Bar",
       weight_kg: 20,
       category: "Barbell",
@@ -141,7 +148,7 @@ describe("getEquipmentUsage", () => {
   });
 
   it("getEquipmentSessions returns per-activity points oldest→newest", () => {
-    const bar = createEquipment(1, {
+    const bar = createEquipment(P1, {
       name: "Trend Bar",
       weight_kg: 20,
       category: "Barbell",
