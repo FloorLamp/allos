@@ -7,7 +7,11 @@
 // intake reads.
 import { db } from "../db";
 import { readDoseQuantity } from "../dri";
+import { isOnDemand, stackSchedule } from "../intake-schedule";
+import { prnDefaultsFor, prnLabelIdentityFor } from "../prn-defaults";
+import { parseRxcuiIngredients } from "../rxnorm";
 import { getIntakeItems, getIntakeDoses } from "./intake/schedule";
+import type { IntakeGapItem } from "../data-quality";
 import type { IntakeItemKind } from "../types/intake";
 
 // Read a single scalar COUNT(*) alias `c`.
@@ -99,24 +103,85 @@ export function getFailedExtractionDocumentCount(profileId: number): number {
 // That is deliberate — an unreadable amount is unusable for every consumer, not just
 // the UL, and retyping it is worth the same either way — but do not read the number as
 // "doses missing from a safety total". It is at most that many.
-export function getUnreadableDoseAmounts(profileId: number): {
+export function getUnreadableDoseAmounts(
+  profileId: number
+): UnreadableDoseAmount[] {
+  return getIntakeDataQualityRows(profileId).unreadableAmounts;
+}
+
+// ---- Obligations the saved schedule cannot keep (#5285) ----
+
+// One live dose row whose amount states a number nothing may read (#3320). It names a
+// DOSE, which is why it carries both ids; the two obligation lists below name an ITEM
+// and carry the pure model's own `IntakeGapItem`.
+export interface UnreadableDoseAmount {
   doseId: number;
   itemId: number;
   itemName: string;
   kind: IntakeItemKind;
   amount: string;
-}[] {
-  const itemById = new Map<number, { name: string; kind: IntakeItemKind }>();
-  for (const item of getIntakeItems(profileId)) {
-    if (item.active)
-      itemById.set(item.id, { name: item.name, kind: item.kind });
-  }
-  const out = [];
+}
+
+// EVERY structural gap that is a question about the intake rows, from ONE pass over
+// them. Three lists, one gather:
+//
+//   unreadableAmounts    a live amount `readDoseQuantity` refuses (#3320, above).
+//   unscheduled          a `must`/`should` item on which no live dose states a time,
+//                        so `stackSchedule` reads "Not scheduled" and the item is due
+//                        nowhere, reminds nothing and counts in no adherence day. The
+//                        app already knew — the Manage list says it; nothing asked.
+//   obligationMismatch   a `must`/`should` item whose product the curated PRN registry
+//                        knows as an as-needed one (`prnDefaultsFor` — the resolved
+//                        ingredient CUIs first, then the whole name), so the daily
+//                        obligation is probably a mis-set field rather than a decision.
+//                        SUGGEST-ONLY: keeping the schedule is a legitimate answer,
+//                        which is why nothing here writes.
+//
+// ONE FUNCTION BECAUSE ONE COST. The reads beneath it are `snapshotCached`, and the
+// caller that matters — Home's Setup section — is a streamed child Server Component,
+// which runs with the read snapshot CLOSED (lib/read-snapshot.ts documents exactly
+// that boundary). So a second reader asking `getIntakeItems`/`getIntakeDoses` for its
+// own answer is a second EXECUTION of both, measured at +2 statements on five of the
+// six Home personas. Asking all three questions where the rows are already in hand
+// costs nothing, and the meter in lib/__db_tests__/dashboard-placement-manifest.test.ts
+// is what says so.
+//
+// NO SQL OF ITS OWN, and it could not have any: every rule here lives in a shipped
+// function — `readDoseQuantity`, `stackSchedule`, `prnDefaultsFor` — and SQLite can
+// apply none of them. A restatement in SQL would be a second copy of each, and a
+// census that disagrees with the engine it describes is worse than none. So this
+// projects the already-cached, profile-scoped item and dose reads and asks them.
+//
+// PRODUCT IDENTITY BEATS THE DISPLAY NAME (#5518): an item linked to a shared bottle
+// keeps its own label while the BOTTLE owns what the product is, so the registry is
+// asked through `prnLabelIdentityFor` — the same projection the item form and the
+// quick-log reader use. The prod row #5285 was reported from is exactly that shape.
+//
+// Scope, deliberately the same boundary throughout: ACTIVE items only (an inactive item
+// is out of the safety stack, the same boundary getMedicationsMissingRxcuiCount draws)
+// and LIVE doses only (getIntakeDoses excludes retired rows). `may` items never appear
+// in the two obligation lists — an as-needed item is definitionally not owed on any
+// day, so it has no schedule to be missing and no obligation to disagree with.
+export function getIntakeDataQualityRows(profileId: number): {
+  unreadableAmounts: UnreadableDoseAmount[];
+  unscheduled: IntakeGapItem[];
+  obligationMismatch: IntakeGapItem[];
+} {
+  const unreadableAmounts: UnreadableDoseAmount[] = [];
+  const unscheduled: IntakeGapItem[] = [];
+  const obligationMismatch: IntakeGapItem[] = [];
+
+  const activeItems = getIntakeItems(profileId).filter((item) => !!item.active);
+  const itemById = new Map(activeItems.map((item) => [item.id, item]));
+
+  const scheduledItemIds = new Set<number>();
   for (const dose of getIntakeDoses(profileId)) {
     const item = itemById.get(dose.item_id);
-    if (!item || dose.amount == null) continue;
+    if (!item) continue;
+    if (stackSchedule(item, dose).scheduled) scheduledItemIds.add(item.id);
+    if (dose.amount == null) continue;
     if (readDoseQuantity(dose.amount).kind !== "unreadable") continue;
-    out.push({
+    unreadableAmounts.push({
       doseId: dose.id,
       itemId: dose.item_id,
       itemName: item.name,
@@ -124,5 +189,21 @@ export function getUnreadableDoseAmounts(profileId: number): {
       amount: dose.amount,
     });
   }
-  return out;
+
+  for (const item of activeItems) {
+    if (isOnDemand(item)) continue;
+    const row = { id: item.id, name: item.name, kind: item.kind };
+    if (!scheduledItemIds.has(item.id)) unscheduled.push(row);
+    const asNeededProduct = prnDefaultsFor(
+      prnLabelIdentityFor({
+        name: item.name,
+        supplyId: item.supply_id,
+        supplyName: item.supply_name,
+        rxcui: item.rxcui,
+        rxcuiIngredients: parseRxcuiIngredients(item.rxcui_ingredients),
+      })
+    );
+    if (asNeededProduct !== null) obligationMismatch.push(row);
+  }
+  return { unreadableAmounts, unscheduled, obligationMismatch };
 }

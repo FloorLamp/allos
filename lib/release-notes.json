@@ -1,6 +1,95 @@
 {
   "days": [
     {
+      "date": "2026-09-16",
+      "entries": [
+        {
+          "pr": 5878,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Home is the day’s record: what’s due above the Now line, today’s entries below",
+          "issues": [5435]
+        },
+        {
+          "pr": 5883,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Home no longer ranks cards into lanes; the Standing cluster is gone",
+          "issues": [5435]
+        },
+        {
+          "pr": 5908,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Home’s low-supply row offers Refilled; a shared bottle asks for the size",
+          "issues": [5121, 5435]
+        },
+        {
+          "pr": 5884,
+          "kind": "fix",
+          "category": "History",
+          "title": "The day view is titled by its day, and History appears once",
+          "issues": [5764]
+        },
+        {
+          "pr": 5869,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "The stool sheet lists today’s entries with their descriptions, and Undo",
+          "issues": [5663]
+        },
+        {
+          "pr": 5913,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Stool receipts print the clock as 8:31 AM and name the sheet’s day in the count",
+          "issues": [5663]
+        },
+        {
+          "pr": 5915,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A stool logged without a time reads “logged” beside its filing clock",
+          "issues": [5872]
+        },
+        {
+          "pr": 5874,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The school-return note counts every fever reducer toward the fever-free clock",
+          "issues": [5688, 5882]
+        },
+        {
+          "pr": 5888,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The built-in Illness container can no longer be un-flagged",
+          "issues": [5271]
+        },
+        {
+          "pr": 5879,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A past dose says its amount is assumed only on days before any known amount",
+          "issues": [5775]
+        },
+        {
+          "pr": 5887,
+          "kind": "fix",
+          "category": "Training",
+          "title": "The plate builder opens on the load the row shows, not a bare bar",
+          "issues": [5875]
+        },
+        {
+          "pr": 5842,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Protein and fiber adequacy are computed once and read the same everywhere",
+          "issues": [4485]
+        }
+      ]
+    },
+    {
       "date": "2026-09-11",
       "entries": [
         {

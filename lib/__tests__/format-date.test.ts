@@ -3,6 +3,7 @@ import {
   formatLongDate,
   formatMonthDay,
   formatWeekdayDate,
+  daySwitcherLabel,
   formatClock,
   formatClockMinutes,
   formatClockValue,
@@ -161,6 +162,43 @@ describe("formatWeekdayDate", () => {
     expect(formatWeekdayDate("not-a-date", DEFAULT_FORMAT_PREFS)).toBe(
       "not-a-date"
     );
+  });
+});
+
+// THE DAY SWITCHER'S THREE WORDS (#5663 ruling 5). What is worth pinning is not that
+// "Today" says Today — it is that this vocabulary is NOT `formatRelativeDate`'s. The
+// two agree on exactly the two days a sheet's switcher is usually showing and part
+// company on every other one, so the cheapest way for this to be quietly folded into
+// that labeller is for nobody to have written the disagreement down.
+describe("daySwitcherLabel", () => {
+  const TODAY_LABEL = "2026-07-22";
+
+  it.each([
+    [TODAY_LABEL, "today", "Today"],
+    ["2026-07-21", "yesterday", "Yesterday"],
+    ["2026-07-19", "date", "Sun, Jul 19"],
+  ])("%s → %s / %s", (date, kind, label) => {
+    expect(daySwitcherLabel(date, TODAY_LABEL)).toEqual({ kind, label });
+  });
+
+  it("keeps the calendar date where formatRelativeDate counts days and weeks", () => {
+    expect(daySwitcherLabel("2026-07-19", TODAY_LABEL).label).toBe(
+      "Sun, Jul 19"
+    );
+    expect(formatRelativeDate("2026-07-19", TODAY_LABEL)).toBe("3 days ago");
+    expect(daySwitcherLabel("2026-07-12", TODAY_LABEL).label).toBe(
+      "Sun, Jul 12"
+    );
+    expect(formatRelativeDate("2026-07-12", TODAY_LABEL)).toBe("1 week ago");
+  });
+
+  it("carries the login's date shape into the earlier-day arm", () => {
+    expect(
+      daySwitcherLabel("2026-07-19", TODAY_LABEL, {
+        timeFormat: "24h",
+        dateFormat: "dmy",
+      }).label
+    ).toBe("Sun, 19 Jul");
   });
 });
 

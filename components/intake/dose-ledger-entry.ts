@@ -1,5 +1,5 @@
-import type { DoseHistoryDose } from "@/components/intake/DoseHistoryPanel";
 import type { HistoricalDoseOption } from "@/components/medications/HistoricalDoseForm";
+import type { DoseLedgerItem } from "@/lib/queries/intake/dose-ledger";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { IntakeItemKind } from "@/lib/types";
 
@@ -26,16 +26,10 @@ export interface DoseLedgerEntry {
 }
 
 // An item the ledger can log a past dose against — the picker in front of the backfill
-// form. Only items with a LIVE dose can be logged against, so an item whose doses are
-// all retired is simply absent from the picker (its history still lists).
-export interface DoseLedgerItem {
-  id: number;
-  name: string;
-  kind: IntakeItemKind;
-  product: string | null;
-  asNeeded: boolean;
-  doses: DoseHistoryDose[];
-}
+// form. The shape is the gather's, not the mount's: `doseLedgerItems` builds it, both
+// surfaces that mount this ledger take it from there, and it is re-exported here so the
+// mount's vocabulary still reads from one module.
+export type { DoseLedgerItem };
 
 // The raw dose options a HistoricalDoseForm offers for one item. Both halves of the
 // mount build the same list here; the form resolves and formats them for its chosen day.
