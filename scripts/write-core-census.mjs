@@ -737,58 +737,56 @@ const invoked =
   process.argv[1] &&
   path.resolve(process.argv[1]) ===
     path.resolve(new URL(import.meta.url).pathname);
+const USAGE = [
+  "Usage: node scripts/write-core-census.mjs [--row <domain>] [--core <file::name>] [--json]",
+  "",
+  "With no flag it prints the predicate, the funnel, the tranche split, the",
+  "delegating-core bucket and per-row membership. --row prints one domain row's",
+  "membership; --core explains where one symbol landed and why; --json prints",
+  "the same facts as data.",
+].join("\n");
+
+/** What `--core <file::name>` prints: one symbol's whole derivation. */
+function explain(data, key) {
+  const c = data.cores.find((c) => `${c.file}::${c.name}` === key);
+  if (c)
+    return [
+      `${key}  line ${c.line}`,
+      `  writes by      ${c.writesBy}`,
+      `  fence          ${c.fence ?? "G (in scope)"}`,
+      `  tranche        ${c.tranche}  (naive resolution: ${c.naiveTranche})`,
+      `  rows           ${c.domains.join(", ") || "(no action caller)"}`,
+      `  sites          ${Object.entries(c.sitesByFile)
+        .map(([f, n]) => `${n} ${f}`)
+        .join("\n                 ")}`,
+      `  callers        ${
+        c.callerFiles.join("\n                 ") ||
+        "(none in app/ components/ lib/)"
+      }`,
+      `  of those, reachable by a direct named import called bare:`,
+      `                 ${c.naiveFiles.join("\n                 ") || "(none)"}`,
+    ].join("\n");
+  const d = data.delegating.find((d) => `${d.file}::${d.name}` === key);
+  if (d)
+    return `${key}  line ${d.line}\n  delegating core: no DML, no writeTx; hands its profile id to ${d.via}`;
+  return `${key} is not a write core at this head.`;
+}
+
+// NEVER `process.exit` below. The report is far larger than a pipe buffer and a
+// write to a pipe is asynchronous, so exiting in the next statement drops whatever
+// had not drained and hands the caller status 0 over half a document (#5804).
 if (invoked) {
   const argv = process.argv.slice(2);
   const flag = (name) => {
     const i = argv.indexOf(name);
     return i === -1 ? null : argv[i + 1];
   };
-  if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(
-      [
-        "Usage: node scripts/write-core-census.mjs [--row <domain>] [--core <file::name>] [--json]",
-        "",
-        "With no flag it prints the predicate, the funnel, the tranche split, the",
-        "delegating-core bucket and per-row membership. --row prints one domain row's",
-        "membership; --core explains where one symbol landed and why; --json prints",
-        "the same facts as data.",
-      ].join("\n")
-    );
-  }
-  const data = argv.includes("--help") || argv.includes("-h") ? null : census();
-  if (!data) {
-    // fall through to nothing: --help already said everything.
-  } else
-    // NEVER `process.exit` here: the report is far larger than a pipe buffer and a
-    // write to a pipe is asynchronous, so exiting drops whatever had not drained
-    // and hands the caller status 0 over half a document (#5804).
+  if (argv.includes("--help") || argv.includes("-h")) console.log(USAGE);
+  else {
+    const data = census();
     if (argv.includes("--json")) console.log(JSON.stringify(data, null, 2));
-    else if (flag("--core")) {
-      const key = flag("--core");
-      const c = data.cores.find((c) => `${c.file}::${c.name}` === key);
-      const d = data.delegating.find((d) => `${d.file}::${d.name}` === key);
-      if (c)
-        console.log(
-          [
-            `${key}  line ${c.line}`,
-            `  writes by      ${c.writesBy}`,
-            `  fence          ${c.fence ?? "G (in scope)"}`,
-            `  tranche        ${c.tranche}  (naive resolution: ${c.naiveTranche})`,
-            `  rows           ${c.domains.join(", ") || "(no action caller)"}`,
-            `  sites          ${Object.entries(c.sitesByFile)
-              .map(([f, n]) => `${n} ${f}`)
-              .join("\n                 ")}`,
-            `  callers        ${c.callerFiles.join("\n                 ") || "(none in app/ components/ lib/)"}`,
-            `  of those, reachable by a direct named import called bare:`,
-            `                 ${c.naiveFiles.join("\n                 ") || "(none)"}`,
-          ].join("\n")
-        );
-      else if (d)
-        console.log(
-          `${key}  line ${d.line}\n  delegating core: no DML, no writeTx; hands its profile id to ${d.via}`
-        );
-      else console.log(`${key} is not a write core at this head.`);
-    } else if (flag("--row")) {
+    else if (flag("--core")) console.log(explain(data, flag("--core")));
+    else if (flag("--row")) {
       const rows = rowSection(
         data.cores.filter((c) => !c.fence),
         flag("--row")
@@ -797,4 +795,5 @@ if (invoked) {
         rows.length ? rows.join("\n") : `No row named ${flag("--row")}.`
       );
     } else console.log(report(data));
+  }
 }
