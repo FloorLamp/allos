@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
+import { BusyMark } from "@/components/Button";
 import { useWritePipeline } from "@/components/useWritePipeline";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useToast } from "@/components/Toast";
@@ -421,42 +422,64 @@ export default function StoolTypeControl({
   return (
     <div data-testid="quick-entry-stool">
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-        {BRISTOL_STOOL_TYPES.map((t) => (
-          <button
-            key={t.type}
-            type="button"
-            data-testid={`stool-type-${t.type}`}
-            onClick={() => void tap(t.type)}
-            disabled={!isPrimaryDay && !statement.at}
-            aria-label={`Type ${t.type}, ${t.description}`}
-            className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
-          >
-            <span
-              aria-hidden="true"
-              data-testid={`stool-settle-${t.type}`}
-              data-motion="settle"
-              data-reduced-motion={reducedMotion ? "true" : "false"}
-              data-settling={settlingType === t.type ? "true" : "false"}
-              data-motion-runs={settleRuns[t.type] ?? 0}
-              onAnimationStart={() =>
-                setSettleRuns((runs) => ({
-                  ...runs,
-                  [t.type]: (runs[t.type] ?? 0) + 1,
-                }))
-              }
-              className={`absolute inset-0 rounded-lg border border-(--border) bg-surface transition group-hover:border-slate-400 dark:group-hover:border-slate-500${
-                settlingType === t.type ? ` ${settlePlan.className}` : ""
-              }`}
-            />
-            <span className="relative flex flex-col items-center gap-1">
-              <BristolStoolIcon type={t.type} />
-              <span className="text-sm font-medium tabular-nums">{t.type}</span>
-              <span className="text-center text-xs leading-tight text-slate-500 dark:text-slate-400">
-                {t.label}
+        {BRISTOL_STOOL_TYPES.map((t) => {
+          // THE TILE THE FINGER LEFT (#5900). The pipeline keys this write by
+          // bristol type, so each tile reads its own flight rather than the
+          // grid's: tapping 4 must not put seven spinners on screen. Before
+          // this, a stool tap showed nothing at all between the tap and the
+          // landing — the optimistic count moved, but the tile did not answer.
+          const busy = pipeline.pending(String(t.type));
+          return (
+            <button
+              key={t.type}
+              type="button"
+              data-testid={`stool-type-${t.type}`}
+              onClick={() => void tap(t.type)}
+              // The blocked second tap was already swallowed by the pipeline; it is
+              // now VISIBLE, which is what the treatment's third half is for.
+              disabled={busy || (!isPrimaryDay && !statement.at)}
+              aria-busy={busy || undefined}
+              aria-label={`Type ${t.type}, ${t.description}`}
+              className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
+            >
+              <span
+                aria-hidden="true"
+                data-testid={`stool-settle-${t.type}`}
+                data-motion="settle"
+                data-reduced-motion={reducedMotion ? "true" : "false"}
+                data-settling={settlingType === t.type ? "true" : "false"}
+                data-motion-runs={settleRuns[t.type] ?? 0}
+                onAnimationStart={() =>
+                  setSettleRuns((runs) => ({
+                    ...runs,
+                    [t.type]: (runs[t.type] ?? 0) + 1,
+                  }))
+                }
+                className={`absolute inset-0 rounded-lg border border-(--border) bg-surface transition group-hover:border-slate-400 dark:group-hover:border-slate-500${
+                  settlingType === t.type ? ` ${settlePlan.className}` : ""
+                }`}
+              />
+              <span className="relative flex flex-col items-center gap-1">
+                {/* The mark takes the GLYPH'S SEAT, in a box the size of the glyph
+                  it replaces (28px), so the type number and its word do not move
+                  under the finger while the write is in flight. */}
+                {busy ? (
+                  <span className="flex h-7 w-7 items-center justify-center">
+                    <BusyMark />
+                  </span>
+                ) : (
+                  <BristolStoolIcon type={t.type} />
+                )}
+                <span className="text-sm font-medium tabular-nums">
+                  {t.type}
+                </span>
+                <span className="text-center text-xs leading-tight text-slate-500 dark:text-slate-400">
+                  {t.label}
+                </span>
               </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
       {/* This domain's action is the GRID, so #4426's "immediately right" has no one
           button to sit against; the door takes the first seat after it instead. */}
@@ -499,9 +522,11 @@ export default function StoolTypeControl({
                   className="btn-ghost shrink-0 text-sm"
                   data-testid="quick-entry-stool-receipt-undo"
                   disabled={undoing}
+                  aria-busy={undoing || undefined}
                   onClick={() => row.undoable && void undoFromRow(row.undoable)}
                 >
-                  {undoing ? "Undoing…" : "Undo"}
+                  {undoing ? <BusyMark /> : null}
+                  Undo
                 </button>
               ) : null}
             </li>

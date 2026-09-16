@@ -407,11 +407,11 @@ const MISLABEL_REVALIDATE: readonly RevalidateTarget[] = [
 export async function applyUnitMislabel(
   formData: FormData
 ): Promise<ApplyUnitMislabelResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "Invalid record." };
-  const res = applyUnitMislabelCore(profile.id, id);
+  const res = applyUnitMislabelCore(writeProfileId, id);
   if (res.ok) revalidateRoute(MISLABEL_REVALIDATE);
   return res;
 }
@@ -422,10 +422,10 @@ export async function applyUnitMislabel(
 export async function undoUnitMislabel(
   undo: UnitMislabelUndo
 ): Promise<{ ok: boolean }> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   if (!undo || !Number.isInteger(undo.id) || undo.id <= 0)
     return { ok: false };
-  const ok = undoUnitMislabelCore(profile.id, {
+  const ok = undoUnitMislabelCore(writeProfileId, {
     id: undo.id,
     unit: undo.unit ?? null,
     flag: undo.flag ?? null,
@@ -440,10 +440,10 @@ export async function undoUnitMislabel(
 export async function dismissUnitMislabel(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return formError("Invalid record.");
-  dismissUnitMislabelCore(profile.id, id);
+  dismissUnitMislabelCore(writeProfileId, id);
   revalidateRoute("/data");
   revalidateRoute("/");
   return formOk();

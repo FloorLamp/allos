@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { useEffect } from "react";
+import { StrictMode, useEffect, useRef } from "react";
 import { ToastProvider } from "@/components/Toast";
 import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import QuickEntryProvider, {
@@ -24,6 +24,7 @@ import {
 } from "@/components/DayContext";
 import type { AppRoute } from "@/lib/hrefs";
 import type { QuickEntryPrn } from "@/app/(app)/quick-entry-actions";
+import type { QuickEntryForm } from "@/lib/quick-log";
 
 // COMPONENT TIER — #3416/#4454, the sheet's offline OPEN path: last-good render
 // with a revalidate behind it, a failed revalidate keeping what is already shown, a
@@ -256,6 +257,22 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
       <button onClick={close}>close</button>
     </>
   );
+}
+
+// The DEEP-LINK shape in one component, mirroring components/QuickShortcutHandler.tsx:
+// it opens from a mount effect behind a value-keyed ref latch. Both halves are the
+// point — the ref survives a StrictMode remount, so the second pass deliberately does
+// NOT re-open, and anything that closes the overlay between the two passes leaves the
+// deep link having consumed its parameter and opened nothing.
+function DeepLinkOpener({ form }: { form: QuickEntryForm }) {
+  const { open } = useQuickEntry();
+  const handled = useRef<QuickEntryForm | null>(null);
+  useEffect(() => {
+    if (handled.current === form) return;
+    handled.current = form;
+    open(form);
+  }, [form, open]);
+  return null;
 }
 
 function renderSheet(
@@ -1059,6 +1076,52 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
     fireEvent.click(screen.getByText("open"));
 
     expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
+  });
+
+  // #5922. The host empties the store when it takes over an identity, and that clear
+  // BROADCASTS — which this host hears and turns into `setOpen(false)`. React
+  // StrictMode runs mount effects twice around the passive effects in between, so a
+  // second clear for the SAME identity used to close an overlay a deep link had
+  // already opened: `/?quick=log-stool` consumed its param and left the dashboard
+  // sitting there on a dev server.
+  //
+  // THIS TIER, NOT A BROWSER ONE. Every e2e worker's server is `next start` with
+  // NODE_ENV=production (e2e/fixtures.ts), where effects run once — which is why five
+  // green `goto("/?quick=log-stool")` call sites in e2e/bristol-stool.spec.ts never
+  // saw this and never could. StrictMode is reproducible here and nowhere else.
+  it("a deep link opened during mount survives a StrictMode remount", async () => {
+    loadQuickEntry.mockResolvedValue(stool());
+    render(
+      <StrictMode>
+        <ToastProvider>
+          <ProfileDaysBoundary
+            clocks={
+              new Map([
+                [
+                  ACTING.id,
+                  { today: MEASUREMENTS.defaultDate, timeZone: "UTC" },
+                ],
+              ])
+            }
+          >
+            <QuickEntryProvider
+              measurements={MEASUREMENTS}
+              writableProfiles={[ACTING]}
+              actingProfileId={ACTING.id}
+            >
+              <DeepLinkOpener form="stool" />
+            </QuickEntryProvider>
+          </ProfileDaysBoundary>
+        </ToastProvider>
+      </StrictMode>
+    );
+
+    expect(await screen.findByTestId("quick-entry-sheet")).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("quick-entry-body").getAttribute("data-form")
+      ).toBe("stool")
+    );
   });
 });
 

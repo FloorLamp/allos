@@ -126,6 +126,15 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   page,
 }) => {
   // The same overlay the sheet's Body segment opens, reached by url (#1424).
+  //
+  // THIS DOOR IS NOT PROOF THE DOOR WORKS (#5922). These servers are `next start`
+  // with NODE_ENV=production, where React effects run once; `next dev` adds
+  // StrictMode and runs them twice, and for a while a teardown between those two
+  // passes closed this overlay as fast as the deep link opened it. Every call site
+  // below stayed green while `/?quick=log-stool` did nothing for a person on a dev
+  // server. The dev-only half is pinned in
+  // components/__tests__/quick-entry-last-good.test.tsx; what this file needs from
+  // the URL is a short way in, and that is all it establishes.
   await page.goto("/?quick=log-stool");
 
   const sheet = page.getByTestId("quick-entry-sheet");
