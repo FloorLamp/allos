@@ -18,6 +18,7 @@ import {
   replaceRefillOffer,
   refillOfferIsTerminal,
   pendingRefillOffersFromSender,
+  refillOfferAtPrompt,
   OFFER_RETENTION_DAYS,
   type RefillOffer,
 } from "./offer-store";
@@ -34,7 +35,6 @@ import {
   type OrderedRefillCallback,
 } from "./refill-tokens";
 import {
-  typedReplyMarker,
   typedReplyNumber,
   type OpenTypedPrompt,
   type TypedReply,
@@ -368,16 +368,22 @@ function receiptPrompt(
   offer: RefillOffer
 ): NotificationMessage {
   const stock = refillStock(profileId, offer.itemId);
-  const marker = typedReplyMarker("refill", profileId, offerId);
   const actions: NotificationAction[] = [];
   let body: string;
+  // NO MARKER IN THE BODY (#5650, pointer-only). The prompt used to end in
+  // `(refill:<pid>:<offerId>)` and the reply arm read that string back off the reply
+  // target to decide which family and which operation a typed answer meant. It is gone:
+  // the operation is `promptId` on the offer row, and `refillOfferAtPrompt` recovers it
+  // from the quoted message id. A body that carries no marker is a body whose TITLE —
+  // the supply item's own name, which a person types in-app — can no longer steer
+  // anything, which is the defect this retirement closes on `main` as well as here.
   if (offer.state === "completed" && offer.result)
-    body = `${receiptText(offer.result)}\n${marker}`;
+    body = receiptText(offer.result);
   else if (refillOfferIsTerminal(offer))
     body =
       "This receipt is closed. Open a new Received request from the reminder.";
   else {
-    body = `How many arrived?\nReply to this message with the number of units.\n${marker}`;
+    body = "How many arrived?\nReply to this message with the number of units.";
     if (offer.defaultSize != null)
       actions.push({
         label: `Confirm ${offer.defaultSize}`,
@@ -718,6 +724,36 @@ export function openRefillPrompts(
           ]
     )
   );
+}
+
+// The EXPLICIT-REPLY half of the registry: the receipt prompt recorded at this message
+// id, if this chat's profile has one.
+//
+// KEYED ON THE OFFER'S OWN `promptId`, NOT ON THE POINTER'S KIND, and that distinction is
+// the reason this function exists. Three different messages record a pointer with
+// `kind: "refill"` — the low-supply reminder (with its Received button), the receipt
+// prompt it opens, and the `Supply update` rebuild — and only the middle one is a
+// question. Resolving a reply by kind would let a number typed under a REMINDER settle a
+// receipt nobody had opened, which is a widening neither `main` nor any earlier head has;
+// a reminder's message id is no offer's `promptId`, so keying here closes it by
+// construction rather than by an exclusion list somebody has to maintain.
+//
+// Terminal offers are returned too, so the family speaks `Already recorded` for a second
+// reply to a settled receipt instead of the contract answering "that prompt isn't open"
+// over the top of it.
+export function refillPromptAt(
+  profileId: number,
+  chatId: string,
+  messageId: number
+): OpenTypedPrompt | null {
+  const row = refillOfferAtPrompt(profileId, chatId, messageId);
+  if (!row) return null;
+  return {
+    family: "refill",
+    profileId,
+    operationId: row.offerId,
+    promptId: messageId,
+  };
 }
 
 // Settle one typed reply against a receipt operation.

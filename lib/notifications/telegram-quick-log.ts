@@ -730,9 +730,13 @@ export async function handleTempCommand(
       chatId,
       {
         title: "Log a temperature",
+        // NO MARKER IN THE BODY (#5650, pointer-only). This prompt used to end in
+        // `(#temp:<pid>)`, which the reply arm read back to decide the family and the
+        // attribution — and `${who}` above is a profile NAME a person types in-app,
+        // rendered ahead of it. The pointer this send records is the attribution now.
         body:
           `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
-          `(add C or F to be explicit). ${typedReplyMarker("temp", pid)}`,
+          `(add C or F to be explicit).`,
         kind: "temp",
       },
       pid
@@ -1044,9 +1048,9 @@ export async function handlePracticeCommand(
 
 // `/weight` command (#1895): the `/temp` prompt-reply shape, one quantity over. A
 // weight is a single number, which is exactly the capture a chat does well and exactly
-// what a keyboard cannot do — so the prompt asks for a reply and carries a marker that
-// attributes it, with no server-side pending state. A multi-profile chat gets one named
-// prompt each, never a guess about whose weigh-in this is.
+// what a keyboard cannot do — so the prompt asks for a reply and the pointer recorded at
+// send attributes it, with no server-side pending state. A multi-profile chat gets one
+// named prompt each, never a guess about whose weigh-in this is.
 export async function handleWeightCommand(
   message: TelegramMessage
 ): Promise<void> {
@@ -1065,7 +1069,7 @@ export async function handleWeightCommand(
         title: "Log a weight",
         body:
           `Reply to this message with ${who}weight — e.g. 82.5, or 180 lb ` +
-          `(kg unless you say otherwise). ${typedReplyMarker("weight", pid)}`,
+          `(kg unless you say otherwise).`,
         kind: "weight",
       },
       pid
@@ -1136,13 +1140,19 @@ async function settleWeightReply(
 // deep LINK — `/temp`'s episode button — which is a URL and makes no state claim; neither
 // settled prompt mints a callback token. A family whose result did would have to keep its
 // pointer and close the question some other way.
+//
+// AND DROPPING IT IS NOW THE WHOLE CLOSURE (#5650, pointer-only). The edited body used to
+// keep the prompt's marker so a second explicit Reply to the same message still
+// attributed — and still re-logged the day, because the marker was stateless. There is no
+// marker to keep: once the pointer is gone the message is not an open prompt to anything,
+// so a second Reply to it is told `That prompt isn't open` instead of writing a second
+// reading. That is a strictly smaller hazard than the parity this replaces.
 async function settlePrompt(
   reply: TypedReply,
   ctx: TypedReplyContext,
   msg: NotificationMessage
 ): Promise<void> {
   if (!reply.promptId) return;
-  const marker = typedReplyMarker(reply.family, reply.profileId);
   const promptId = reply.promptId;
   try {
     // THE EDIT IS THE ACKNOWLEDGEMENT AND IT IS ALLOWED TO BE REFUSED. The reading is
@@ -1155,11 +1165,7 @@ async function settlePrompt(
       `${reply.family} reply`,
       reply.profileId,
       ctx.chatId,
-      () =>
-        rebuildMessage(reply.profileId, ctx.chatId, promptId, {
-          ...msg,
-          body: `${msg.body}\n${marker}`,
-        }),
+      () => rebuildMessage(reply.profileId, ctx.chatId, promptId, msg),
       // The sentence, without the prompt's `kind` and without the episode link: a result
       // stated in a new message is not a new question, and must not become one.
       { title: msg.title, body: msg.body }
@@ -1212,6 +1218,43 @@ function openTypedPrompts(
   return prompts;
 }
 
+// THE OTHER SELECTOR OVER THE SAME REGISTRY (#5650, pointer-only): the prompt recorded at
+// ONE message id, which is how an EXPLICIT Reply resolves now that no marker is read.
+//
+// Every field of the answer is the bot's own record of a message it sent. The only thing
+// taken from the quoted message is its Telegram-assigned id, so there is no text here for
+// a profile name or a supply item's name to steer — the class both falsifying passes
+// found, and the one `main` still has through its unanchored refill marker.
+//
+// THE FILTERS THE BARE-NUMBER SELECTOR APPLIES ARE DELIBERATELY ABSENT.
+//
+//   - NO DAY FILTER on temp and weight. `openTypedPrompts` needs one, because a bare
+//     number must not land on yesterday's forgotten question; a Reply names ITS message
+//     and the person means it. `MESSAGE_POINTER_RETENTION_DAYS` bounds this instead,
+//     which is the window the prompt is answerable in at all.
+//   - NO SENDER FILTER, and no offer-state filter, on refill — see `refillPromptAt`.
+//
+// The chat's own profile list is the authorization boundary and it is applied HERE, which
+// is what makes the arm's later check structurally satisfied rather than load-bearing.
+function typedPromptAt(
+  chatId: string,
+  messageId: number
+): OpenTypedPrompt | null {
+  for (const profileId of getProfilesByTelegramChatId(chatId)) {
+    const receipt = refillPromptAt(profileId, chatId, messageId);
+    if (receipt) return receipt;
+    const pointer = messagePointerAt(profileId, chatId, messageId);
+    if (pointer && (pointer.kind === "temp" || pointer.kind === "weight"))
+      return {
+        family: pointer.kind,
+        profileId,
+        operationId: null,
+        promptId: messageId,
+      };
+  }
+  return null;
+}
+
 // The title a REFUSAL wears, per family. Only a refusal is ever sent, so this is the
 // whole outbound vocabulary of the contract's message path; an applied reply is a
 // reaction and an edit and carries no title at all.
@@ -1226,18 +1269,23 @@ const REFUSAL_TITLE: Record<TypedReplyFamily, string> = {
 // handlers each re-derived all four from `reply_to_message`, and the newest of them was
 // the only one that had learned a bare number is a reply too.
 //
-// AUTHORIZATION IS THE ARM'S, NOT THE FAMILY'S. A marker is a string anybody can copy
-// into a reply, so the profile it names is honored only when this chat can actually write
-// it — checked here, once, for every family, before any family sees the reply. The refill
-// arm used to make this check and then return SILENTLY, which is the defect ruling 4 names.
+// AUTHORIZATION IS THE ARM'S, NOT THE FAMILY'S, and since #5650's pointer-only ruling it
+// is an ASSERTION rather than a gate. Every resolution now comes out of the registry, and
+// both registry selectors are built from `getProfilesByTelegramChatId(chat)` — so the
+// profile a reply names is already one this chat may write, and this check cannot fail.
+// It is kept because that is two functions agreeing rather than one fact: a later
+// selector that forgot the chat filter would otherwise write another chat's profile in
+// silence. Under the retired marker it was load-bearing, because a marker is a string
+// anybody could copy into a reply. The refill arm used to make this check and then return
+// SILENTLY, which is the defect ruling 4 names.
 //
 // THE RETURN IS TWO DIFFERENT ANSWERS AND THEY MUST STAY DIFFERENT (#5654). `false` LEAVES
 // the message to the rest of the chain — the slash-command router, then the free-text
-// symptom intake — and `true` swallows it. A quoted MARKER means the message was addressed
-// to this arm, so it claims even when the answer is a refusal; a BARE number that resolves
-// to no open prompt was never addressed to anything, so it must fall through untouched.
-// Collapsing the two either swallows ordinary chat or re-offers a claimed message to a
-// later handler.
+// symptom intake — and `true` swallows it. A NUMBER typed with the Reply swipe was aimed
+// at a prompt whether or not one is still open, so it claims even when the answer is a
+// refusal; a BARE number that resolves to no open prompt, and any non-numeric text, was
+// never addressed to anything, so it must fall through untouched. Collapsing the two
+// either swallows ordinary chat or re-offers a claimed message to a later handler.
 export async function handleTypedReply(
   message: TelegramMessage
 ): Promise<boolean> {
@@ -1249,19 +1297,39 @@ export async function handleTypedReply(
   const resolved = resolveTypedReply(
     {
       text: message.text,
-      replyToText: message.reply_to_message?.text,
+      // THE QUOTED MESSAGE'S ID AND NOTHING ELSE (#5650, pointer-only). Its text used to
+      // be passed here and read for a marker; that is the retirement, and the shape of
+      // `TypedReplyInput` is what keeps it retired.
       replyToId: message.reply_to_message?.message_id,
     },
-    // Read LAZILY: ordinary chat that is not a number at all must not pay for an offer
-    // or pointer lookup on its way to the symptom intake.
-    () => openTypedPrompts(chat, senderId ?? null)
+    // Both read LAZILY: ordinary chat that is not a number at all must not pay for an
+    // offer or pointer lookup on its way to the symptom intake.
+    {
+      at: (messageId) => typedPromptAt(chat, messageId),
+      open: () => openTypedPrompts(chat, senderId ?? null),
+    }
   );
   if (resolved.kind === "none") return false;
-  if (resolved.kind === "ambiguous") {
-    // Named by no profile, deliberately: the ambiguity may span two.
+  if (resolved.kind === "ambiguous" || resolved.kind === "unrecorded") {
+    // Named by no profile, deliberately: the ambiguity may span two, and an unrecorded
+    // quote names no profile at all.
+    //
+    // `unrecorded` IS THE ACCEPTED COST OF POINTER-ONLY, spoken rather than swallowed. A
+    // number typed as a Reply to a prompt this bot is not holding open — sent before this
+    // build recorded pointers, pruned at three days, or already answered — gets the
+    // contract's existing "reply to the prompt" sentence, and the person replies to a
+    // live prompt or taps a fresh one. The alternative was a text path that reaches every
+    // bot message the store never recorded, which is the steering class this design
+    // exists to remove.
     await sendTelegramMessage(
       chatId,
-      { title: "More than one open prompt", body: TYPED_REPLY_AMBIGUOUS },
+      {
+        title:
+          resolved.kind === "unrecorded"
+            ? TYPED_REPLY_UNRECORDED_TITLE
+            : "More than one open prompt",
+        body: TYPED_REPLY_AMBIGUOUS,
+      },
       CHAT_WIDE
     );
     return true;
@@ -1613,20 +1681,21 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
   resolveTypedReply,
-  typedReplyMarker,
   TYPED_REPLY_AMBIGUOUS,
   TYPED_REPLY_REACTION,
   TYPED_REPLY_UNAUTHORIZED,
+  TYPED_REPLY_UNRECORDED_TITLE,
   type OpenTypedPrompt,
   type TypedReply,
   type TypedReplyContext,
   type TypedReplyFamily,
   type TypedReplyOutcome,
 } from "./typed-reply";
-import { openRefillPrompts, settleRefillReply } from "./refill";
+import { openRefillPrompts, refillPromptAt, settleRefillReply } from "./refill";
 import {
   forgetMessagePointerAt,
   liveMessagePointersForKind,
+  messagePointerAt,
 } from "./message-pointers";
 import {
   moodKeepAnswerText,

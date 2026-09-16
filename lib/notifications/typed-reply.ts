@@ -1,5 +1,5 @@
-// THE PROMPT-AND-REPLY CONTRACT (issue #5650) — one grammar, one parser, one rule for
-// deciding which prompt a typed answer belongs to.
+// THE PROMPT-AND-REPLY CONTRACT (issue #5650) — one registry, one rule for deciding
+// which prompt a typed answer belongs to, and NO READING OF MESSAGE TEXT to decide it.
 //
 // Three Telegram flows ask a question and take a TYPED answer: `/temp`, `/weight` and
 // the refill receipt (#5580). Each used to be its own implementation of the same
@@ -8,25 +8,45 @@
 // message. #5124 would have been a fourth copy. This module is the one contract they
 // share, and the one place a fifth family registers.
 //
+// POINTER-ONLY, AND WHY THERE IS NO MARKER HERE AT ALL (owner ruling, 2026-09-16).
+// A typed reply resolves ONLY against a message the bot itself recorded: the open-prompt
+// registry, keyed by the quoted message's id. The family, the profile and the operation
+// all come from that record — bot-written columns, never rendered and never typed. No
+// code path in this contract reads the quoted message's TEXT to decide whether a reply
+// is admissible or which family it belongs to.
+//
+// That is not a style preference; it is the whole safety property, and two earlier
+// designs failed on it. Both put a MARKER — `(#temp:<pid>)`, `(refill:<pid>:<offerId>)` —
+// in the prompt's body and read it back off the reply target. A marker is text, the
+// rendered text of a prompt contains names a person types in-app (the `[Name]`
+// attribution prefix, and a supply item's own name as the receipt prompt's title), and
+// so a profile or item literally named `(#weight:<other>)` steered a `/temp` reply into
+// a weight write on another profile. Anchoring the marker was tried and refused, because
+// "this message has no marker of its own" is a property of the STORE (a pointer row that
+// was never written, or has been pruned), not of the message — so any text path reaches
+// every unrecorded bot message, including ones that end in a person's typed text.
+//
+// Pointer-only makes that class UNREACHABLE by construction rather than by exclusion:
+// a message the store never recorded resolves to nothing, whatever it says. It also
+// closes the same defect on `main`, where `parseRefillReplyMarker` is unanchored and the
+// refill arm runs first, so a profile named `(refill:N:M)` already discards a `/temp`
+// reading today.
+//
+// THE COST IS ACCEPTED AND IT IS REAL. A prompt sent before this build started recording
+// pointers, and any prompt whose pointer has passed `MESSAGE_POINTER_RETENTION_DAYS`,
+// STOPS TAKING A TYPED REPLY. The person is told to reply to a live prompt and taps a
+// fresh one instead. That is the ruled behaviour, not a regression: old prompts sitting
+// in chats trade a typed answer for a steering class that cannot exist.
+//
 // NOTHING IS IMPORTED HERE, and that is the property to keep rather than an accident of
 // what moved first — the same rule `callback-tokens.ts` and the retired
-// `reply-markers.ts` held. A marker is a string a prompt carries, a parser is a rule for
-// reading one back, and "which of these open prompts does this number name?" is a
-// decision over values. None of the three needs the database, the clock or the wire, so
-// the module that owns them can be a LEAF: the DB reads stay with the dispatcher, which
-// passes what it found in. A file in the token layer that grows an import is a file that
-// can be in an import cycle again (#2961 AC 3) — and that is MACHINE-ENFORCED, not left
-// to whoever reads this next: `import/no-cycle` covers every file under
-// lib/notifications with no exemption (eslint.config.mjs), which is where the retired
-// `notification-import-cycles.test.ts` walk went at #5720. A cycle through this module
-// fails the lint tier.
-//
-// DELIVERED PROMPTS KEEP PARSING. There is a live chat with prompts already sitting in
-// it, so the parser accepts all three shipped marker strings exactly as written —
-// `(#temp:<pid>)`, `(#weight:<pid>)` and `(refill:<pid>:<offerId>)` — and the ONE
-// canonical form new prompts carry differs from them only in that every family now
-// spells the `#`. The grammar is therefore a widening, never a migration: no prompt in
-// anybody's chat has to be rewritten for a reply to it to attribute.
+// `reply-markers.ts` held. "Which of these open prompts does this number name?" is a
+// decision over values; it needs no database, clock or wire, so the DB reads stay with
+// the dispatcher, which passes what it found in. A file in the token layer that grows an
+// import is a file that can be in an import cycle again (#2961 AC 3) — and that is
+// MACHINE-ENFORCED, not left to whoever reads this next: `import/no-cycle` covers every
+// file under lib/notifications with no exemption (eslint.config.mjs), which is where the
+// retired `notification-import-cycles.test.ts` walk went at #5720.
 
 // The typed-reply families. A family is a question the bot asks and a number-shaped
 // answer it takes back; the operation id distinguishes two open questions of the SAME
@@ -34,11 +54,19 @@
 export type TypedReplyFamily = "temp" | "weight" | "refill";
 
 // The notification kinds whose message is a prompt awaiting a typed reply, so the send
-// chokepoint records a pointer for it (`telegram.ts`'s `recordPointer`). That pointer is
-// how ruling 2 finds a temp or weight prompt to attribute a BARE number to, and how
-// ruling 1 edits it in place afterwards; before #5650 these two prompts carried neither
-// a keyboard nor a prose claim, so nothing could find or edit them after the send. The
-// refill prompt carries buttons and has always recorded one.
+// chokepoint records a pointer for it (`telegram.ts`'s `recordPointer`). THAT POINTER IS
+// THE ONLY THING THAT MAKES THE PROMPT ANSWERABLE: it is how the registry finds the
+// prompt an explicit Reply quoted, how a bare number finds the one open question, and
+// how the acknowledgement edits the prompt in place afterwards. Before #5650 `/temp` and
+// `/weight` carried neither a keyboard nor a prose claim, so nothing could name them
+// after the send. The refill prompt carries buttons and has always recorded one.
+//
+// A KIND IS NOT A PROMPT, and nothing here treats it as one. Three different `refill`
+// messages record a pointer — the low-supply reminder, the receipt prompt and the
+// `Supply update` rebuild — and only one of them is a question. That is exactly why the
+// registry below is keyed on the OPERATION's own record of its prompt message rather
+// than on a pointer's `kind`: a reminder's message id is no offer's `promptId`, so a
+// reply to it resolves to nothing instead of settling a receipt nobody opened.
 export const TYPED_REPLY_PROMPT_KINDS: readonly string[] = [
   "temp",
   "weight",
@@ -49,46 +77,6 @@ export function awaitsTypedReply(kind: string | null | undefined): boolean {
   return kind != null && TYPED_REPLY_PROMPT_KINDS.includes(kind);
 }
 
-// ---- The one marker grammar -------------------------------------------------
-//
-// `(#<family>:<profileId>[:<operationId>])`. The profile id is the ATTRIBUTION — a
-// multi-profile chat gets one named prompt per profile, and a reply resolves to the
-// profile its own prompt named rather than to whoever sorts first (#1995). The optional
-// operation id binds a reply to ONE immutable operation, which is what stops an old
-// reply from landing on a newer receipt (#5580's accepted design).
-
-export function typedReplyMarker(
-  family: TypedReplyFamily,
-  profileId: number,
-  operationId?: number
-): string {
-  const op = operationId == null ? "" : `:${operationId}`;
-  return `(#${family}:${profileId}${op})`;
-}
-
-export interface TypedReplyMarker {
-  family: TypedReplyFamily;
-  profileId: number;
-  operationId: number | null;
-}
-
-// The `#` is OPTIONAL on the way in and always written on the way out: the refill
-// receipt shipped its marker as `(refill:…)` and those prompts are in real chats today.
-const MARKER = /\(#?(temp|weight|refill):([1-9]\d*)(?::([1-9]\d*))?\)/;
-
-export function parseTypedReplyMarker(
-  text: string | null | undefined
-): TypedReplyMarker | null {
-  if (!text) return null;
-  const m = MARKER.exec(text);
-  if (!m) return null;
-  return {
-    family: m[1] as TypedReplyFamily,
-    profileId: Number(m[2]),
-    operationId: m[3] == null ? null : Number(m[3]),
-  };
-}
-
 // ---- The bare-number rule ---------------------------------------------------
 //
 // A POSITIVE, unit-less number and nothing else. This is the test for whether an
@@ -97,6 +85,11 @@ export function parseTypedReplyMarker(
 // with the Reply swipe, while a bare `120` in a chat is only an answer because the bot
 // just asked a question. Anything else follows the existing plain-text path unchanged
 // (#1895's "ordinary text may go unanswered" rule, narrowed for numeric text only).
+//
+// THIS READS THE REPLY'S OWN TEXT, WHICH IS THE ANSWER, NOT THE ADMISSIBILITY. The text
+// pointer-only keeps out of the decision is the QUOTED message's — the bot's own words,
+// which carry names a person typed. What the person just typed is the value they are
+// sending, and no family is chosen by it.
 export function typedReplyNumber(
   text: string | null | undefined
 ): number | null {
@@ -106,11 +99,12 @@ export function typedReplyNumber(
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-// ---- Resolving a message to one open prompt ---------------------------------
+// ---- The open-prompt registry -----------------------------------------------
 
-// One prompt this chat is still waiting on an answer for. `promptId` is the message the
-// acknowledgement edits; `operationId` is the family's handle on the operation, null for
-// the two quick-logs, which hold no server-side operation state.
+// One prompt this chat is still waiting on an answer for. Every field is the BOT'S OWN
+// RECORD of a message it sent: `promptId` is the message the acknowledgement edits,
+// `profileId` is the attribution, and `operationId` is the family's handle on the
+// operation — null for the two quick-logs, which hold no server-side operation state.
 export interface OpenTypedPrompt {
   family: TypedReplyFamily;
   profileId: number;
@@ -132,49 +126,65 @@ export type TypedReplyResolution =
   // profile, deliberately: the ambiguity may span two, and saying which would be the
   // guess this branch exists to refuse.
   | { kind: "ambiguous" }
+  // A number typed as an explicit Reply to a message THE STORE HAS NO RECORD OF as an
+  // open prompt — a prompt sent before pointers were recorded, one whose pointer has
+  // been pruned, one already answered, or a message that was never a prompt at all.
+  // This is the ruled cost of pointer-only, and it is ANSWERED rather than guessed at:
+  // resolving it against the chat's other open prompts would be the guess, and reading
+  // the quoted text for a marker is the steering class that does not exist here.
+  | { kind: "unrecorded" }
   | { kind: "reply"; reply: TypedReply };
 
 export interface TypedReplyInput {
   text: string | null | undefined;
-  // The quoted message's text and id, when the person used the Reply swipe.
-  replyToText?: string | null;
+  // The quoted message's ID — and ONLY its id — when the person used the Reply swipe.
+  // Its TEXT is deliberately absent from this type: a caller cannot re-introduce
+  // text-first resolution without changing the shape, which is the retirement of the
+  // marker made structural rather than remembered.
   replyToId?: number | null;
 }
 
-// THE ONE RESOLUTION RULE, in two halves that never overlap.
+// The two ways the store can be asked about open prompts. Both are DB reads and both
+// are passed in, so this module stays a leaf; both are called LAZILY, because ordinary
+// chat that is not a number at all must not pay for a pointer or offer lookup on its way
+// to the symptom intake.
+export interface TypedPromptRegistry {
+  // The prompt recorded at this message id, for an EXPLICIT Reply. Not filtered by
+  // sender or by state: any chat member may answer a prompt the chat can write, and an
+  // already-settled receipt still owes its own `Already recorded` refusal.
+  at: (messageId: number) => OpenTypedPrompt | null;
+  // Every prompt still open for this sender in this chat, for a BARE number.
+  open: () => readonly OpenTypedPrompt[];
+}
+
+// THE ONE RESOLUTION RULE, in two halves that never overlap, neither of which reads the
+// quoted message's text.
 //
-// An EXPLICIT REPLY is attributed by the marker the quoted prompt carries. The marker is
-// the attribution and it always wins: it names a profile and an operation, and it can
-// name a prompt that the open-prompt list no longer holds (an already-settled receipt
-// still owes the reader `Already recorded`, which is a refusal the family must speak).
+// An EXPLICIT REPLY is resolved by looking the quoted message id up in the registry. A
+// hit is the answer, with the family and the attribution taken from the record. A MISS
+// is refused — see `unrecorded`. This is what makes the steering class unreachable: the
+// only input taken from the quoted message is a Telegram-assigned integer.
 //
 // A BARE NUMBER is attributed by the open prompts the caller found for this sender in
 // this chat. Exactly one is an answer; more than one is refused, never guessed; none
-// leaves the message alone. `open` is read LAZILY because the common case — ordinary
-// chat that is not a number at all — must not pay for a pointer or offer lookup.
+// leaves the message alone.
 export function resolveTypedReply(
   input: TypedReplyInput,
-  open: () => readonly OpenTypedPrompt[]
+  registry: TypedPromptRegistry
 ): TypedReplyResolution {
   const text = input.text ?? "";
-  const marker = parseTypedReplyMarker(input.replyToText);
-  if (marker)
-    return {
-      kind: "reply",
-      reply: {
-        family: marker.family,
-        profileId: marker.profileId,
-        operationId: marker.operationId,
-        // Telegram always numbers the quoted message; 0 stands for "there is no prompt
-        // to acknowledge on", and the settle that would edit it simply does not.
-        promptId: input.replyToId ?? 0,
-        text,
-      },
-    };
-  // A reply that quoted something ELSE is that thing's business, not a bare number.
-  if (input.replyToText != null || typedReplyNumber(text) == null)
-    return { kind: "none" };
-  const prompts = open();
+  if (input.replyToId != null) {
+    const prompt = registry.at(input.replyToId);
+    if (prompt) return { kind: "reply", reply: { ...prompt, text } };
+    // The quoted message is not a prompt this bot is holding open. A reply that is not
+    // number-shaped was never aimed at this contract, so it stays ordinary chat; a
+    // number was plainly meant as an answer, and saying so beats silence.
+    return typedReplyNumber(text) == null
+      ? { kind: "none" }
+      : { kind: "unrecorded" };
+  }
+  if (typedReplyNumber(text) == null) return { kind: "none" };
+  const prompts = registry.open();
   if (prompts.length === 0) return { kind: "none" };
   if (prompts.length > 1) return { kind: "ambiguous" };
   return { kind: "reply", reply: { ...prompts[0], text } };
@@ -184,15 +194,27 @@ export function resolveTypedReply(
 //
 // Ruling 1: an applied reply is acknowledged by a reaction and an in-place edit, never a
 // new message. A message is sent ONLY when the reply cannot be applied, and then exactly
-// one. These are the two answers the contract itself owns; every other refusal is the
+// one. These are the answers the contract itself owns; every other refusal is the
 // family's own sentence, spoken through the same single-message path.
 
-// More than one open prompt. The person picks by using the Reply swipe.
+// More than one open prompt, or a reply to a prompt this bot is no longer holding open.
+// The person picks by replying to — or tapping — a live prompt.
 export const TYPED_REPLY_AMBIGUOUS = "Reply to the prompt you mean.";
 
-// A reply to a prompt naming a profile this chat may not write. Before #5650 the refill
-// arm CLAIMED this message and said nothing, which from the chat's side is
-// indistinguishable from the bot being broken.
+// The title over that sentence when the quoted message is not an open prompt. Separate
+// from the ambiguity's title because the two are opposite conditions — too many open
+// prompts, and none at the message quoted — and a reader who is told the wrong one
+// cannot act on it.
+export const TYPED_REPLY_UNRECORDED_TITLE = "That prompt isn't open";
+
+// A reply to a prompt naming a profile this chat may not write. Structurally
+// unreachable under pointer-only — every registry entry is built from the profiles
+// `getProfilesByTelegramChatId` returns for this chat, so a resolved reply always names
+// one of them — and KEPT ANYWAY, because that guarantee is two functions agreeing rather
+// than one fact, and a later registry source that forgot the chat filter would otherwise
+// write another chat's profile in silence. Before #5650 the refill arm CLAIMED such a
+// message and said nothing, which from the chat's side is indistinguishable from the bot
+// being broken.
 export const TYPED_REPLY_UNAUTHORIZED =
   "That profile isn't linked to this chat anymore.";
 
