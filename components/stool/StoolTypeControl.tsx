@@ -8,6 +8,7 @@ import { useTimeStatement } from "@/components/TimeStatement";
 import { useToast } from "@/components/Toast";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { daySwitcherLabel, formatClockValue } from "@/lib/format-date";
+import { historyClock } from "@/lib/history-format";
 import { undoRefusalText, type UndoOffer } from "@/lib/undo-offer";
 import { BRISTOL_STOOL_TYPES, bristolReceiptLines } from "@/lib/bristol-stool";
 import {
@@ -135,6 +136,21 @@ export default function StoolTypeControl({
     timeLabel: "Time it happened",
     testId: "stool-when",
   });
+  // ── THE REFUSAL IS VISIBLE (#5923) ─────────────────────────────────────────
+  //
+  // A tap files an instant, so a day that is not today has no instant for it to file
+  // — the statement above is `required` there and the tiles refuse until one is made.
+  // That refusal was correct and completely silent: `disabled` was true while the
+  // tile rendered exactly like the one that works (opacity 1, the ordinary cursor, no
+  // `aria-disabled`), so a deliberate tap did nothing and nothing on screen moved.
+  // #5663's feedback contract is that a write which lands says so; the mirror is that
+  // a write which CANNOT land says so before the finger comes down.
+  //
+  // NAMED SEPARATELY FROM `disabled` ON PURPOSE. This is the day refusing the write,
+  // which is a standing condition a person can act on; a tile that is momentarily
+  // un-tappable for some other reason is not, and painting both the same way would
+  // say "unavailable" about something that is merely busy.
+  const blocked = !isPrimaryDay && !statement.at;
   useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
@@ -222,6 +238,34 @@ export default function StoolTypeControl({
   // confirmation of it from naming one instant two ways.
   const clockOf = (hhmm: string) =>
     formatClockValue(hhmm, prefs.timeFormat, "", "upper-space");
+
+  // ── WHICH MINUTE THE ROW IS NAMING (#5921) ─────────────────────────────────
+  //
+  // After #5915 a tap with no stated time records `occurred_at NULL`, and the store
+  // stopped claiming a minute nobody named. The receipt undid that in presentation:
+  // it printed the FILING minute in the same voice as a stated one, so `· 4:18 AM`
+  // (nobody said this) sat beside `· 2:15 AM` (somebody did) with nothing between
+  // them — and on a past-day tab a row filed this morning printed TODAY's minute
+  // under yesterday.
+  //
+  // #5618 ruling 6 already settles both, and the owner ruled on 2026-09-10 that it
+  // belongs to the CLOCK GRAMMAR rather than to one page: a filing minute reads
+  // `logged 4:18 AM`, and a filing minute from another day reads `logged Sep 16` —
+  // the day, no clock, because the minute is true of no minute of the day the sheet
+  // is standing on. So this asks `historyClock` rather than spelling the rule again;
+  // the only argument this surface adds is the meridiem the owner ruled for it.
+  //
+  // THE DAY THE ROW SITS UNDER IS `writeDate`, never re-derived: these rows were read
+  // for exactly that day, by the same argument that makes the count line beneath them
+  // count it.
+  const rowClock = (reading: StoolDayReading) =>
+    historyClock(
+      reading.hhmm,
+      reading.clockKind,
+      prefs,
+      { filedDay: reading.filedDay, rowDay: writeDate },
+      "upper-space"
+    ) ?? "";
 
   // THE INVERSE, PICKED BY WHAT THE WRITE ACTUALLY DID. Both halves are the record's own
   // row writes (#4433) — nothing stool-shaped is added for the undo — and both re-derive
@@ -320,11 +364,20 @@ export default function StoolTypeControl({
         // newest row then carries no Undo, because there is nothing this tap can take
         // back that it put there.
         setLanded(res.reading ?? null);
-        const landedClock = res.reading
-          ? clockOf(
-              res.readings.find((row) => row.id === res.reading?.id)?.hhmm ?? ""
-            )
-          : "";
+        // THE TOAST'S `· <time>` SLOT IS A STATED MINUTE (#5921). Ruling 1's grammar
+        // is `<Thing> logged · <time>`, so the sentence already carries the word
+        // "logged" as its verb; a filing minute in the slot would either restate the
+        // tap's own moment as the movement's — the claim the store stopped making —
+        // or double the word the ROW uses to qualify it. The slot drops instead,
+        // which is the shape this sentence already takes for a write with no row to
+        // name, and the row directly beneath still states the filing minute in full.
+        const landedRow = res.reading
+          ? res.readings.find((row) => row.id === res.reading?.id)
+          : undefined;
+        const landedClock =
+          landedRow && landedRow.clockKind === "stated"
+            ? clockOf(landedRow.hhmm)
+            : "";
         return {
           wrote: true,
           // The server's own total for the day, adopted over the +1 this tap guessed:
@@ -402,7 +455,7 @@ export default function StoolTypeControl({
   // so the word stays "undo" rather than becoming a delete on a row gathered from the
   // store (#2642: the offer rides the write).
   const receiptRows = readings.flatMap((reading) => {
-    const lines = bristolReceiptLines(reading.type, clockOf(reading.hhmm));
+    const lines = bristolReceiptLines(reading.type, rowClock(reading));
     return lines
       ? [
           {
@@ -435,12 +488,29 @@ export default function StoolTypeControl({
               type="button"
               data-testid={`stool-type-${t.type}`}
               onClick={() => void tap(t.type)}
-              // The blocked second tap was already swallowed by the pipeline; it is
-              // now VISIBLE, which is what the treatment's third half is for.
-              disabled={busy || (!isPrimaryDay && !statement.at)}
+              // TWO REASONS A TAP CANNOT LAND, AND THEY ARE NOT THE SAME STATE.
+              // `busy` is a write already in flight on a day that ACCEPTS writes —
+              // the blocked second tap the pipeline was swallowing, now visible
+              // (#5900). `blocked` is the day itself refusing until a time is
+              // stated (#5923). Both stop the tap, so both set `disabled`; what
+              // they say about it differs, and the two announcements below are why
+              // the paint is keyed on `blocked` alone rather than on `:disabled` —
+              // an in-flight tap on today must not read as "unavailable".
+              disabled={busy || blocked}
               aria-busy={busy || undefined}
+              // THE HALF A SCREEN READER HITS. `disabled` alone drops the tile out of
+              // the tab order, so the state is announced only to someone who was
+              // already on it; `aria-disabled` is what the design system's own paint
+              // rules key on beside `:disabled` (app/globals.css, the #1450 cluster B
+              // treatment), and saying it here is what makes the refusal reach
+              // assistive technology rather than only the eye.
+              aria-disabled={blocked || undefined}
               aria-label={`Type ${t.type}, ${t.description}`}
-              className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
+              className={`group relative flex flex-col items-center gap-1 px-1 py-2 ${
+                blocked
+                  ? "cursor-not-allowed text-slate-600 dark:text-slate-400"
+                  : "text-slate-700 dark:text-slate-200"
+              }`}
             >
               <span
                 aria-hidden="true"
@@ -455,9 +525,20 @@ export default function StoolTypeControl({
                     [t.type]: (runs[t.type] ?? 0) + 1,
                   }))
                 }
-                className={`absolute inset-0 rounded-lg border border-(--border) bg-surface transition group-hover:border-slate-400 dark:group-hover:border-slate-500${
-                  settlingType === t.type ? ` ${settlePlan.className}` : ""
-                }`}
+                // THE FAMILY'S ONE DISABLED TREATMENT, TAKEN RATHER THAN INVENTED
+                // (#1450 cluster B, app/globals.css): a muted SURFACE with readable
+                // text, never a faded version of the live one — `disabled:opacity-50`
+                // is the thing that ruling rejected, because a washed-out control
+                // reads as half-loaded rather than as "not here". This tile is not a
+                // `.btn`, so it cannot inherit the rule; it takes the same tokens at
+                // the one place its surface is painted, and drops the hover border
+                // with them, since a box that answers the pointer is the strongest
+                // claim of all that it is live.
+                className={`absolute inset-0 rounded-lg border transition ${
+                  blocked
+                    ? "border-black/5 bg-slate-100 dark:border-white/5 dark:bg-ink-750"
+                    : "border-(--border) bg-surface group-hover:border-slate-400 dark:group-hover:border-slate-500"
+                }${settlingType === t.type ? ` ${settlePlan.className}` : ""}`}
               />
               <span className="relative flex flex-col items-center gap-1">
                 {/* The mark takes the GLYPH'S SEAT, in a box the size of the glyph
