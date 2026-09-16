@@ -47,6 +47,7 @@ import { getLastNightSummary } from "@/lib/queries/sleep";
 import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
 import { reportBreathingRateDeclines } from "@/lib/integrations/breathing-rate-report";
 import { trackLabFollowUpCore } from "@/lib/followup-write";
+import { deleteMetricReading } from "@/lib/metric-readings";
 import { followUpItems } from "@/lib/followup-findings";
 
 const ORIGIN = "com.fitbit.FitbitMobile";
@@ -1158,6 +1159,100 @@ describe("a tracked follow-up is carried onto the night's sample", () => {
     expect(items).toHaveLength(1);
     expect(items[0].title).toContain("Recheck breathing rate");
     expect(items[0].href).toBe("/trends/metric/breathing-rate");
+  });
+});
+
+/**
+ * A carried follow-up over its night's sample: the state every case below deletes out
+ * from under. Built the way the carry cases above build it -- the stored session, the
+ * legacy wearable reading, one tap on "Track follow-up", then the adoption.
+ */
+function carriedFollowUp(name: string): {
+  profileId: number;
+  carePlanItemId: number;
+  sampleId: number;
+} {
+  const profileId = newProfile(name);
+  storedSession(profileId, {
+    source: "health-connect",
+    origin: ORIGIN,
+    date: WAKE_DAY,
+    start: BED,
+    end: FINAL_WAKE,
+  });
+  const recordId = legacyWearableReading(profileId, {
+    date: WAKE_DAY,
+    value: 11.4,
+    stamp: FINAL_WAKE,
+    source: "health-connect",
+  });
+  const carePlanItemId = trackFollowUp(profileId, recordId);
+  runBreathingRateMigration();
+  const carried = followUpRow(carePlanItemId);
+  expect(carried.source_kind).toBe("breathing-rate");
+  expect(carried.source_metric_sample_id).not.toBeNull();
+  return {
+    profileId,
+    carePlanItemId,
+    sampleId: carried.source_metric_sample_id as number,
+  };
+}
+
+describe("deleting the carried sample frees the WHOLE link", () => {
+  it("nulls the discriminator with the id on the ordinary delete path", () => {
+    // THE HOUSE RULE, WHICH THE FOREIGN-KEY ACTION CANNOT KEEP ON ITS OWN. Every other
+    // source kind frees `source_kind` together with its source id at a hand seam
+    // (lib/followup-write.ts), and migration 184 exists to repair rows that did not.
+    // So the ordinary delete -- the readings table's Delete on the breathing-rate
+    // detail page, and the Data -> Manage bulk delete behind the same capture -- runs
+    // the seam first, and `ON DELETE SET NULL` is left as the backstop for a path that
+    // has none.
+    const { profileId, carePlanItemId, sampleId } =
+      carriedFollowUp("Delete, seam");
+
+    const outcome = deleteMetricReading(profileId, "breathing-rate", sampleId);
+    expect(outcome.ok).toBe(true);
+
+    expect(followUpRow(carePlanItemId)).toEqual({
+      source_kind: null,
+      source_medical_record_id: null,
+      source_metric_sample_id: null,
+      resolved_by_medical_record_id: null,
+      resolved_by_metric_sample_id: null,
+    });
+    // The item is still there -- a freed link degrades the follow-up to the plain
+    // care-plan item it now is, it does not delete the person's planned care.
+    expect(
+      db
+        .prepare("SELECT description FROM care_plan_items WHERE id = ?")
+        .get(carePlanItemId)
+    ).toBeTruthy();
+    expect(followUpItems(profileId, "2026-12-01")).toEqual([]);
+  });
+
+  it("positive control: the backstop alone leaves the discriminator standing", () => {
+    // WHAT THE ASSERTION ABOVE IS OBSERVING. `ON DELETE SET NULL` can only null the
+    // column it is declared on, so a delete that reaches the row without the seam ends
+    // exactly here: `source_kind` naming an adapter over an all-null source. Without
+    // this case the first one could pass over a schema that never wrote the
+    // discriminator at all.
+    const { profileId, carePlanItemId, sampleId } =
+      carriedFollowUp("Delete, backstop");
+
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+    db.prepare(
+      "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+    ).run(sampleId, profileId);
+
+    expect(followUpRow(carePlanItemId)).toEqual({
+      source_kind: "breathing-rate",
+      source_medical_record_id: null,
+      source_metric_sample_id: null,
+      resolved_by_medical_record_id: null,
+      resolved_by_metric_sample_id: null,
+    });
+    // It dangles rather than throwing, which is the half the action does buy.
+    expect(fkViolations().length).toBe(0);
   });
 });
 
