@@ -1922,6 +1922,17 @@ describe("blocking inbound links (#5409)", () => {
     expect(hits && [...hits]).toEqual([named]);
     // An empty delete-set asks nothing and finds nothing — not a null refusal.
     expect(parentIdsNamedBy(db, link, [])?.size).toBe(0);
+    // PAST THE BOUND-PARAMETER CEILING. A delete-set is as big as the migration's
+    // candidate set, and `IN (?,?,…)` over one throws "too many SQL variables" —
+    // which is what a whole-set probe written the obvious way does at the size it
+    // exists for. One JSON parameter has no such ceiling.
+    const huge = [
+      named,
+      ...Array.from({ length: 40_000 }, (_, i) => 10_000_000 + i),
+    ];
+    const hugeHits = parentIdsNamedBy(db, link, huge);
+    expect(hugeHits && [...hugeHits]).toEqual([named]);
+
     // A COMPOSITE key names its parent rows by a tuple an id list cannot express, so
     // the answer is a refusal the caller must handle, never a silent empty set.
     expect(

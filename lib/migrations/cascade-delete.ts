@@ -202,18 +202,21 @@ export function blockingInboundLinks(
  * Which of `parentIds` some row of `link` still names — ONE set query over the whole
  * delete-set, which is the only probe shape that belongs on a boot path.
  *
- * SHAPE, MEASURED, because the three obvious ways to write this differ by 590×.
- * At 200k parent rows × 200k child rows, in memory (a floor, not a forecast):
+ * SHAPE, MEASURED HERE, because the three obvious ways to write this are not close.
+ * 200k parent rows × 200k child rows, in memory, no index on the referencing column
+ * (a floor, not a forecast — and re-measure rather than trusting these):
  *
- *   one set query per link, whole delete-set :      13.26 ms
- *   chunked over the ids (500 chunks of 400) :   7,811    ms
- *   one query per id (`CHUNK = 400` per-id)  :   5,681    ms per chunk (~47 min)
+ *   one set query per link, whole delete-set :     173 ms
+ *   chunked over the ids (500 chunks of 400) :   6,232 ms   (36×)
+ *   one query per id                         :   2,204 ms per 400 (~18 min for 200k)
  *
- * The cost is the child table's size, not the delete-set's: 63 of this schema's 150
+ * The cost is the CHILD table's size, not the delete-set's: 63 of this schema's 150
  * blocking inbound links have no index on the referencing column, so the probe is a
- * scan of the child and the number of ids in the `IN` list barely moves it. Chunking
- * therefore multiplies the scan by the number of chunks — the one thing that must
- * not be done here, and the shape the existing `CHUNK = 400` delete loop invites.
+ * scan of the child and the number of ids barely moves it. Chunking therefore
+ * multiplies that scan by the number of chunks — the one thing that must not be done
+ * here, and the shape the `CHUNK = 400` delete loop below invites. A per-id probe
+ * measures fast on a fixture whose matches sit at the front of the table and takes
+ * minutes on one where they do not; the number above probes from the far end.
  *
  * A COMPOSITE key is refused rather than approximated: it names its parent rows by a
  * tuple, an id list cannot express that, and the caller's fail-closed answer (treat
@@ -233,13 +236,18 @@ export function parentIdsNamedBy(
   if (link.parentColumns[0] !== rowKeyOf(db, link.parent)) return null;
   const found = new Set<number>();
   if (parentIds.length === 0) return found;
+  // ONE BOUND PARAMETER, not one per id. A `IN (?,?,…)` list over a real delete-set
+  // exceeds SQLite's bound-parameter ceiling and throws "too many SQL variables" —
+  // measured here at 200k ids, which is the size this probe exists for. `json_each`
+  // is the house answer to the same problem (lib/export.ts, lib/practice-log.ts) and
+  // keeps the whole set in ONE query, which is the only shape with an acceptable cost.
   const rows = db
     .prepare(
       `SELECT DISTINCT ${q(link.columns[0])} AS ref
          FROM ${q(link.table)}
-        WHERE ${q(link.columns[0])} IN (${parentIds.map(() => "?").join(",")})`
+        WHERE ${q(link.columns[0])} IN (SELECT value FROM json_each(?))`
     )
-    .all(...parentIds) as { ref: number | null }[];
+    .all(JSON.stringify(parentIds)) as { ref: number | null }[];
   for (const row of rows) if (row.ref != null) found.add(row.ref);
   return found;
 }
