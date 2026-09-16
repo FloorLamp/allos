@@ -27,6 +27,10 @@ import type {
 // in eslint.config.mjs refuses every spelling of `x as LocalDay` the 2026-09-05
 // falsifying pass found while leaving a DB row shape alone.
 //
+// The ban is a ratchet over SHAPES, so what it does not refuse is pinned here beside
+// what it does (`namedLimits` below) as WITNESSES rather than a census: it does not
+// make the brand unforgeable (#5892, #5914).
+//
 // The type-level half uses `@ts-expect-error`: an assignment the vocabulary must
 // refuse is written out, and `npm run typecheck` fails if it ever starts compiling.
 
@@ -180,6 +184,74 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
+  // #5914 — the row-shape exemption ends where the cast is read STRAIGHT back out.
+  // `({ d: s } as { d: LocalDay }).d` type-checked and linted clean before this, which
+  // made a brand out of a plain string on a production path with nothing to say so.
+  // Each takes the value off the cast node itself; eslint.config.mjs states the boundary.
+  const refusedReadThrough: Record<string, string> = {
+    propertyOffTheCast: `({ d: s } as { d: LocalDay }).d`,
+    methodOffTheCast: `(s as unknown as { toString(): LocalDay }).toString()`,
+    nonNullOffTheCast: `({ d: s } as { d: LocalDay })!.d`,
+    optionalRowOffTheCast: `(get() as { d: LocalDay } | undefined)!.d`,
+    satisfiesOffTheCast: `(get() as any satisfies { d: LocalDay }).d`,
+  };
+
+  for (const [name, expr] of Object.entries(refusedReadThrough)) {
+    it(`refuses reading a brand back out of a row-shape cast: ${name}`, async () => {
+      const messages = await lint(`${header}export const v = ${expr};\n`);
+      expect(messages.map((m) => m.message)).toEqual([
+        expect.stringContaining("Do not cast or re-alias to a temporal brand"),
+      ]);
+    });
+  }
+
+  it("refuses a row-shape cast destructured instead of read", async () => {
+    const messages = await lint(
+      `${header}const { d } = { d: s } as { d: LocalDay };\nexport const v = d;\n`
+    );
+    expect(messages.map((m) => m.message)).toEqual([
+      expect.stringContaining("Do not cast or re-alias to a temporal brand"),
+    ]);
+  });
+
+  // THE IDIOM THE EXEMPTION EXISTS FOR, and the reason the selector matches the row
+  // literal directly rather than a brand anywhere under the cast's type: casting a
+  // query result to an array of branded rows and mapping it reaches the brand only
+  // through a BOUND row inside the callback, and `.length` is not a member of the row
+  // at all. Both of these reddened on the first cut of this rule (#5914).
+  const protectedIdiom: Record<string, string> = {
+    arrayCastMapped: `(get() as { d: LocalDay }[]).map((r) => r.d)`,
+    arrayCastLength: `(get() as { d: LocalDay }[]).length`,
+    arrayCastFiltered: `(get() as { d: LocalDay }[]).filter((r) => !!r.d)`,
+    readonlyArrayCastMapped: `(get() as readonly { d: LocalDay }[]).map((r) => r.d)`,
+    arrayGenericCastMapped: `(get() as Array<{ d: LocalDay }>).map((r) => r.d)`,
+    promiseCastThen: `(get() as unknown as Promise<{ d: LocalDay }>).then((r) => r.d)`,
+    tupleCastLength: `(get() as [{ d: LocalDay }]).length`,
+  };
+
+  for (const [name, expr] of Object.entries(protectedIdiom)) {
+    it(`leaves the row-shape idiom alone: ${name}`, async () => {
+      const messages = await lint(`${header}export const v = ${expr};\n`);
+      expect(messages).toHaveLength(0);
+    });
+  }
+
+  // What the read-through selector refuses WITHOUT a brand being minted: a selector
+  // cannot match the read NAME against the branded member's name, so a read off a cast
+  // whose type IS the branded row literal is refused either way. Pinned, not left to
+  // be discovered.
+  const overApproximated: Record<string, string> = {
+    otherFieldOffTheCast: `(get() as { d: LocalDay; n: number }).n`,
+    fieldWhoseTypeMerelyContainsTheBrand: `(get() as { row: { d: LocalDay } }).row`,
+  };
+
+  for (const [name, expr] of Object.entries(overApproximated)) {
+    it(`refuses ${name}, which mints nothing — the cost of not matching the read name`, async () => {
+      const messages = await lint(`${header}export const v = ${expr};\n`);
+      expect(messages).toHaveLength(1);
+    });
+  }
+
   // An alias that mentions a brand outside an object shape exists only to cast around
   // the rule; each is refused at the declaration, so `s as D` never needs matching.
   const refusedAliases: Record<string, string> = {
@@ -269,17 +341,28 @@ describe("temporal brands: the cast ban", () => {
   // launder a string through what a name RESOLVES to rather than by naming a brand in
   // a cast target, alias or specifier, and are review's, as for every other type.
   // Pinned so the documented limit and the rule cannot drift apart silently.
+  //
+  // MOST OF THEM ARE CASTS (#5914), which is why nothing may claim that the rule
+  // refuses a cast. Each was executed past `eslint` AND `tsc` against the write brand,
+  // so every entry is a working forge rather than a theoretical one. They are
+  // WITNESSES, not a taxonomy and not a census — the set they are drawn from is
+  // infinite, and one line of ordinary user code extends it (eslint.config.mjs).
   const namedLimits: Record<string, string> = {
+    namedRowReadThrough: `type Row = { d: LocalDay }; export const v = ({ d: s } as Row).d`,
     indexedAccessIntoRow: `type Row = { d: LocalDay }; export const v = s as Row["d"]`,
     interfaceHeritage: `interface Ds extends Array<LocalDay> {} export const v = ([s] as Ds)[0]`,
-    methodReturningBrand: `export const v = (s as unknown as { toString(): LocalDay }).toString()`,
-    lyingPredicate: `function isDay(x: string): x is LocalDay { return true }`,
+    elementOfCastArray: `export const v = (get() as { d: LocalDay }[])[0].d`,
+    awaitedCastPromise: `export const v = async () => (await (get() as unknown as Promise<{ d: LocalDay }>)).d`,
+    castFunctionReturn: `export const v = (get as unknown as () => { d: LocalDay })().d`,
+    spreadCopyOfCast: `export const v = { ...(get() as { d: LocalDay }) }.d`,
+    boundRowThenRead: `const row = get() as { d: LocalDay }; export const v = row.d`,
     genericLaunderer: `declare function id<T>(x: unknown): T; export const v = id<LocalDay>(s)`,
+    lyingPredicate: `function isDay(x: string): x is LocalDay { return true }`,
     asAny: `declare function f(d: LocalDay): void; f(s as any)`,
   };
 
   for (const [name, code] of Object.entries(namedLimits)) {
-    it(`cannot see ${name}, by design`, async () => {
+    it(`does not refuse ${name}`, async () => {
       const messages = await lint(`${header}${code};\n`);
       expect(messages).toHaveLength(0);
     });

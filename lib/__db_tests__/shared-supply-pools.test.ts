@@ -69,6 +69,20 @@ function poolQty(supplyId: number): number | null {
   return getSharedSupply(supplyId)?.quantity_on_hand ?? null;
 }
 
+// The BOTTLE's own remembered fill (#5121's owner ruling, #5911), read off the row the
+// migration added rather than off any member.
+function poolFill(supplyId: number): number | null {
+  return getSharedSupply(supplyId)?.last_fill_size ?? null;
+}
+
+function itemFill(itemId: number): number | null {
+  return (
+    db
+      .prepare("SELECT last_fill_size AS f FROM intake_items WHERE id = ?")
+      .get(itemId) as { f: number | null }
+  ).f;
+}
+
 function itemQty(itemId: number): number | null {
   return (
     db
@@ -124,6 +138,9 @@ describe("migration 112 applies to a fresh DB and an existing one", () => {
       "strength",
       "form",
       "quantity_on_hand",
+      // 20260916-shared-supply-last-fill: the bottle's own usual refill (#5121's
+      // owner ruling, #5911).
+      "last_fill_size",
       "low_supply_days",
       "notes",
       "created_at",
@@ -246,6 +263,206 @@ describe("pooled decrement — every taker draws from ONE count", () => {
     expect(out).toEqual({ kind: "refilled", newQuantity: 60, fillSize: 50 });
     expect(poolQty(supplyId)).toBe(60);
     expect(itemQty(a.itemId)).toBe(null);
+  });
+
+  // ── THE BOTTLE'S OWN USUAL REFILL (#5121 owner ruling 2026-09-16, #5911) ──────
+
+  it("asks once for a new bottle's fill size, then one-taps it from the BOTTLE", () => {
+    // The owner's ruling, end to end: "both private and shared bottles should have a
+    // usual refill". A bottle that has never been refilled remembers nothing, so the
+    // first tap answers "needs-size" (#5908's shipped interim); the size typed FOR THIS
+    // BOTTLE is what it then remembers, and every later tap reuses it with no input.
+    const supplyId = createSharedSupply(
+      {
+        name: "Household Bulk D3",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      20
+    );
+    const a = addItem(alice.profileId, "POOLA Bulk D3", 1, null);
+    linkItemToPool(alice.profileId, a.itemId, supplyId);
+
+    expect(poolFill(supplyId)).toBeNull();
+    expect(refillSupply(alice.profileId, a.itemId, null)).toEqual({
+      kind: "needs-size",
+    });
+    expect(poolQty(supplyId)).toBe(20);
+
+    expect(refillSupply(alice.profileId, a.itemId, 500)).toEqual({
+      kind: "refilled",
+      newQuantity: 520,
+      fillSize: 500,
+    });
+    expect(poolFill(supplyId)).toBe(500);
+    // THE ONE-TAP: no size submitted, and the bottle's own 500 is what lands.
+    expect(refillSupply(alice.profileId, a.itemId, null)).toEqual({
+      kind: "refilled",
+      newQuantity: 1020,
+      fillSize: 500,
+    });
+    expect(poolQty(supplyId)).toBe(1020);
+  });
+
+  it("remembers the pooled fill on the BOTTLE and never on the member who tapped", () => {
+    // A pooled tap states a fact about the bottle. Writing it onto the member's
+    // `last_fill_size` too would be the same confusion running the other way — the
+    // household's 500 would follow that item back out of the pool on unlink and become
+    // "how this person restocks their own bottle", which nobody said.
+    const supplyId = createSharedSupply(
+      {
+        name: "Household Bulk C",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      5
+    );
+    const a = addItem(alice.profileId, "POOLA Bulk C", 1, 12);
+    // A genuine private fill FIRST, so there is a member's memory to protect.
+    expect(refillSupply(alice.profileId, a.itemId, 60)).toMatchObject({
+      kind: "refilled",
+    });
+    expect(itemFill(a.itemId)).toBe(60);
+
+    linkItemToPool(alice.profileId, a.itemId, supplyId);
+    expect(refillSupply(alice.profileId, a.itemId, 500)).toEqual({
+      kind: "refilled",
+      newQuantity: 505,
+      fillSize: 500,
+    });
+    expect(poolFill(supplyId)).toBe(500);
+    expect(itemFill(a.itemId)).toBe(60);
+
+    // And on the way back out, the member still remembers ITS OWN 60 — the private
+    // one-tap #852 shipped is untouched by any of this.
+    unlinkItemFromPool(alice.profileId, a.itemId);
+    db.prepare("UPDATE intake_items SET quantity_on_hand = 2 WHERE id = ?").run(
+      a.itemId
+    );
+    expect(refillSupply(alice.profileId, a.itemId, null)).toEqual({
+      kind: "refilled",
+      newQuantity: 62,
+      fillSize: 60,
+    });
+  });
+
+  it("refuses to one-tap a member's PRIVATE fill into a shared bottle (#5911)", () => {
+    // THE REPRODUCTION, VERIFIED ON main BEFORE THE FIX and asserted here as its
+    // inverse. Track privately, refill at 30, link into a 500-count household jar:
+    // `linkItemToPool` nulls the private count and keeps the 30, and on main the
+    // no-size tap added that 30 to the jar (530) with no input shown, because the item
+    // remembered a fill and nothing recorded which container it was a fill OF. The
+    // member's 30 is now not an input to a pooled answer at all, so the tap asks.
+    const itemId = addItem(
+      alice.profileId,
+      "POOLA Private-Then-Shared",
+      1,
+      10
+    ).itemId;
+    expect(refillSupply(alice.profileId, itemId, 30)).toEqual({
+      kind: "refilled",
+      newQuantity: 40,
+      fillSize: 30,
+    });
+    const supplyId = createSharedSupply(
+      {
+        name: "Household Bulk Jar",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      500
+    );
+    linkItemToPool(alice.profileId, itemId, supplyId);
+
+    // THE POSITIVE CONTROL for the state this test claims to cover: the stale private
+    // fill really does survive the link, on an active, sole, dosing member. If it did
+    // not, the assertion below would pass for an uninteresting reason.
+    expect(itemQty(itemId)).toBeNull();
+    expect(itemFill(itemId)).toBe(30);
+
+    expect(refillSupply(alice.profileId, itemId, null)).toEqual({
+      kind: "needs-size",
+    });
+    expect(poolQty(supplyId)).toBe(500);
+    expect(poolFill(supplyId)).toBeNull();
+  });
+
+  it("gives each bottle its OWN usual refill, and shares none between them", () => {
+    // Two bottles, one member each, one person. A remembered fill is the container's,
+    // so the second bottle is still a first refill however many times the first was
+    // topped up — there is no household-wide "usual size".
+    const jar = createSharedSupply(
+      {
+        name: "Bulk Jar A",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    const box = createSharedSupply(
+      {
+        name: "Bulk Box B",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    const inJar = addItem(alice.profileId, "POOLA In Jar", 1, null).itemId;
+    const inBox = addItem(alice.profileId, "POOLA In Box", 1, null).itemId;
+    linkItemToPool(alice.profileId, inJar, jar);
+    linkItemToPool(alice.profileId, inBox, box);
+
+    expect(refillSupply(alice.profileId, inJar, 200)).toMatchObject({
+      kind: "refilled",
+    });
+    expect(poolFill(jar)).toBe(200);
+    expect(poolFill(box)).toBeNull();
+    expect(refillSupply(alice.profileId, inBox, null)).toEqual({
+      kind: "needs-size",
+    });
+  });
+
+  it("lets a SECOND member of the same bottle reuse the bottle's fill (#1374)", () => {
+    // The fill is the bottle's, so whoever taps next gets it — including a member of
+    // another profile who has never refilled anything. Nothing here copies one person's
+    // stock to another: both are reading the same household bottle's own number.
+    const supplyId = createSharedSupply(
+      {
+        name: "Two-Member Bottle",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      4
+    );
+    const a = addItem(alice.profileId, "POOLA Two-Member", 1, null).itemId;
+    const b = addItem(bruno.profileId, "POOLB Two-Member", 1, null).itemId;
+    linkItemToPool(alice.profileId, a, supplyId);
+    linkItemToPool(bruno.profileId, b, supplyId);
+
+    expect(refillSupply(alice.profileId, a, 120)).toMatchObject({
+      kind: "refilled",
+      newQuantity: 124,
+    });
+    expect(refillSupply(bruno.profileId, b, null)).toEqual({
+      kind: "refilled",
+      newQuantity: 244,
+      fillSize: 120,
+    });
+    // Neither member's own memory was written by either tap.
+    expect(itemFill(a)).toBeNull();
+    expect(itemFill(b)).toBeNull();
   });
 
   it("leaves an UNLINKED item on its own private counter (nothing changes by default)", () => {
@@ -938,6 +1155,9 @@ describe("the offerable-bottle rule matches the cabinet's own list", () => {
         strength: "200 mg",
         form: "tablet",
         onHand: 10,
+        // Nobody has refilled this bottle yet, so it remembers no fill and the form's
+        // refill control asks once (#5121's owner ruling, #5911).
+        lastFillSize: null,
         siblingKind: null,
       }
     );

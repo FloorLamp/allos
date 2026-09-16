@@ -774,6 +774,62 @@ describe.each(["protein", "mobility"] as const)(
   }
 );
 
+// ── THE ONE IN-FLIGHT TREATMENT A TAP BODY REACHES (#5900) ───────────────────
+//
+// The pipeline has always exposed `pending(key)`; what it had no consumer for was
+// the treatment. Protein is the sharpest of the three bodies that showed NOTHING
+// between the tap and the landing — the optimistic grams moved and the control
+// itself said nothing — and it is the one already mounted here against the real
+// pipeline, so the claim is asserted through a held write rather than a stub.
+describe("the in-flight treatment on a pipeline tap body", () => {
+  const day = "2026-09-01";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proteinAdd.mockReset();
+    mocks.proteinRemove.mockReset();
+    mocks.enqueue.mockResolvedValue("kept");
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+  });
+
+  it("marks the tapped arm alone busy, refuses its second tap, and clears on landing", async () => {
+    const flight = Promise.withResolvers<{ ok: true; grams: number }>();
+    mocks.proteinAdd.mockReturnValue(flight.promise);
+    render(
+      <LoggedViaSurface value="quick-log">
+        <ProteinQuickAdd
+          date={day}
+          dayLabel="Today"
+          initialGrams={0}
+          lastPreset={25}
+        />
+      </LoggedViaSurface>
+    );
+
+    const add = screen.getByTestId("protein-quickadd-add");
+    const undo = screen.getByTestId("protein-quickadd-undo");
+    expect(add.getAttribute("aria-busy")).toBeNull();
+
+    await act(async () => {
+      add.click();
+    });
+    expect(add.getAttribute("aria-busy")).toBe("true");
+    expect((add as HTMLButtonElement).disabled).toBe(true);
+    expect(add.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    // PER KEY, NOT PER SURFACE. The failure this catches is a body that wires
+    // one flag to every control it owns: the inverse arm is a different write
+    // and must not wear this tap's flight.
+    expect(undo.getAttribute("aria-busy")).toBeNull();
+
+    await act(async () => {
+      flight.resolve({ ok: true, grams: 25 });
+      await flight.promise;
+    });
+    expect(add.getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("25");
+  });
+});
+
 // ── THE COMPILE-TIME HALF ────────────────────────────────────────────────────
 //
 // Never called. Each `@ts-expect-error` fails `npm run typecheck` the moment the shape

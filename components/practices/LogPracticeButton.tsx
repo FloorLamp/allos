@@ -38,6 +38,7 @@ import {
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
 import { LabeledVerbChip } from "@/components/OfferRow";
+import { BusyMark } from "@/components/Button";
 import type { LivePracticeSession, PracticeLogOutcome } from "@/lib/types";
 import {
   endPracticeLive,
@@ -600,6 +601,7 @@ export default function LogPracticeButton({
           <button
             type="button"
             disabled={pending}
+            aria-busy={pending || undefined}
             onClick={onEnd}
             data-testid="practice-end-button"
             aria-label={`End the running ${practice} session`}
@@ -610,7 +612,17 @@ export default function LogPracticeButton({
               chipRow ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
             }`}
           >
-            <IconPlayerStop className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+            {/* The mark takes the glyph's seat so the word beside it holds
+                still under the finger (#5900). */}
+            {pending ? (
+              <BusyMark />
+            ) : (
+              <IconPlayerStop
+                className="h-3.5 w-3.5"
+                stroke={2.5}
+                aria-hidden
+              />
+            )}
             {chipRow ? "End" : "End session"}
           </button>
         ) : chipRow ? (
@@ -624,6 +636,7 @@ export default function LogPracticeButton({
                 verb="Start"
                 tone="neutral"
                 disabled={pending}
+                busy={pending}
                 onAct={onStart}
                 testId="practice-start-button"
                 ariaLabel={`Start a ${practice} session, ${durationLabel}`}
@@ -643,6 +656,9 @@ export default function LogPracticeButton({
               disabled={
                 pending || ledger.blocked() || (!isPrimaryDay && !statement.at)
               }
+              // The log tap is the one `onFinished` runs through the ledger; the
+              // start and end arms carry their own `pending` (#5900).
+              busy={ledger.pending()}
               onAct={onFinished}
               testId="practice-log-button"
               ariaLabel={
@@ -659,16 +675,21 @@ export default function LogPracticeButton({
               <button
                 type="button"
                 disabled={pending}
+                aria-busy={pending || undefined}
                 onClick={onStart}
                 data-testid="practice-start-button"
                 aria-label={`Start a ${practice} session`}
                 className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
               >
-                <IconPlayerPlay
-                  className="h-3.5 w-3.5"
-                  stroke={2.5}
-                  aria-hidden
-                />
+                {pending ? (
+                  <BusyMark />
+                ) : (
+                  <IconPlayerPlay
+                    className="h-3.5 w-3.5"
+                    stroke={2.5}
+                    aria-hidden
+                  />
+                )}
                 Start
               </button>
             ) : null}
@@ -677,6 +698,7 @@ export default function LogPracticeButton({
               disabled={
                 pending || ledger.blocked() || (!isPrimaryDay && !statement.at)
               }
+              aria-busy={ledger.pending() || undefined}
               onClick={onFinished}
               data-testid="practice-log-button"
               // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
@@ -694,7 +716,11 @@ export default function LogPracticeButton({
                   : DOSE_ACTION_BRAND
               }`}
             >
-              <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+              {ledger.pending() ? (
+                <BusyMark />
+              ) : (
+                <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+              )}
               Just finished
             </button>
             {/* The clock door's seat (#4426): immediately right of the action whose

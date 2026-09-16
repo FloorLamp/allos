@@ -442,3 +442,149 @@ describe("the form holds its posted facts in one shape (#4664)", () => {
     expect(stateHooks(FORM_SOURCE)).toContain("state");
   });
 });
+
+// ── THE CONTAINER'S OWN USUAL REFILL, ON THE FORM (#5121 ruling, #5911) ─────────────
+//
+// `RefillTracking`'s refill control acts on whatever this item's supply IS. For a POOLED
+// item that is the bottle, so the size it may reuse is the bottle's own — carried on the
+// linked `SupplyOption` the picker already offers, never taken off the member.
+describe("the form's refill control reuses the BOTTLE's fill, not the member's", () => {
+  function bottle(lastFillSize: number | null): SupplyOption {
+    return {
+      id: 11,
+      name: "The household ibuprofen",
+      strength: null,
+      form: null,
+      siblingKind: "medication",
+      onHand: 4,
+      lastFillSize,
+    };
+  }
+
+  it("one-taps a bottle that remembers its own fill, with no size asked", async () => {
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue([bottle(500)]);
+    mountEdit({
+      medication: { ...ROW, supply_id: 11, quantity_on_hand: null },
+      initialSupplyEditor: true,
+    });
+    await screen.findByLabelText("Shared bottle count");
+    const tap = await screen.findByTestId("refill-button");
+    await waitFor(() => expect(screen.queryByTestId("refill-size")).toBeNull());
+    fireEvent.click(tap);
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    // No `fill_size` posted: the core answers from the bottle's own remembered 500.
+    expect(Object.fromEntries(actions.refill.mock.calls[0][0])).toEqual({
+      id: "42",
+      supply_id: "11",
+    });
+  });
+
+  it("asks once for a bottle that remembers nothing, even when the MEMBER does (#5911)", async () => {
+    // The member carries a stale private 30 that survived `linkItemToPool`. On main
+    // this row was a one-tap and that 30 went into the household bottle with nothing on
+    // screen saying whose fill it was. Now the control asks, and only a number typed
+    // for this bottle is posted.
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue([bottle(null)]);
+    mountEdit({
+      medication: {
+        ...ROW,
+        supply_id: 11,
+        quantity_on_hand: null,
+        last_fill_size: 30,
+      },
+      initialSupplyEditor: true,
+    });
+    await screen.findByLabelText("Shared bottle count");
+    fireEvent.click(await screen.findByTestId("refill-button"));
+    expect(actions.refill).not.toHaveBeenCalled();
+    const size = await screen.findByLabelText("Fill size (units)");
+    // The input is EMPTY — it is not prefilled with the member's 30 either.
+    expect((size as HTMLInputElement).value).toBe("");
+    fireEvent.change(size, { target: { value: "500" } });
+    fireEvent.click(screen.getByTestId("refill-confirm"));
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(actions.refill.mock.calls[0][0])).toEqual({
+      id: "42",
+      supply_id: "11",
+      fill_size: "500",
+    });
+  });
+
+  // THE ROW SURFACE, not the form: the card's own low-supply refill control, which reads
+  // the bottle's fill off the pool chip it already renders the shared-supply chip from.
+  function poolChip(lastFillSize: number | null) {
+    return {
+      supplyId: 11,
+      name: "The household ibuprofen",
+      strength: null,
+      form: null,
+      quantityOnHand: 2,
+      lastFillSize,
+      daysLeft: 1,
+      memberCount: 2,
+      low: true,
+    };
+  }
+
+  it("one-taps the bottle's fill from the card's low-supply control", async () => {
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue([bottle(500)]);
+    mountEdit({
+      medication: { ...ROW, supply_id: 11, quantity_on_hand: null },
+      poolChip: poolChip(500),
+      initialAction: undefined,
+    });
+    expect(screen.queryByTestId("refill-size")).toBeNull();
+    fireEvent.click(screen.getByTestId("refill-button"));
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(actions.refill.mock.calls[0][0])).toEqual({
+      id: "42",
+      supply_id: "11",
+    });
+  });
+
+  it("asks from the card's control when the bottle remembers nothing (#5911)", async () => {
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue([bottle(null)]);
+    mountEdit({
+      medication: {
+        ...ROW,
+        supply_id: 11,
+        quantity_on_hand: null,
+        last_fill_size: 30,
+      },
+      poolChip: poolChip(null),
+      initialAction: undefined,
+    });
+    fireEvent.click(screen.getByTestId("refill-button"));
+    expect(actions.refill).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText("Fill size (units)") as HTMLInputElement).value
+    ).toBe("");
+  });
+
+  it("still one-taps a PRIVATE item's own remembered fill (the negative control)", async () => {
+    // "No pooled row reuses a member's fill" is also true of a form that stopped
+    // offering the one-tap at all, so the unpooled case has to keep its own 30.
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue([]);
+    mountEdit({
+      medication: {
+        ...ROW,
+        supply_id: null,
+        quantity_on_hand: 4,
+        last_fill_size: 30,
+      },
+      initialSupplyEditor: true,
+    });
+    await screen.findByLabelText("Quantity on hand");
+    fireEvent.click(await screen.findByTestId("refill-button"));
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(actions.refill.mock.calls[0][0])).toEqual({
+      id: "42",
+      supply_id: "",
+    });
+  });
+});

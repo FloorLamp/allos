@@ -42,6 +42,11 @@ export interface SupplyOption extends PoolProductFacts {
   // "shared bottle · 143 left" — rather than as a bare name indistinguishable from a
   // vocabulary entry (#3216 decision 3).
   onHand?: number | null;
+  // The bottle's own remembered fill (#5121's owner ruling, #5911), so the item form's
+  // refill control knows whether THIS BOTTLE has a usual refill to reuse or must ask
+  // once. Absent/null ⇒ ask. It is never seeded from a member's `last_fill_size`: a
+  // remembered fill belongs to the container it was a fill of.
+  lastFillSize?: number | null;
   // The kind of the items ALREADY drawing from this bottle, when there are any. A
   // bottle has no kind of its own (#1374); this is a sibling's, lent to the item
   // form's kind derivation and to nothing else. Null (or absent) for a bottle nobody

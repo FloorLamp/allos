@@ -10,7 +10,7 @@ import {
 } from "@/lib/cycling-stream-summary";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { shiftDateStr } from "@/lib/date";
-import { formatLongDate } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 
 // Two tests below plant cycling-family rides on the SHARED profile, dated inside
 // Analyze's default range — the exact shape that made this file's own Cycling quick
@@ -182,7 +182,9 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   ).toBe(true);
   await expect(
     comparisonRideLinks.first() // eslint-disable-line no-restricted-properties -- first-ok: the seeded comparison cohort is deterministically ranked
-  ).toContainText(formatLongDate(ZONE_RIDE_DAY, undefined, { year: "always" }));
+  ).toContainText(
+    formatLongDate(ZONE_RIDE_DAY, DEFAULT_FORMAT_PREFS, { year: "always" })
+  );
   await comparisonChart
     .getByRole("button", { name: "Power", exact: true })
     .click();

@@ -8,6 +8,7 @@ import {
   formatVisitLabel,
   sourceDocumentId,
 } from "@/lib/record-format";
+import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { documentSource } from "@/lib/body-metric-extract";
 
 describe("sourceLabel", () => {
@@ -46,8 +47,12 @@ describe("sourceDocumentId", () => {
 
 describe("formatRecordDate", () => {
   it("formats a plain ISO date UTC-safe (no timezone shift)", () => {
-    expect(formatRecordDate("2024-01-05")).toBe("Jan 5, 2024");
-    expect(formatRecordDate("2024-12-31")).toBe("Dec 31, 2024");
+    expect(
+      formatRecordDate("2024-01-05", undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("Jan 5, 2024");
+    expect(
+      formatRecordDate("2024-12-31", undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("Dec 31, 2024");
   });
 
   it("reorders the date to the login's chosen shape", () => {
@@ -66,14 +71,18 @@ describe("formatRecordDate", () => {
   });
 
   it("returns the fallback for a null/empty date", () => {
-    expect(formatRecordDate(null)).toBe("—");
-    expect(formatRecordDate("")).toBe("—");
-    expect(formatRecordDate(null, "")).toBe("");
+    expect(formatRecordDate(null, undefined, DEFAULT_FORMAT_PREFS)).toBe("—");
+    expect(formatRecordDate("", undefined, DEFAULT_FORMAT_PREFS)).toBe("—");
+    expect(formatRecordDate(null, "", DEFAULT_FORMAT_PREFS)).toBe("");
   });
 
   it("returns the raw string when it isn't a plain ISO date", () => {
-    expect(formatRecordDate("sometime in 2024")).toBe("sometime in 2024");
-    expect(formatRecordDate("2024-01")).toBe("2024-01");
+    expect(
+      formatRecordDate("sometime in 2024", undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("sometime in 2024");
+    expect(formatRecordDate("2024-01", undefined, DEFAULT_FORMAT_PREFS)).toBe(
+      "2024-01"
+    );
   });
 });
 
@@ -82,9 +91,14 @@ describe("formatRecordDateTime", () => {
     // Default prefs are the dominant clock (24h) — the stored wall-clock digits
     // survive exactly, never the raw ISO string. The halves arrive as the two
     // columns an appointment stores (#2234); nothing is sniffed out of a string.
-    expect(formatRecordDateTime("2026-07-13", "14:30")).toBe(
-      "Jul 13, 2026, 14:30"
-    );
+    expect(
+      formatRecordDateTime(
+        "2026-07-13",
+        "14:30",
+        undefined,
+        DEFAULT_FORMAT_PREFS
+      )
+    ).toBe("Jul 13, 2026, 14:30");
   });
 
   it("renders the time in the login's chosen clock", () => {
@@ -103,44 +117,64 @@ describe("formatRecordDateTime", () => {
   });
 
   it("falls back to a plain-date format when there is no time component", () => {
-    expect(formatRecordDateTime("2024-01-05", null)).toBe("Jan 5, 2024");
+    expect(
+      formatRecordDateTime("2024-01-05", null, undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("Jan 5, 2024");
   });
 
   it("returns the fallback for a null/empty date", () => {
-    expect(formatRecordDateTime(null, null)).toBe("—");
-    expect(formatRecordDateTime("", null)).toBe("—");
-    expect(formatRecordDateTime(null, "14:30", "")).toBe("");
+    expect(
+      formatRecordDateTime(null, null, undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("—");
+    expect(
+      formatRecordDateTime("", null, undefined, DEFAULT_FORMAT_PREFS)
+    ).toBe("—");
+    expect(formatRecordDateTime(null, "14:30", "", DEFAULT_FORMAT_PREFS)).toBe(
+      ""
+    );
   });
 });
 
 describe("formatVisitLabel (#1526 — one computation for 'which visit is this?')", () => {
   it("leads with the type, then the provider, then the date", () => {
     expect(
-      formatVisitLabel({
-        date: "2026-05-04",
-        type: "Dermatology",
-        providerName: "Dr. Okafor",
-      })
+      formatVisitLabel(
+        {
+          date: "2026-05-04",
+          type: "Dermatology",
+          providerName: "Dr. Okafor",
+        },
+        DEFAULT_FORMAT_PREFS
+      )
     ).toBe("Dermatology · Dr. Okafor · May 4, 2026");
   });
 
   it("drops an absent provider rather than leaving a dangling separator", () => {
     expect(
-      formatVisitLabel({
-        date: "2026-05-04",
-        type: "Allergy clinic",
-        providerName: null,
-      })
+      formatVisitLabel(
+        {
+          date: "2026-05-04",
+          type: "Allergy clinic",
+          providerName: null,
+        },
+        DEFAULT_FORMAT_PREFS
+      )
     ).toBe("Allergy clinic · May 4, 2026");
   });
 
   it("falls back to a generic 'Visit' so a picker option is never blank", () => {
     expect(
-      formatVisitLabel({ date: "2026-05-04", type: null, providerName: null })
+      formatVisitLabel(
+        { date: "2026-05-04", type: null, providerName: null },
+        DEFAULT_FORMAT_PREFS
+      )
     ).toBe("Visit · May 4, 2026");
     // Whitespace-only source values are treated as absent, not as content.
     expect(
-      formatVisitLabel({ date: "2026-05-04", type: "  ", providerName: "  " })
+      formatVisitLabel(
+        { date: "2026-05-04", type: "  ", providerName: "  " },
+        DEFAULT_FORMAT_PREFS
+      )
     ).toBe("Visit · May 4, 2026");
   });
 

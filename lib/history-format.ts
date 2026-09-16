@@ -10,8 +10,9 @@
 //   2. THE CLOCK GRAMMAR (`historyClock`) — a stated time renders bare ("10:07am");
 //      a filing-time fallback renders "logged 10:07am", or "logged Sep 8" when the
 //      filing fell on a DIFFERENT day than the row sits under (#5618 rule 6, since a
-//      minute from another day is true of no minute of this one). One meridiem style
-//      and one date shape, page-wide.
+//      minute from another day is true of no minute of this one). One date shape
+//      page-wide, and one meridiem style per surface — the record's, plus the
+//      quick-log sheet's `upper-space` the owner ruled on 2026-09-15.
 //      This retires the shipped drift: food's ledger said "Ate 2:03 PM" and the dose
 //      ledger said "recorded 12:02pm" on the same app.
 //   3. THE DETAIL SEGMENT (`detailSegment`) — quantity → context → source, joined with
@@ -506,8 +507,9 @@ export interface HistoryFiling {
  *
  * "logged" is lower-case and leads the clock because the row's identity is already
  * the title — the word is a qualifier on the time, not a second label. The meridiem
- * style is `lower-nospace` ("10:07am") everywhere, which is the decision that retires
- * the two spellings the ledgers shipped.
+ * style is `lower-nospace` ("10:07am") on the record, which is the decision that
+ * retires the two spellings the ledgers shipped; `meridiem` below is how a surface
+ * the owner ruled otherwise takes this grammar without forking it.
  *
  * A FILING CLOCK FROM ANOTHER DAY IS A DAY, NOT A TIME (#5618 rule 6: "an untimed row
  * filed on another day reads 'logged Sep 8': the filing day, no clock. Same-day rows
@@ -519,12 +521,21 @@ export interface HistoryFiling {
  *
  * Same-day filing keeps the minute, because there the clock is about the day the
  * reader is looking at and orders the row against its neighbours.
+ *
+ * `meridiem` MOVES THE SPELLING, NEVER THE GRAMMAR. The quick-log sheet asks the same
+ * question this function answers — is this minute one somebody stated, or the one the
+ * row was filed at — and the owner ruled its clock `upper-space` ("8:31 AM") on
+ * 2026-09-15 so the sheet's rows and the illness card above them speak in one voice.
+ * The record keeps `lower-nospace`, and surfaces migrate as they are touched. A second
+ * COPY of this rule beside the sheet would be the parallel concept the repo forbids;
+ * a spelling argument is the one thing the rule genuinely does not decide.
  */
 export function historyClock(
   hhmm: string | null,
   clockKind: HistoryClockKind,
   prefs: DisplayFormatPrefs,
-  filing?: HistoryFiling | null
+  filing?: HistoryFiling | null,
+  meridiem: "upper-space" | "lower-nospace" = "lower-nospace"
 ): HistoryClock | null {
   if (
     clockKind === "logged" &&
@@ -541,7 +552,7 @@ export function historyClock(
     });
     return `logged ${day}` as HistoryClock;
   }
-  const clock = formatClockValue(hhmm, prefs.timeFormat, "", "lower-nospace");
+  const clock = formatClockValue(hhmm, prefs.timeFormat, "", meridiem);
   if (!clock) return null;
   return (clockKind === "stated" ? clock : `logged ${clock}`) as HistoryClock;
 }

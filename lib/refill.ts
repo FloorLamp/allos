@@ -281,6 +281,35 @@ export function resolveRefillWrite(
   return resolveOnHandWrite(current + fill, current, current);
 }
 
+// WHOSE REMEMBERED FILL A ONE-TAP MAY REUSE (#5121 owner ruling 2026-09-16, #5911).
+//
+// The owner's rule in one function: "both private and shared bottles should have a usual
+// refill", and a shared bottle's usual refill is THE BOTTLE'S OWN FACT, never a member's.
+// A remembered fill is only reusable for the container it was a fill OF, so the target's
+// identity — pooled or private — picks which remembered size is even a candidate, and the
+// other one is not consulted, not preferred and not fallen back to.
+//
+// THERE IS NO FALLBACK ARM, AND THAT IS THE POINT. A pooled target whose bottle remembers
+// nothing answers null, which means "ask for a size" — the ask-once state #5908 shipped
+// as the interim. Falling back to `itemLastFillSize` there is precisely #5911: a 30 that
+// was a fill of somebody's private bottle, one-tapped into a household jar, because
+// `linkItemToPool` drops the private count and keeps the size. Two review rounds proved
+// that no predicate over the member rescues that, so the member's size is not an input to
+// a pooled answer at all.
+//
+// A non-positive remembered size reads as nothing remembered, in ONE place, so the write
+// core and every surface deciding whether to reveal the size input agree on what
+// "remembered" means. Pure: the whole rule, checkable without a database.
+export function rememberedFillFor(target: {
+  supplyId: number | null;
+  itemLastFillSize: number | null;
+  poolLastFillSize: number | null;
+}): number | null {
+  const size =
+    target.supplyId == null ? target.itemLastFillSize : target.poolLastFillSize;
+  return size != null && size > 0 ? size : null;
+}
+
 // The projected run-out DATE (issue #852 item 3): today shifted forward by the whole
 // days of supply left, so a pharmacy hears "runs out ~Aug 3" rather than "≈19 days".
 // Pure calendar arithmetic (shiftDateStr is UTC-anchored). Null when days-left can't be

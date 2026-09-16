@@ -244,6 +244,7 @@ import { migration as mNotifyMessageChatSubject } from "./20260908-notify-messag
 import { migration as mDataWriteRevision } from "./20260909-data-write-revision";
 import { migration as mStoolEvents } from "./20260911-stool-events";
 import { migration as mFoodSensitivities } from "./20260912-food-sensitivities";
+import { migration as mSharedSupplyLastFill } from "./20260916-shared-supply-last-fill";
 import { migration as mBreathingRateSleepSamples } from "./20260911-breathing-rate-sleep-samples";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -498,6 +499,7 @@ export const MIGRATIONS: Migration[] = [
   mDataWriteRevision,
   mStoolEvents,
   mFoodSensitivities,
+  mSharedSupplyLastFill,
   mBreathingRateSleepSamples,
 ];
 

@@ -47,7 +47,7 @@ export default function SkinSection({
   // there should read this pane as two of twenty-odd remaining row-tier affordances,
   // not as one already done.
   access?: Access;
-  formatPrefs?: DisplayFormatPrefs;
+  formatPrefs: DisplayFormatPrefs;
 }) {
   const records = getSkinLesions(profileId);
   const followUps = getSkinLesionFollowUps(profileId);

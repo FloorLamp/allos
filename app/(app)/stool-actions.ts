@@ -18,6 +18,7 @@ import {
 } from "@/lib/stool-log-write";
 import { isRealIsoDate } from "@/lib/date";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
+import type { HistoryClockKind } from "@/lib/history-format";
 import { gateItemProfile } from "./gate-item";
 
 // The Bristol stool-form tap (issue #2785). Authorization at the request boundary, the
@@ -82,6 +83,23 @@ export interface StoolDayReading {
    * cannot leave a row naming a minute nothing carries.
    */
   hhmm: string;
+  /**
+   * WHICH MINUTE THAT IS (#5921). `stated` when somebody named it; `logged` when
+   * `occurred_at` is NULL and the only instant the row has is the tap that filed it.
+   * The store has drawn this line since #5915 — "the app never stamps a stool with a
+   * time nobody stated" — and the field is what lets the sheet keep drawing it: the
+   * row above carries one string either way, so a receipt without this cannot tell
+   * the two apart and prints the filing minute in the stated voice.
+   */
+  clockKind: HistoryClockKind;
+  /**
+   * The profile-local day the row was FILED on, or null when its clock is its own.
+   * `historyClock`'s other half of #5618 ruling 6: a filing minute belonging to
+   * another day is true of no minute of the day the sheet is standing on, so the row
+   * states the filing DAY instead. Null on a stated row, where the question does not
+   * arise.
+   */
+  filedDay: string | null;
 }
 
 /** The reading a tap landed on — what the newest row's Undo addresses. */
@@ -170,10 +188,19 @@ function dayReadings(
     if (row.type === null) continue;
     const when = bestKnownInstant("stool_events", { ...row });
     if (!when.known) continue;
+    // `semantic` is the whole point of asking rather than reading a column: it says
+    // which of the two questions the instant answers, and the receipt row's voice
+    // follows it (#5921). The filing DAY is resolved in the same zone the clock is,
+    // because "another day" is a question about this person's calendar — a UTC
+    // comparison answers a different one every time the zone crosses midnight.
+    const parts = zonedDateParts(tz, new Date(when.at));
+    const stated = when.semantic === "event";
     out.push({
       id: row.id,
       type: row.type,
-      hhmm: zonedDateParts(tz, new Date(when.at)).hhmm,
+      hhmm: parts.hhmm,
+      clockKind: stated ? "stated" : "logged",
+      filedDay: stated ? null : parts.date || null,
     });
   }
   return out;
