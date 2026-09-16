@@ -18,10 +18,8 @@
   handling, and shared one-question-one-computation models.
 - Apply [the change and test policy](../change-policy.md): inspect new abstractions,
   unique test value, and production/test line deltas.
-- A product file over 1,500 non-comment lines that the diff edits leaves shorter
-  than it arrived (`git diff --stat`); moved code counts only when it gains an
-  owner named in the development guide. Exempt: a P0/P1 fix stated in the PR, or
-  a branch dispatched before 2026-09-09 20:49 UTC ([policy](../change-policy.md#review)).
+- Check the 1,500-line product-file rule and its exemptions from
+  `git diff --stat` ([policy](../change-policy.md#review)).
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
 - A REMOVAL is checked against the issue's acceptance criteria: unreachable
@@ -102,4 +100,3 @@
   (failure modes). Blind to your squash text: scan it; `Refs` a PHASED issue.
 - **Rewrite the PR body in the same push as a rewrite**: the adversarial
   brief serves it as "the claims to attack", so a stale body aims at deleted code.
-- Verify linked issues closed, then clean the worktree and local branch.
