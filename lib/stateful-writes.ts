@@ -51,13 +51,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   },
   {
     table: "shared_supplies",
-    columns: ["quantity_on_hand"],
+    columns: ["quantity_on_hand", "last_fill_size"],
     cores: [
       "lib/queries/intake/refill.ts",
       "lib/queries/intake/supply-pool.ts",
     ],
     offerState: "refillRecencyLine",
-    why: "#1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end.",
+    why: "TWO COLUMNS, TWO REASONS. #1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end. #5911, and NOT that argument: `last_fill_size` is an absolute set, so last-writer-wins is correct for \"the usual refill\" and no clobber hazard reaches it. It is listed because a ONE-TAP reads it back and ADDS it to a HOUSEHOLD count, and a remembered size is reusable only for the container it was a fill of. `rememberedFillFor` (lib/refill.ts) is the one place that rule lives, and ONE core reaches this column through it — refill.ts's pooled branch; supply-pool.ts is here for the counter one column over. So the scan refuses a `last_fill_size`-only write, such as a correction or a backfill, setting a household bottle's usual refill by a route the container rule never ran on. Naming the column is what makes that refusal real: the one write that names it spells `SET quantity_on_hand = ?, last_fill_size = ?`, so before the column was named the counter's own narrowing caught it by statement shape rather than by intent.",
   },
   {
     table: "intake_item_logs",

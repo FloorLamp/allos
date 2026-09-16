@@ -21,9 +21,17 @@ import {
 // arrives the same way a `/temp` reply does, through the dispatcher every inbound
 // message goes through.
 import { handleTypedReply } from "@/lib/notifications/telegram-quick-log";
-import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
+import {
+  createSharedSupply,
+  linkItemToPool,
+  updateIntakeSupplyCount,
+} from "@/lib/queries/intake/supply-pool";
 import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
-import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
+import {
+  decrementSupply,
+  incrementSupply,
+  refillSupply,
+} from "@/lib/queries/intake/refill";
 // DB INTEGRATION TIER — the two-way Telegram action buttons (issue #233) driven
 // end-to-end through handleCallbackQuery against the REAL query layer, with only
 // the Telegram network surface (answer/edit/send) stubbed. Proves each button's
@@ -1498,6 +1506,24 @@ function receiptReply(
   };
 }
 
+// The buttons and body of the LAST prompt this chat was sent — what the person taps.
+function promptActionLabels(): string[] {
+  const call = vi.mocked(sendMessageRaw).mock.calls.at(-1)!;
+  return (call[1].actions ?? []).map((a) => a.label);
+}
+
+function lastPromptBody(): string {
+  return String(vi.mocked(sendMessageRaw).mock.calls.at(-1)![1].body ?? "");
+}
+
+function poolQuantity(supplyId: number): number | null {
+  return (
+    db
+      .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
+      .get(supplyId) as { quantity_on_hand: number | null }
+  ).quantity_on_hand;
+}
+
 function receivedCount(f: Awaited<ReturnType<typeof receivedFixture>>) {
   return (
     db
@@ -1533,6 +1559,68 @@ describe("Received receipt operation", () => {
     expect(receivedCount(f)).toBe(9);
     await handleTypedReply(oldReply);
     expect(receivedCount(f)).toBe(9);
+  });
+
+  // WHOSE remembered fill the receipt offers (#5911). `linkItemToPool` drops the item's
+  // private count and KEEPS its `last_fill_size`, so a pooled item still carries a number
+  // that was a fill of a bottle it no longer uses. Before the fix `refillStock` read that
+  // number straight off the item while reading the quantity off the pool, and the prompt
+  // rendered "Confirm 30" for a household jar nobody ever put 30 into — one tap from the
+  // wrong amount in a shared count. The bottle's own fill is the only candidate now, and
+  // a bottle that remembers none makes the prompt ASK.
+  it("offers the shared bottle's remembered fill, and asks while the bottle remembers none", async () => {
+    const chat = nextReceiptChat();
+    const profile = seedProfile("PooledReceipt", { quantityOnHand: 4 });
+    seedLoginTelegram(profile.profileId, chat);
+    // The member's own private fill, recorded the ordinary way, then carried across the
+    // link exactly as the defect's reproduction does.
+    expect(
+      refillSupply(profile.profileId, profile.supplementId, 30, null).kind
+    ).toBe("refilled");
+    const supplyId = createSharedSupply(
+      {
+        name: "House jar",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      4
+    );
+    linkItemToPool(profile.profileId, profile.supplementId, supplyId);
+
+    const first = await openReceipt(
+      profile.profileId,
+      profile.supplementId,
+      chat
+    );
+    expect(
+      readRefillOffer(profile.profileId, first)!.offer.defaultSize
+    ).toBeNull();
+    expect(promptActionLabels()).not.toContain("Confirm 30");
+    expect(lastPromptBody()).toContain("How many arrived?");
+
+    // Answering once is what gives the jar a fill of its own.
+    await handleTypedReply({
+      message_id: 861,
+      chat: { id: chat },
+      from: { id: 71 },
+      text: "500",
+      reply_to_message: {
+        message_id: readRefillOffer(profile.profileId, first)!.offer.promptId,
+      },
+    });
+    expect(poolQuantity(supplyId)).toBe(504);
+
+    const second = await openReceipt(
+      profile.profileId,
+      profile.supplementId,
+      chat
+    );
+    expect(readRefillOffer(profile.profileId, second)!.offer.defaultSize).toBe(
+      500
+    );
+    expect(promptActionLabels()).toContain("Confirm 500");
   });
 
   it("reports a stock write only for a newly confirmed receipt", async () => {
