@@ -75,11 +75,12 @@ For each new abstraction or test file, explain the concrete gap existing code or
 coverage cannot cover. Report production and test additions/deletions separately;
 use the counts to scrutinize growth, not to reward compressed code or lost coverage.
 Verification cleanup is subtractive first, neutral next, and additive only for a
-named defect or security gap. A conversion that deletes nothing is unfinished.
+named defect or security gap.
 
 A PR that edits a product file over 1,500 lines lands with that file shorter
-than it found it; both counts exclude comment lines. The only exemption is a
-P0/P1 defect fix, stated in the PR. Moving code to a new file counts only when
-the moved code gains an owner named in the [development guide](development.md).
+than it found it; both counts exclude comment lines; blank lines count. The only
+exemption is a P0/P1 defect fix, stated in the PR. Moving code to a new file
+counts only when the moved code gains an owner named in the
+[development guide](development.md).
 The reviewer reads `git diff --stat`; there is no scanner. Branches banked or
 dispatched before 2026-09-09 20:49 UTC land under the old rule.

@@ -67,7 +67,7 @@ fits one bounded task. Sequence overlaps that cannot be fenced. Use
    `landing-independence.mjs` supplies path-based advice, not a merge verdict.
 5. Verify intended issue closures and umbrella boxes. Finish the dispatch and
    clean redundant work through [recovery](recovery.md) and
-   [lifecycle](lifecycle.md); compare content before deleting branches or worktrees.
+   [lifecycle](lifecycle.md).
 
 Production replay, backfill, snapshot access, and migration execution remain
 owner operations outside a normal coding lane.
