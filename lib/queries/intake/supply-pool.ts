@@ -40,6 +40,11 @@ export interface SharedSupply {
   strength: string | null;
   form: string | null;
   quantity_on_hand: number | null;
+  // The size this BOTTLE was last refilled by (#5121's owner ruling, #5911), set the
+  // first time somebody refills it and reused by every later one-tap. NULL means the
+  // bottle remembers nothing yet, so the next tap asks once. Never a member's
+  // `intake_items.last_fill_size`: see the migration and `rememberedFillFor`.
+  last_fill_size: number | null;
   low_supply_days: number | null;
   notes: string | null;
   created_at: string;
@@ -77,8 +82,8 @@ export interface PoolView extends SharedSupply {
   orphaned: boolean;
 }
 
-const SUPPLY_COLUMNS = `id, name, strength, form, quantity_on_hand, low_supply_days,
-                        notes, created_at, updated_at`;
+const SUPPLY_COLUMNS = `id, name, strength, form, quantity_on_hand, last_fill_size,
+                        low_supply_days, notes, created_at, updated_at`;
 
 export function getSharedSupply(supplyId: number): SharedSupply | null {
   return (
@@ -144,6 +149,7 @@ export function supplyOption(
     strength: supply.strength,
     form: supply.form,
     onHand: supply.quantity_on_hand,
+    lastFillSize: supply.last_fill_size,
     siblingKind: bottleSiblingKind(members),
   };
 }
@@ -407,6 +413,10 @@ export interface PoolChipData {
   strength: string | null;
   form: string | null;
   quantityOnHand: number | null;
+  // The BOTTLE's remembered fill, carried for the same reason the count is: the row's
+  // refill control acts on the bottle, so the size it may reuse is the bottle's own
+  // (#5121's owner ruling, #5911). A member's `last_fill_size` is never this.
+  lastFillSize: number | null;
   daysLeft: number | null;
   memberCount: number;
   low: boolean;
@@ -432,6 +442,7 @@ export function getPoolChips(profileId: number): Map<number, PoolChipData> {
       strength: pool.strength,
       form: pool.form,
       quantityOnHand: pool.quantity_on_hand,
+      lastFillSize: pool.last_fill_size,
       daysLeft: pool.daysLeft,
       memberCount: pool.members.length,
       low: pool.low,

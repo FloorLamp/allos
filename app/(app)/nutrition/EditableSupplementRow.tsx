@@ -14,7 +14,12 @@ import {
   stackSchedule,
 } from "@/lib/intake-schedule";
 import type { AdherenceDot } from "@/lib/intake-adherence";
-import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
+import {
+  daysOfSupplyForItem,
+  isLowSupply,
+  rememberedFillFor,
+  type DoseRate,
+} from "@/lib/refill";
 import {
   RefillBadge,
   SharedSupplyChip,
@@ -166,6 +171,15 @@ export default function EditableSupplementRow({
             doses.length
           )
         );
+  // The usual refill of the container this surface's supply actually IS — the bottle's
+  // for a pooled item (carried on its chip), the item's own otherwise. One resolver,
+  // shared with the write core, so what the control offers and what a tap writes cannot
+  // differ (#5121's owner ruling, #5911).
+  const rememberedFill = rememberedFillFor({
+    supplyId: s.supply_id,
+    itemLastFillSize: s.last_fill_size,
+    poolLastFillSize: poolChip?.lastFillSize ?? null,
+  });
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
   const foodHint = dose ? FOOD_TIMING_HINTS[dose.food_timing] : null;
   const multi = doses.length > 1;
@@ -229,10 +243,12 @@ export default function EditableSupplementRow({
               <RefillButton
                 itemId={s.id}
                 supplyId={s.supply_id}
-                hasLastFill={s.last_fill_size != null}
-                lastFillSize={s.last_fill_size}
+                // THE CONTAINER'S OWN REMEMBERED FILL (#5121's owner ruling, #5911):
+                // the bottle's when this item is pooled, never a member's.
+                hasLastFill={rememberedFill != null}
+                lastFillSize={rememberedFill}
                 supplyCycleDays={daysOfSupplyForItem(
-                  s.last_fill_size,
+                  rememberedFill,
                   s.qty_per_dose,
                   refillRate,
                   doses.length
@@ -465,6 +481,7 @@ export default function EditableSupplementRow({
                       strength: poolChip.strength,
                       form: poolChip.form,
                       onHand: poolChip.quantityOnHand,
+                      lastFillSize: poolChip.lastFillSize,
                     }
                   : null
               }
