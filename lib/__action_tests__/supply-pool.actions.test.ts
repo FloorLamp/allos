@@ -281,6 +281,10 @@ describe("link / unlink membership gates", () => {
       // the bottle's own count, and the kind its members lend (this one now has one,
       // a medication).
       onHand: 25,
+      // And since #5121's owner ruling, the bottle's OWN usual refill — null here
+      // because nobody has refilled this bottle yet, so the form's refill control asks
+      // once rather than reusing the newly linked member's private size (#5911).
+      lastFillSize: null,
       siblingKind: "medication",
     });
     expect(itemQty(a)).toBe(null);

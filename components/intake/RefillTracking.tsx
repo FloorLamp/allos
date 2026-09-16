@@ -1,6 +1,7 @@
 "use client";
 
 import type { IntakeItem } from "@/lib/types";
+import { rememberedFillFor } from "@/lib/refill";
 import type { SupplyOption } from "@/lib/supply-product";
 import RefillButton from "@/components/medications/RefillButton";
 import SharedSupplyPicker from "./SharedSupplyPicker";
@@ -42,6 +43,19 @@ export default function RefillTracking({
 }) {
   const s = item;
   const pooled = supplyId !== "";
+  // THE CONTAINER'S OWN REMEMBERED FILL (#5121's owner ruling, #5911). The count field
+  // above already shows the BOTTLE's number when this item is pooled; the refill control
+  // beneath it now reuses the BOTTLE's remembered size for the same reason, and never
+  // the member's. `bottles` carries it on the linked option, so the block reads it from
+  // the same list the picker offers rather than minting a second source for it.
+  const linkedBottle = pooled
+    ? (bottles.find((option) => String(option.id) === supplyId) ?? null)
+    : null;
+  const rememberedFill = rememberedFillFor({
+    supplyId: pooled ? Number(supplyId) || null : null,
+    itemLastFillSize: s?.last_fill_size ?? null,
+    poolLastFillSize: linkedBottle?.lastFillSize ?? null,
+  });
   return (
     <div
       data-testid="refill-tracking"
@@ -89,8 +103,8 @@ export default function RefillTracking({
           <RefillButton
             itemId={s.id}
             supplyId={Number(supplyId) || null}
-            hasLastFill={s.last_fill_size != null}
-            lastFillSize={s.last_fill_size}
+            hasLastFill={rememberedFill != null}
+            lastFillSize={rememberedFill}
             initialAsk={initialRefill}
             onRefilled={onRefilled}
           />

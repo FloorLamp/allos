@@ -9,7 +9,12 @@ import type {
   IntakeDose,
 } from "@/lib/types";
 import type { AdherenceDot } from "@/lib/intake-adherence";
-import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
+import {
+  daysOfSupplyForItem,
+  isLowSupply,
+  rememberedFillFor,
+  type DoseRate,
+} from "@/lib/refill";
 import {
   sortCourses,
   isMedicationCurrent,
@@ -131,6 +136,14 @@ export default function MedicationRow({
             doses.length
           )
         );
+  // The usual refill of the container this row's supply actually IS — the bottle's for a
+  // pooled item (carried on its chip), the item's own otherwise. One resolver, shared
+  // with the write core, so what the control offers and what a tap writes cannot differ.
+  const rememberedFill = rememberedFillFor({
+    supplyId: med.supply_id,
+    itemLastFillSize: med.last_fill_size,
+    poolLastFillSize: poolChip?.lastFillSize ?? null,
+  });
   const doseLines = doses.map((dose) =>
     formatMedicationDoseLine({
       amount: dose.amount,
@@ -272,12 +285,17 @@ export default function MedicationRow({
               <RefillButton
                 itemId={med.id}
                 supplyId={med.supply_id}
-                hasLastFill={med.last_fill_size != null}
-                lastFillSize={med.last_fill_size}
+                // THE CONTAINER'S OWN REMEMBERED FILL (#5121's owner ruling, #5911).
+                // This control refills whatever this row's supply IS — the bottle when
+                // the item is pooled, the item otherwise — so the size it may reuse is
+                // that container's. Reading `med.last_fill_size` for a pooled row is
+                // what one-tapped a private 30 into a household jar.
+                hasLastFill={rememberedFill != null}
+                lastFillSize={rememberedFill}
                 // How long a FULL fill lasts (not how much is left) — the same
                 // computation the low-supply badge runs, applied to the fill size.
                 supplyCycleDays={daysOfSupplyForItem(
-                  med.last_fill_size,
+                  rememberedFill,
                   med.qty_per_dose,
                   refillRate,
                   doses.length
