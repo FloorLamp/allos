@@ -796,9 +796,23 @@ async function renderHome(
             Existing actionable safety items first, then every authorized open illness
             episode in the existing subject/episode order, each keeping the whole
             cockpit. Uncapped, collapsible, non-dismissible. Omitted when empty, with no
-            all-clear claim. */}
+            all-clear claim.
+
+            AND IT DECLARES THE READABLE MEASURE FOR ITS ROWS (#5894, owner ruling
+            2026-09-15 option (a)). #4752 §2 approved ~880px centered for the illness
+            cockpit; #5490 site 3 ruled that the cap may not sit on the cockpit itself,
+            because a centred cap on a ROW steps its edges in from its siblings, and put
+            it on the Now band instead; #5435 §4 deleted that band, leaving the cockpit
+            at the page's 72rem. The measure needed a HOST, and this block is it: the
+            cockpit group below and the Reopen list after it both carry
+            `current-care-measure` (app/globals.css), so Current care frames its rows at
+            one measure with one left edge. Everything below — the day bar and the day
+            view's two columns — stays at the page's `wide`, so #3253 is not reopened. */}
         {illnessCockpits.length > 0 ? (
-          <section data-testid="home-current-care" className="mb-4">
+          <section
+            data-testid="home-current-care"
+            className="current-care-measure mb-4"
+          >
             <IllnessNowGroup
               cockpits={illnessCockpits}
               initialCollapsedActive={illnessUi.collapsedActive}
@@ -816,7 +830,10 @@ async function renderHome(
             one member and read-only on another was offered Reopen on both. Hide stays
             a per-login preference, for read-only viewers too. */}
         {recentlyResolved.length > 0 ? (
-          <ul className={`${LOGGED_EVENT_LIST} mb-4`} data-testid="home-reopen">
+          <ul
+            className={`${LOGGED_EVENT_LIST} current-care-measure mb-4`}
+            data-testid="home-reopen"
+          >
             {recentlyResolved.map((item) => (
               <HomeRow
                 key={`${item.profileId}:${item.episodeId}`}
