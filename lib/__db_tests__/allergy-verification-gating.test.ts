@@ -17,6 +17,16 @@ import {
 } from "@/lib/queries";
 import { setAllergyReactions } from "@/lib/allergy-write";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -90,7 +100,7 @@ describe("setAllergyReactions — the single writer of the manifestation list", 
     const p = newProfile("reactions");
     const id = addAllergyRow(p, "Peanut", "confirmed");
     expect(
-      setAllergyReactions(p, id, [
+      setAllergyReactions(gated(p), id, [
         { manifestation: "Hives", severity: "moderate" },
         { manifestation: "Anaphylaxis", severity: "severe" },
         { manifestation: "   ", severity: "ignored" }, // blank rows are dropped
@@ -106,7 +116,9 @@ describe("setAllergyReactions — the single writer of the manifestation list", 
     ]);
 
     // Replace, not merge.
-    setAllergyReactions(p, id, [{ manifestation: "Swelling", severity: null }]);
+    setAllergyReactions(gated(p), id, [
+      { manifestation: "Swelling", severity: null },
+    ]);
     const [after] = getAllergies(p);
     expect(after.reactions).toEqual([
       { manifestation: "Swelling", severity: null },
@@ -118,7 +130,7 @@ describe("setAllergyReactions — the single writer of the manifestation list", 
   it("clearing the list clears the cached scalar too", () => {
     const p = newProfile("reactions-clear");
     const id = addAllergyRow(p, "Dust", null);
-    setAllergyReactions(p, id, []);
+    setAllergyReactions(gated(p), id, []);
     const [after] = getAllergies(p);
     expect(after.reactions).toEqual([]);
     expect(after.reaction).toBeNull();
@@ -128,9 +140,9 @@ describe("setAllergyReactions — the single writer of the manifestation list", 
     const owner = newProfile("reactions-owner");
     const other = newProfile("reactions-other");
     const id = addAllergyRow(owner, "Shellfish", null);
-    expect(setAllergyReactions(other, id, [{ manifestation: "Hives" }])).toBe(
-      false
-    );
+    expect(
+      setAllergyReactions(gated(other), id, [{ manifestation: "Hives" }])
+    ).toBe(false);
     expect(getAllergies(owner)[0].reaction).toBe("Rash");
   });
 });

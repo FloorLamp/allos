@@ -212,7 +212,7 @@ export async function trackSkinFollowUp(
 export async function uploadLesionPhoto(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const lesionId = Number(formData.get("lesion_id"));
   if (!lesionId) return formError("Couldn't find that lesion.");
   const rawDate = String(formData.get("date") ?? "").trim() || null;
@@ -229,7 +229,7 @@ export async function uploadLesionPhoto(
     today(profile.id)
   );
   const outcome = attachLesionPhotoCore(
-    profile.id,
+    writeProfileId,
     lesionId,
     date,
     processed.photo,
@@ -244,10 +244,10 @@ export async function uploadLesionPhoto(
 export async function deleteLesionPhoto(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const id = Number(formData.get("photo_id"));
   if (!id) return formError("That photo is no longer available.");
-  if (!deleteLesionPhotoCore(profile.id, id))
+  if (!deleteLesionPhotoCore(writeProfileId, id))
     return formError("That photo is no longer available.");
   revalidateSkin();
   return formOk();

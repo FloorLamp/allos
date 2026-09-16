@@ -8,6 +8,27 @@
 // activities/streak/doses/goals) — the "never gamify a depression score" law is enforced
 // by construction, pinned by lib/__db_tests__/mental-health-milestone-exemption.test.ts.
 
+// THE SCORE CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// recordInstrumentScore, updateInstrumentScore and deleteInstrumentScore is lib/auth's
+// WriteAuthorizedProfileId, which only the gates mint, so an action that never gated holds
+// nothing they take (#5348). The import is type-only — erased at build — so this module
+// still runs auth-blind and the two Server Action files that reach these cores
+// (medical/instruments and medical/substance-use) still own the gate. deleteInstrumentScore
+// holds no SQL of its own — its whole write is captureDelete — so the #5348 census cannot
+// see it; it is branded anyway, because leaving it would gate two of this file's three taps
+// and not the third. A branded number is still a number, so the reads and captureDelete
+// take one unchanged.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { captureDelete } from "./undo-delete-db";
@@ -112,7 +133,7 @@ export interface RecordInstrumentInput {
 // id, or `null` when the life-stage gate refuses the instrument (#2107) — the same
 // "there is nothing here for this profile" answer the row-resolving cores give.
 export function recordInstrumentScore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   input: RecordInstrumentInput,
   loggedVia: LoggedVia
 ): number | null {
@@ -224,7 +245,7 @@ export interface UpdateInstrumentInput {
 // Correct ONE stored score's date and/or total. Refuses a TOTAL change on an
 // administered reading (see above); a date-only change is always allowed.
 export function updateInstrumentScore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number,
   input: UpdateInstrumentInput
 ): UpdateInstrumentOutcome {
@@ -275,7 +296,7 @@ export type DeleteInstrumentOutcome =
 // lib/undo-delete.ts). Guarded to instrument-category rows so it can never be pointed
 // at a lab reading, whose delete owns extra star/retest side-state sweeps.
 export function deleteInstrumentScore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number
 ): DeleteInstrumentOutcome {
   const resolved = getInstrumentScoreInstrument(profileId, id);

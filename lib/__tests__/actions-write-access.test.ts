@@ -457,12 +457,6 @@ const ALLOW: AllowEntry[] = [
   },
   {
     file: "app/(app)/nutrition/actions.ts",
-    fn: "undoFoodServing",
-    why: "one spelling for the subject (#4730): the add's inverse must resolve the SAME subject the add did (#3611), so it reads it through the same gateItemProfile()",
-    gate: "gateItemProfile",
-  },
-  {
-    file: "app/(app)/nutrition/actions.ts",
     fn: "readFoodServingTruth",
     why: "read-only (#4730): re-reads the SUBJECT's day + meal projection after a burst settles, resolving that subject through the same gateItemProfile() its add and undo do so the three cannot answer about different profiles",
     gate: "gateItemProfile",
@@ -517,32 +511,8 @@ const ALLOW: AllowEntry[] = [
   },
   {
     file: "app/(app)/medical/substance-use/actions.ts",
-    fn: "correctSubstanceUseAction",
-    why: "record correction (#4009/#5026 phase 2): corrects the ROW's substance USE via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the isMinor age gate and the today() bound are asked of the SUBJECT, matching the gate lib/history.ts applies to the read",
-    gate: "gateItemProfile",
-  },
-  {
-    file: "app/(app)/medical/substance-use/actions.ts",
-    fn: "deleteSubstanceUseAction",
-    why: "record correction (#4009/#5026 phase 2): removes the ROW's substance use via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the correction",
-    gate: "gateItemProfile",
-  },
-  {
-    file: "app/(app)/medical/substance-use/actions.ts",
-    fn: "deleteSubstanceDailyTotalAction",
-    why: "record correction (#4009): removes the ROW's substance DAY — the card's own operation, which takes every use under it — via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the correction",
-    gate: "gateItemProfile",
-  },
-  {
-    file: "app/(app)/medical/substance-use/actions.ts",
     fn: "logSubstanceUnitAction",
-    why: "#4932: the quick-log sheet's subject chip mounts the SAME unit-tap control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
-    gate: "gateItemProfile",
-  },
-  {
-    file: "app/(app)/medical/substance-use/actions.ts",
-    fn: "undoSubstanceUnitAction",
-    why: "#4932: the add's inverse must resolve the SAME subject the add did, so it reads it through the same gateItemProfile()",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME unit-tap control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) exactly as its correction and undo siblings in this file do; every other mount posts no subject and falls back to the acting-profile gate. It is the LAST substance-use entry here: the siblings it names left this list when their cores took the #5348 brand and the scan began recognizing their gate from the call rather than from an exemption — logSubstanceUnitCore has a second lib caller, so it stayed at `number` and this entry stayed with it",
     gate: "gateItemProfile",
   },
   {
@@ -680,11 +650,6 @@ const ALLOW: AllowEntry[] = [
     file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "deleteCondition",
     why: "multi-view (#1328): deletes the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
-  },
-  {
-    file: "app/(app)/records/problems/allergies/actions.ts",
-    fn: "updateAllergy",
-    why: "multi-view (#1328): edits the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
     file: "app/(app)/records/problems/allergies/actions.ts",

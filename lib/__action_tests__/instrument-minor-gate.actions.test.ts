@@ -27,6 +27,16 @@ import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { INSTRUMENTS } from "@/lib/mental-health";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 // A profile with a stored age, already acting. 15 → isMinor true (no birthdate
 // needed); omit the age for the unknown-age/adult side of each pair.
 function actor(slug: string, age?: number) {
@@ -52,7 +62,7 @@ function seedScore(
   total: number
 ): number {
   const id = recordInstrumentScore(
-    profileId,
+    gated(profileId),
     {
       instrument,
       date: today(profileId),
@@ -120,7 +130,7 @@ describe("the gate sits in the core, so a new caller inherits it (#2107)", () =>
     const profile = actor("core-minor-record", 15);
     expect(
       recordInstrumentScore(
-        profile.id,
+        gated(profile.id),
         {
           instrument: "AUDIT",
           date: today(profile.id),

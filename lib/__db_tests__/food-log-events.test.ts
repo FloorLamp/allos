@@ -19,6 +19,16 @@ import {
 } from "@/lib/food-log-write";
 import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -100,7 +110,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
       `${anchor}T20:00:00Z`
     );
 
-    undoFoodServingCore(profileId, "berries", anchor);
+    undoFoodServingCore(gated(profileId), "berries", anchor);
     expect(counter(profileId, "berries", anchor)).toBe(1);
     const evs = events(profileId);
     // The newest (20:00) event was popped; the 08:00 one survives.
@@ -128,13 +138,13 @@ describe("food_log_events ledger atomicity (#950)", () => {
     );
 
     expect(
-      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 1)
+      undoFoodServingCore(gated(profileId), "cruciferous", anchor, undefined, 1)
     ).toEqual({ kind: "changed", servings: 2 });
     expect(counter(profileId, "cruciferous", anchor)).toBe(2);
     expect(events(profileId)).toHaveLength(2);
 
     expect(
-      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 2)
+      undoFoodServingCore(gated(profileId), "cruciferous", anchor, undefined, 2)
     ).toMatchObject({ kind: "undone", servings: 1 });
     expect(events(profileId)).toHaveLength(1);
   });
@@ -160,7 +170,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     ).toMatchObject({ kind: "updated" });
     expect(
       undoFoodServingCore(
-        profileId,
+        gated(profileId),
         "nuts_seeds",
         anchor,
         "Morning",
@@ -200,7 +210,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
 
     expect(
       undoFoodServingCore(
-        profileId,
+        gated(profileId),
         "berries",
         anchor,
         "Morning",
@@ -233,7 +243,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
 
     expect(
       undoFoodServingCore(
-        profileId,
+        gated(profileId),
         "berries",
         anchor,
         "Morning",
@@ -269,7 +279,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     );
 
     expect(
-      undoFoodServingCore(profileId, "berries", anchor, "Morning", 1)
+      undoFoodServingCore(gated(profileId), "berries", anchor, "Morning", 1)
     ).toEqual({
       kind: "changed",
       servings: 2,
@@ -299,7 +309,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     // Another client removes the Evening serving after an add response has
     // already reported 2. The fresh read must publish the lower current truth,
     // not preserve the numerically larger historical response.
-    undoFoodServingCore(profileId, "berries", anchor, "Evening");
+    undoFoodServingCore(gated(profileId), "berries", anchor, "Evening");
 
     expect(foodServingTruthCore(profileId, "berries", anchor)).toEqual({
       servings: 1,
@@ -326,7 +336,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     );
 
     expect(
-      undoFoodServingCore(a.profileId, "legumes", a.anchor, undefined, 1)
+      undoFoodServingCore(gated(a.profileId), "legumes", a.anchor, undefined, 1)
     ).toMatchObject({ kind: "undone", servings: 0 });
     expect(counter(a.profileId, "legumes", a.anchor)).toBe(0);
     expect(counter(b.profileId, "legumes", b.anchor)).toBe(1);
@@ -340,7 +350,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     ).run(profileId, anchor);
 
     expect(() =>
-      undoFoodServingCore(profileId, "legumes", anchor)
+      undoFoodServingCore(gated(profileId), "legumes", anchor)
     ).not.toThrow();
     expect(counter(profileId, "legumes", anchor)).toBe(1); // decremented anyway
     expect(events(profileId)).toHaveLength(0); // nothing to pop
@@ -370,7 +380,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     expect(day.slotCounts.Morning.berries).toBe(1);
     expect(day.slotCounts.Evening.berries).toBeUndefined();
 
-    undoFoodServingCore(profileId, "berries", backfillDate, "Morning");
+    undoFoodServingCore(gated(profileId), "berries", backfillDate, "Morning");
     expect(counter(profileId, "berries", backfillDate)).toBe(0);
     expect(events(profileId)).toEqual([]);
   });
@@ -387,7 +397,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     );
 
     const untouched = undoFoodServingCore(
-      profileId,
+      gated(profileId),
       "legumes",
       anchor,
       "Morning"

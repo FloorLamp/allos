@@ -26,6 +26,16 @@ import {
 } from "@/lib/instrument-records";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -38,7 +48,7 @@ function newProfile(name: string): number {
 // so a null here is a genuine failure and should stop the test rather than be threaded
 // through every assertion.
 function recordScore(profileId: number, input: RecordInstrumentInput): number {
-  const id = recordInstrumentScore(profileId, input, "page");
+  const id = recordInstrumentScore(gated(profileId), input, "page");
   if (id == null) throw new Error("recordInstrumentScore unexpectedly refused");
   return id;
 }
@@ -61,7 +71,10 @@ describe("correcting a mis-entered score releases the crisis line", () => {
     });
     expect(escalating(p)).toContain("GAD-7");
 
-    const outcome = updateInstrumentScore(p, id, { date: td, total: 12 });
+    const outcome = updateInstrumentScore(gated(p), id, {
+      date: td,
+      total: 12,
+    });
     expect(outcome).toEqual({ kind: "updated" });
 
     // The banner reads the SAME computation the list does, so the correction IS the
@@ -82,7 +95,7 @@ describe("correcting a mis-entered score releases the crisis line", () => {
     });
     expect(escalating(p)).toContain("GAD-7");
 
-    const outcome = deleteInstrumentScore(p, id);
+    const outcome = deleteInstrumentScore(gated(p), id);
     expect(outcome.kind).toBe("deleted");
     expect(escalating(p)).toEqual([]);
     expect(getInstrumentReadings(p)).toEqual([]);
@@ -102,7 +115,7 @@ describe("correcting a mis-entered score releases the crisis line", () => {
     });
     expect(escalating(p)).toEqual([]); // latest is mild
 
-    deleteInstrumentScore(p, newer);
+    deleteInstrumentScore(gated(p), newer);
     // The older severe reading is now the latest — the banner must come back.
     expect(escalating(p)).toContain("GAD-7");
     expect(getInstrumentReadings(p).map((r) => r.id)).toEqual([older]);
@@ -123,7 +136,7 @@ describe("editing an administered score", () => {
         answer: 2,
       })),
     });
-    const refusal = updateInstrumentScore(p, id, { date: td, total: 4 });
+    const refusal = updateInstrumentScore(gated(p), id, { date: td, total: 4 });
     expect(refusal).toEqual({ kind: "answers-derived", itemCount: 9 });
     expect(getInstrumentReadings(p)[0].total).toBe(22);
   });
@@ -138,7 +151,7 @@ describe("editing an administered score", () => {
       answers: [{ itemIndex: 0, answer: 1 }],
     });
     expect(
-      updateInstrumentScore(p, id, { date: "2019-02-03", total: 6 })
+      updateInstrumentScore(gated(p), id, { date: "2019-02-03", total: 6 })
     ).toEqual({ kind: "updated" });
     expect(getInstrumentReadings(p)[0].date).toBe("2019-02-03");
   });
@@ -156,10 +169,14 @@ describe("scoping and identity guards", () => {
     });
 
     expect(getInstrumentScoreInstrument(other, id)).toBeNull();
-    expect(updateInstrumentScore(other, id, { date: td, total: 1 })).toEqual({
+    expect(
+      updateInstrumentScore(gated(other), id, { date: td, total: 1 })
+    ).toEqual({
       kind: "not-found",
     });
-    expect(deleteInstrumentScore(other, id)).toEqual({ kind: "not-found" });
+    expect(deleteInstrumentScore(gated(other), id)).toEqual({
+      kind: "not-found",
+    });
     expect(getInstrumentReadings(owner)[0].total).toBe(20);
   });
 
@@ -174,7 +191,9 @@ describe("scoping and identity guards", () => {
         .run(p).lastInsertRowid
     );
     expect(getInstrumentScoreInstrument(p, labId)).toBeNull();
-    expect(deleteInstrumentScore(p, labId)).toEqual({ kind: "not-found" });
+    expect(deleteInstrumentScore(gated(p), labId)).toEqual({
+      kind: "not-found",
+    });
     const still = db
       .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE id = ?")
       .get(labId) as { n: number };
@@ -215,7 +234,7 @@ describe("undo restores the score AND its item answers", () => {
     });
     expect(escalating(p)).toContain("PHQ-9");
 
-    const outcome = deleteInstrumentScore(p, id);
+    const outcome = deleteInstrumentScore(gated(p), id);
     expect(outcome.kind).toBe("deleted");
     if (outcome.kind !== "deleted" || outcome.undoId == null)
       throw new Error("expected an undo token");
