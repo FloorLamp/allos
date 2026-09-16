@@ -36,14 +36,21 @@ import type { Migration } from "../runner";
 // deletes the sample it replaced (#3628, lib/integrations/sleep-overlap-db.ts), the
 // per-reading delete on a metric detail page (#1488), the offline queue's replay. A
 // new NO ACTION link into it would make every one of those a potential throw, guarded
-// by a hand survey of exactly the kind that just failed. `SET NULL` is the same policy
-// those seams implement by hand — when the reading is gone the provenance is gone —
-// but executed by SQLite at runtime and by `inboundDeleteLinks` inside a migration, in
+// by a hand survey of exactly the kind that just failed. `SET NULL` binds without one:
+// SQLite applies it at runtime and `inboundDeleteLinks` reads it inside a migration, in
 // both postures, for every delete path including the ones written after this one.
 //
-// A follow-up whose source sample was deleted keeps its `source_kind` and loses its
-// source id, which is the state `domainFollowUpItems` already skips (it requires a
-// non-null source id) — the item stays in the care plan as the plain item it now is.
+// IT IS A BACKSTOP, NOT THE DE-LINK ITSELF, and the difference is exactly one column.
+// SQLite can only null the column the action is declared ON; every hand seam in
+// lib/followup-write.ts nulls the DISCRIMINATOR WITH the id (`SET source_kind = NULL,
+// source_<x>_id = NULL`), which is the rule migration 184's own header records. So
+// where this action fires with no seam ahead of it the row ends `source_kind =
+// 'breathing-rate'` over an all-null source: a DANGLING DISCRIMINATOR, the shape 184
+// exists to repair and a state `CarePlanItem`'s own contract says cannot occur. Nothing
+// breaks visibly — `domainFollowUpItems` requires a non-null source id and skips the
+// row, so the item stays in the care plan as the plain item it now is — and no sweep
+// removes it either. That is what the action is FOR: a delete path nobody wrote a seam
+// for keeps the FK from throwing, at the cost of a row only the seam can finish.
 //
 // IT IS ORDERED BEFORE `20260911-breathing-rate-sleep-samples` in versions/index.ts,
 // and that is load-bearing rather than cosmetic: the adoption that migration runs
