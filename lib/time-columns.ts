@@ -1648,6 +1648,28 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  stool_events: [
+    { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "recorded_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+    },
+    {
+      column: "created_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "Stated movement instant; NULL when nobody stated one, never inferred from capture time.",
+    },
+  ],
   substance_log_events: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {

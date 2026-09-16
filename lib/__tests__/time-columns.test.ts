@@ -325,6 +325,10 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     count: 2,
     why: "the recent-food check behind a dose's declared timing pairs stated eating time with immutable capture twice database-side: the bounded MAX that picks the profile's latest serving, and the WHERE that holds the scan to the check's own lookback window. Both must stay in SQL so the read is a handful of rows on the busiest day.",
   },
+  "lib/queries/bristol-stool.ts": {
+    count: 2,
+    why: "the stool ledger's two reads need their stable within-day order (stated movement instant, immutable capture as the fallback) computed database-side: the record's bounded page, whose LIMIT must cut the same rows the order ranks, and the panel's window read beside it. The substance ledger's reader next door is the same decision on the same shape. The composer that RENDERS a row asks the question through bestKnownInstant and is not allowlisted.",
+  },
   "lib/queries/substance.ts": {
     count: 1,
     why: "the substance use-ledger's server-paged history needs its stable within-day order (stated use instant, immutable capture as the fallback) computed database-side, before rows reach JS — the food ledger's own reader beside it, on the ledger #5026 phase 2 gave nicotine, cannabis and the custom keys. The record's row and tick both ask the question through bestKnownInstant/eventInstant instead.",
