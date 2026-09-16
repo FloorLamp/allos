@@ -52,7 +52,6 @@ calling its browser tier green:
 A queued or skipped run is not evidence that browser tests passed. A green run
 also describes its tested base; use the merge procedure before relying on it
 after other changes land. Check `mergeable_state` when expected PR CI is absent.
-A confirmed red main takes priority over landing another candidate.
 
 ## Diagnosing a red
 
@@ -77,9 +76,9 @@ rerunning failed jobs; inspect setup, cleanup, and annotations as well as tests.
 
 ## Flake evidence
 
-A passing retry does not fix a flake. Identify its mechanism, repair or remove the
-test with a coverage rationale, then use focused repeats to verify a timing fix.
-Attach recurrence to the existing cause rather than filing another census issue.
+Under the [test policy](../change-policy.md#tests-that-earn-their-cost)'s flake
+rule, attach recurrence to the existing cause rather than filing another census
+issue.
 
 Use `ALLOS_TEST_NOW` for time-sensitive branch/base comparisons. The periodic
 workflow tests clocks three and six months ahead and enables those runs on its

@@ -41,6 +41,10 @@ coordination fact here is a MARKER a script reads, not a relayed line.
 - QUOTING a marker does not place one (#5183): a fenced, indented-as-code, or
   blockquoted line is an example, so the grammar can be written down on a PR
   without arming it. Emphasis is not quotation; a bolded marker still counts.
+  Inline code is not quotation either: `markerLines` strips backticks along with
+  emphasis before testing the opener, so a line opening with a backticked marker
+  arms one. A lift is where the marker's name most wants to appear in prose, and
+  the hold wins that same-timestamp tie (#5898).
 - An unclosed fence quotes to the end of the comment, as GitHub renders it.
   Nothing is swallowed in silence: the gate names a marker-shaped line it
   read as quotation.
