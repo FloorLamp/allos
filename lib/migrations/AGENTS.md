@@ -24,10 +24,6 @@ These instructions apply to the migration runner and migrations.
   reconciliation belongs in `boot-tasks.ts`.
 - A migration that deletes rows must declare and exercise non-cascading child
   links, and use `deleteRowsWithCascade()` for cascading children.
-- `deleteRowsWithCascade()` REFUSES a row a non-cascading link still names, and
-  says which link. Carry the reference onto whatever replaces the row, free it,
-  or decline the row — before calling. `blockingInboundLinks()` reads those
-  links from the schema at apply time, so nothing has to be surveyed by hand.
 - Register child-link fixtures in the migration child-link DB tests. Unknown or
   unexercised pairs must fail the test tier.
 - Spell every `CHILD_LINKS` entry as a `{ table: "…", column: "…" }` literal. The
