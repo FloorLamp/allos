@@ -91,8 +91,17 @@ describe("the reading a tap landed on", () => {
     // from the store rather than echoed from the request, which is what makes a row's
     // sentence true even when the stated minute was refused (below).
     expect(outcome.reading).toEqual({ id: stored[0].id });
+    // `clockKind` is the row saying WHICH minute that is (#5921): this tap stated
+    // 07:05, so the row carries a minute somebody named and `filedDay` is null — the
+    // filing question only arises for a row whose clock is the stamp it was filed at.
     expect(outcome.readings).toEqual([
-      { id: stored[0].id, type: 4, hhmm: "07:05" },
+      {
+        id: stored[0].id,
+        type: 4,
+        hhmm: "07:05",
+        clockKind: "stated",
+        filedDay: null,
+      },
     ]);
     // A fresh reading's inverse is a delete, so there is no previous type to restore.
     expect(outcome.reading?.replacedType).toBeUndefined();

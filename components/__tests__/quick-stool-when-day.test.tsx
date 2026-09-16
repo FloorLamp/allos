@@ -137,7 +137,18 @@ describe("the refused stated time is reported, not swallowed", () => {
       type: 4,
       dayCount: 1,
       reading: { id: 31 },
-      readings: [{ id: 31, type: 4, hhmm: "23:50" }],
+      readings: [
+        // A STATED row: the minute under test is the one typed into the field above,
+        // which is what keeps the toast's `· <time>` slot filled (#5921 — the slot
+        // carries a stated minute, and drops when nobody named one).
+        {
+          id: 31,
+          type: 4,
+          hhmm: "23:50",
+          clockKind: "stated" as const,
+          filedDay: null,
+        },
+      ],
       ...(refused ? { statedTimeRefused: refused } : {}),
     });
     render(<StoolTypeControl todayCount={0} today="2026-07-08" />);
@@ -169,8 +180,17 @@ describe("a historical quick-entry stool observation", () => {
     const type = screen.getByTestId("stool-type-4");
     expect(screen.queryByTestId("stool-when-toggle")).toBeNull();
     expect(type.hasAttribute("disabled")).toBe(true);
+    // AND THE REFUSAL REACHES A SCREEN READER (#5923). `disabled` alone drops the tile
+    // out of the tab order, so the state is announced only to someone already on it;
+    // the measured page had `aria-disabled` absent while `disabled` was true, which is
+    // the half an assistive-technology user actually hits. It is also what the design
+    // system's own paint rules key on beside `:disabled` (app/globals.css), so the two
+    // halves of the treatment stand or fall together.
+    expect(type.getAttribute("aria-disabled")).toBe("true");
     fireEvent.change(timeField(), { target: { value: "08:10" } });
     expect(type.hasAttribute("disabled")).toBe(false);
+    // …and it goes when the day stops refusing, rather than sticking to the tile.
+    expect(type.hasAttribute("aria-disabled")).toBe(false);
     await act(async () => fireEvent.click(type));
     const sent = outcome.mock.calls.at(-1)?.[0] as FormData;
     expect(sent.get("date")).toBe("2026-07-08");

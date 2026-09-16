@@ -96,7 +96,20 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
       type: 4,
       dayCount: 1,
       reading: { id: expect.any(Number) },
-      readings: [{ id: expect.any(Number), type: 4, hhmm: "21:30" }],
+      // NOBODY STATED THIS MINUTE (#5921). The post carries no `at`, so the row's
+      // only instant is the stamp it was filed at, and the answer says so rather
+      // than handing the sheet a bare "21:30" it would print in the stated voice.
+      // `filedDay` is that stamp's profile-local day, which is what decides between
+      // "logged 9:30 PM" and "logged Sep 16" once the sheet is on another day.
+      readings: [
+        {
+          id: expect.any(Number),
+          type: 4,
+          hhmm: "21:30",
+          clockKind: "logged",
+          filedDay: date,
+        },
+      ],
     });
     // …and the call the action made before #3273 added the parameter, on a second
     // profile at the same frozen instant.
@@ -368,7 +381,17 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
     seedReading(acting.id, date, "07:05", 1);
 
     const day = await loadStoolDay(fd({ profile_id: subject.id, date }));
-    expect(day.readings).toEqual([{ id: theirs, type: 4, hhmm: "07:05" }]);
+    // A seeded reading is a stated one, so it carries the minute somebody named and
+    // no filing day (#5921).
+    expect(day.readings).toEqual([
+      {
+        id: theirs,
+        type: 4,
+        hhmm: "07:05",
+        clockKind: "stated",
+        filedDay: null,
+      },
+    ]);
     expect(day.dayCount).toBe(1);
   });
 
@@ -394,8 +417,20 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
     const day = await loadStoolDay(fd({ date: yesterday }));
     // Newest first, and NOTHING from today.
     expect(day.readings).toEqual([
-      { id: evening, type: 6, hhmm: "19:40" },
-      { id: morning, type: 4, hhmm: "07:05" },
+      {
+        id: evening,
+        type: 6,
+        hhmm: "19:40",
+        clockKind: "stated",
+        filedDay: null,
+      },
+      {
+        id: morning,
+        type: 4,
+        hhmm: "07:05",
+        clockKind: "stated",
+        filedDay: null,
+      },
     ]);
     // The count answers for the day it read, which on a backfill is not today's.
     expect(day.dayCount).toBe(2);
@@ -417,7 +452,15 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
       expect(
         (await loadStoolDay(fd({ date: notADay }))).readings,
         `date=${JSON.stringify(notADay)}`
-      ).toEqual([{ id: mine, type: 1, hhmm: "07:05" }]);
+      ).toEqual([
+        {
+          id: mine,
+          type: 1,
+          hhmm: "07:05",
+          clockKind: "stated",
+          filedDay: null,
+        },
+      ]);
   });
 
   it("falls back to the ACTING profile when no subject is posted, and when one is not a subject", async () => {
@@ -431,7 +474,7 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
 
     // The sheet's own mount, which posts no subject at all.
     expect((await loadStoolDay(fd({ date }))).readings).toEqual([
-      { id: mine, type: 5, hhmm: "08:00" },
+      { id: mine, type: 5, hhmm: "08:00", clockKind: "stated", filedDay: null },
     ]);
     // …and a posted field that names no profile. THE ANSWER FOLLOWS THE GATE, NOT THE
     // FIELD, and the two only come apart here: `gateItemProfile` reads any
@@ -447,7 +490,15 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
       expect(
         (await loadStoolDay(fd({ profile_id: notAProfile, date }))).readings,
         `profile_id=${notAProfile}`
-      ).toEqual([{ id: mine, type: 5, hhmm: "08:00" }]);
+      ).toEqual([
+        {
+          id: mine,
+          type: 5,
+          hhmm: "08:00",
+          clockKind: "stated",
+          filedDay: null,
+        },
+      ]);
   });
 });
 

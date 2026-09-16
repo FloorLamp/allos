@@ -6,6 +6,7 @@
 import type { AdministrationOutcome } from "./types";
 import { parseUtcSql, zonedDateParts } from "./date";
 import {
+  DEFAULT_FORMAT_PREFS,
   formatClock,
   formatCompactRelativeTime,
   type TimeFormat,
@@ -48,7 +49,7 @@ export function withGivenAtDay(
   const localDate = zonedDateParts(tz, d).date;
   return localDate === referenceDate
     ? clock
-    : `${formatRecordDate(localDate)} at ${clock}`;
+    : `${formatRecordDate(localDate, undefined, DEFAULT_FORMAT_PREFS)} at ${clock}`;
 }
 
 // The redose notice's arming time.

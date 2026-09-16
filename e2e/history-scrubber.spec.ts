@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { formatLongDate } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE TIMELINE JUMP RAIL (issue #2657 item 4).
@@ -488,7 +488,10 @@ test.describe("the rail's column on a phone (#3403)", () => {
     // back link above it now, so the premise this case needs — the page rendered —
     // is read off the h1 that actually names it.
     await expect(
-      page.getByRole("heading", { level: 1, name: formatLongDate(DATES.mid) })
+      page.getByRole("heading", {
+        level: 1,
+        name: formatLongDate(DATES.mid, DEFAULT_FORMAT_PREFS),
+      })
     ).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
     // The feed itself rendered — a day that fell through to the empty state would
