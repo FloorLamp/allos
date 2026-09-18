@@ -370,12 +370,14 @@ export function useQuickEntryVisit(
   // does any future host that takes a visit. What it watches, why the day is derived
   // at event time and why a draft holds the sheet open: visit-resume.ts.
   //
-  // (The desktop panel reaches these forms through the provider's DIRECT overlay
-  // rather than a visit, so it has no visit to invalidate and is not covered.)
+  // The desktop panel reaches these forms through the provider's DIRECT overlay
+  // rather than a visit, so it takes the same watch on its own `open` state and its
+  // own draft subtree, keyed `"panel"` (see the provider below).
   useVisitResumeBoundary({
     watching: outerOpen && currentVisit,
     timeZone: liveProfileClocks.get(ctx.actingProfileId)?.timeZone ?? null,
     watch: ctx.resume,
+    host: "visit",
     onCrossed: ctx.visit.invalidate,
   });
 
@@ -678,6 +680,26 @@ export default function QuickEntryProvider({
     updateVisit((current) => ({ ...current, completable: false }));
     setOpen(false);
   }, [invalidateVisitRequests, updateVisit]);
+
+  // THE PANEL DOES NOT SURVIVE ONE EITHER (#5902 slice 2, PM ruling 2026-09-16).
+  // The desktop panel reaches these forms through this DIRECT overlay, so the visit's
+  // watch in `useQuickEntryVisit` cannot see it — there is no visit to invalidate and
+  // the draft lives in this host's own subtree. Same module, same two event-time
+  // reads, same draft guard; only the `host` key and the close differ.
+  //
+  // THE CLOSE IS `close`, the overlay's own — the very callback the scrim tap and
+  // Escape run — and NOT the last-good invalidation above, which additionally empties
+  // and flags the visit. A resume crossing on the panel is the panel's business
+  // alone. The two watches cannot double-fire: `openForm` takes the visit identity
+  // for its direct session, which drops `currentVisit` for every sheet host, and
+  // `startVisit` closes this overlay, so `open` and a live visit are never both true.
+  useVisitResumeBoundary({
+    watching: open,
+    timeZone: liveProfileClocks.get(actingProfileId)?.timeZone ?? null,
+    watch: resume,
+    host: "panel",
+    onCrossed: close,
+  });
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
@@ -1786,38 +1808,47 @@ export default function QuickEntryProvider({
               pages mount, posting the SAME Server Actions, so the server can only
               tell the sheet from the page if the sheet says so. Declared once here,
               at the region root, rather than on each body. */}
-          <QuickEntrySessionBody
-            form={directEntry.form}
-            prefill={directEntry.prefill}
-            subject={directEntry.subject}
-            view={directEntry.view}
-            host={directEntry.host}
-            bodies={directEntry.bodies}
-            actingProfileId={actingProfileId}
-            onDone={() => {
-              if (completeVisitEntry(directEntry.id)) close();
-            }}
-            onRetry={() => retryVisitEntry(directEntry.id)}
-            onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
-            canAdd={writableProfiles.some(
-              (profile) => profile.id === directEntry.subject
-            )}
-            onOpenIntake={(kind, trigger) =>
-              openIntake(directEntry.id, kind, trigger)
-            }
-            onExitIntake={() => exitIntake(directEntry.id)}
-            onIntakeSaved={(activation) =>
-              acceptIntakeSave(directEntry.id, activation)
-            }
-            onRefreshDose={() =>
-              refreshDose(directEntry.id, directEntry.bodyActivation)
-            }
-            addTriggerRef={directEntry.addTriggerRef}
-            focusReturn={directEntry.focusReturn}
-            onFocusReturn={(activation) =>
-              focusDoseReturn(directEntry.id, activation)
-            }
-          />
+          {/* A NODE for the resume check's draft question, the direct overlay's
+              half of what `QuickEntryVisitBodies` is for the visit (#5902).
+              `display: contents`, so it generates no box; the callback is inline
+              for the same react-hooks/refs reason recorded there. */}
+          <div
+            className="contents"
+            ref={(node) => resume.attachBodies("panel", node)}
+          >
+            <QuickEntrySessionBody
+              form={directEntry.form}
+              prefill={directEntry.prefill}
+              subject={directEntry.subject}
+              view={directEntry.view}
+              host={directEntry.host}
+              bodies={directEntry.bodies}
+              actingProfileId={actingProfileId}
+              onDone={() => {
+                if (completeVisitEntry(directEntry.id)) close();
+              }}
+              onRetry={() => retryVisitEntry(directEntry.id)}
+              onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
+              canAdd={writableProfiles.some(
+                (profile) => profile.id === directEntry.subject
+              )}
+              onOpenIntake={(kind, trigger) =>
+                openIntake(directEntry.id, kind, trigger)
+              }
+              onExitIntake={() => exitIntake(directEntry.id)}
+              onIntakeSaved={(activation) =>
+                acceptIntakeSave(directEntry.id, activation)
+              }
+              onRefreshDose={() =>
+                refreshDose(directEntry.id, directEntry.bodyActivation)
+              }
+              addTriggerRef={directEntry.addTriggerRef}
+              focusReturn={directEntry.focusReturn}
+              onFocusReturn={(activation) =>
+                focusDoseReturn(directEntry.id, activation)
+              }
+            />
+          </div>
         </BottomSheet>
       )}
     </Ctx.Provider>
@@ -2107,7 +2138,10 @@ export function QuickEntryVisitBodies({
     </Activity>
   ));
   return (
-    <div className="contents" ref={(node) => ctx.resume.attachBodies(node)}>
+    <div
+      className="contents"
+      ref={(node) => ctx.resume.attachBodies("visit", node)}
+    >
       {bodies}
     </div>
   );
