@@ -64,7 +64,8 @@ export default function MedicationsTodayPanel({
     id: number;
     name: string;
     product: string | null;
-    amount: string | null;
+    // Absent when the item has no loggable dose row — the gather's own answer (#5981).
+    amount: PrnMedForQuickLog["amount"];
     dayLabel: string;
     redoseLine: string | null;
     redosePrimary: boolean;

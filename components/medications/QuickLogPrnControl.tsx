@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -112,6 +113,12 @@ export default function QuickLogPrnControl({
   itemId: number;
   name: string;
   identity: Parameters<typeof prnDoseBandStatement>[0]["identity"];
+  // THE ITEM'S DOSE, AND WHETHER IT HAS ONE TO LOG AGAINST (#5981). ABSENT is not
+  // "this host said nothing": it is the gather's answer that the item has no
+  // non-retired dose row, which is a state of the ITEM and therefore reaches every
+  // host through the value it already forwards. In it, this row asks for the amount
+  // where the chip's payload goes and the write borns the row with what is typed.
+  // `null` still means a row that states no amount, and the chip stays a chip.
   doseAmount?: string | null;
   product?: string | null;
   dayLabel: string;
@@ -218,7 +225,22 @@ export default function QuickLogPrnControl({
     { identity, product, amount: doseAmount },
     pediatric
   );
-  const doseDetail = formatMedicationDoseProduct(doseAmount, product);
+  // THE ITEM HAS NO DOSE ROW, so there is nothing for a tap to be logged against and
+  // the panel asks for the amount in place (#5981). The band statement beside it is
+  // computed from `doseAmount` above and is untouched by what is typed here: the
+  // label's refusal — "Recorded weight is 22 lb…" — is why there is no amount on
+  // file, and it says the same thing before and after the field is filled.
+  const needsDoseAmount = doseAmount === undefined;
+  const [firstDoseAmount, setFirstDoseAmount] = useState("");
+  const typedAmount = firstDoseAmount.trim();
+  // Give is the tap, and it has nothing to write until an amount is stated.
+  const amountMissing = needsDoseAmount && !typedAmount;
+  // The payload FOLLOWS THE FIELD, so the chip states the dose this tap will write
+  // rather than the empty one behind it.
+  const doseDetail = formatMedicationDoseProduct(
+    needsDoseAmount ? typedAmount || null : doseAmount,
+    product
+  );
   // WHAT THE TAP WRITES, as the reader should see it: this administration's DOSE.
   // A med with no recorded amount has nothing quantitative to promise, so the label
   // falls back to the medication itself — #4753's own `Ibuprofen · [Give]` shape.
@@ -264,6 +286,10 @@ export default function QuickLogPrnControl({
         // it was anchored on the day the statement showed, so that day rides with it.
         if (inCard || customTime) fd.set("date", cardDay);
         if (customTime) fd.set("time", customTime);
+        // ONLY WHAT IS ON SCREEN, here too: the field posts only while it is the
+        // thing being asked, so a row that grew a dose under an open panel logs
+        // against that row instead of writing a second schedule.
+        if (needsDoseAmount && typedAmount) fd.set("amount", typedAmount);
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
       },
@@ -324,7 +350,23 @@ export default function QuickLogPrnControl({
   // to be hand-rolled here, glyph and accessible name and all (#4426).
   const clockDoor = statement.door;
 
-  const control = compactActions ? (
+  // THE FIELD SITS WHERE THE PAYLOAD WOULD BE — beside the verb, not down in the
+  // footer with the two-field editors: it IS the payload this tap writes, and a
+  // caregiver should not have to look away from the chip to state it.
+  const amountField = needsDoseAmount ? (
+    <input
+      type="text"
+      value={firstDoseAmount}
+      onChange={(e) => setFirstDoseAmount(e.target.value)}
+      disabled={busy}
+      placeholder="e.g. 200 mg"
+      aria-label={`Dose amount for ${name}`}
+      data-testid="prn-first-dose-amount"
+      className="input w-28 text-sm"
+    />
+  ) : null;
+
+  const action = compactActions ? (
     // THE ICON-ONLY ARM KEEPS THE SHAPE IT SHIPPED WITH, deliberately (#4753, open
     // question 3). A chip with no visible label would contradict the primitive's one
     // claim — the label shows the payload — so this arm is NOT the chip, and whether
@@ -336,7 +378,7 @@ export default function QuickLogPrnControl({
       <button
         type="button"
         onClick={take}
-        disabled={busy}
+        disabled={busy || amountMissing}
         aria-busy={takeBusy || undefined}
         className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
         aria-label={takeName}
@@ -363,12 +405,21 @@ export default function QuickLogPrnControl({
       verb={verb}
       tone={redosePrimary ? "brand" : "neutral"}
       onAct={take}
-      disabled={busy}
+      disabled={busy || amountMissing}
       busy={takeBusy}
       ariaLabel={takeName}
       testId="prn-log-now"
       clockDoor={clockDoor}
     />
+  );
+
+  const control = amountField ? (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {amountField}
+      {action}
+    </span>
+  ) : (
+    action
   );
 
   // State the label's band beside the confirmed dose, including when they differ.
@@ -485,7 +536,7 @@ export default function QuickLogPrnControl({
         <button
           type="button"
           onClick={() => savedHhmm && log("custom", savedHhmm)}
-          disabled={busy || !savedHhmm}
+          disabled={busy || !savedHhmm || amountMissing}
           aria-busy={ledger.pending("custom") || undefined}
           className="btn btn-sm"
           data-testid="prn-log-custom"
