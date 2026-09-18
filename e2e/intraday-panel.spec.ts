@@ -655,7 +655,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
         box.y + ((geo.padTop + 20) / geo.viewBoxWidth) * box.width
       );
 
-      const sheet = member.getByTestId("quick-entry-sheet");
+      const sheet = member.getByTestId("quick-entry-sheet"); // testid-scope-ok: the quick-entry overlay portals to <body> (BottomSheet), one copy
       await expect(sheet).toBeVisible();
       // The eating-time statement, open and holding the clicked minute — the shared
       // control's `proposed` (#5489 rule 6) reached through the prefill.
