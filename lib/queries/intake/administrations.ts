@@ -42,7 +42,7 @@ import type {
   HistoricalDoseOutcome,
   RedoseWindowAdministrationOutcome,
 } from "../../types";
-import type { IntakeObligation } from "../../types";
+import type { IntakeItemKind, IntakeObligation } from "../../types";
 import { getDoseScheduleVersions } from "./schedule";
 import { DOSE_RESOLUTION } from "@/lib/log-manifest";
 
@@ -126,12 +126,25 @@ function logAdministrationTx(
   } else {
     const item = db
       .prepare(
-        `SELECT active FROM intake_items WHERE id = ? AND profile_id = ?`
+        `SELECT active, kind, obligation
+           FROM intake_items WHERE id = ? AND profile_id = ?`
       )
-      .get(itemId, profileId) as { active: number } | undefined;
+      .get(itemId, profileId) as
+      | { active: number; kind: IntakeItemKind; obligation: IntakeObligation }
+      | undefined;
     if (!item) return { kind: "stale-item" };
     if (!item.active) return { kind: "inactive" };
     if (firstDoseAmount == null) return { kind: "needs-dose" };
+    // WHAT THIS DOOR MAY BORN A ROW ON (#5985). #5981's ruling is about a PRN
+    // medication whose label chart derived no amount, and the gather that offers the
+    // Give chip spells that as `obligation = 'may' AND kind = 'medication'` — the
+    // same two columns, read here so the write cannot be wider than the offer. A post
+    // naming a food, a supplement or a scheduled `must` medication is refused with
+    // nothing written: those items' doses are stated on the item itself, and a
+    // schedule row borned by a quick-log tap is not a schedule anybody chose.
+    if (item.kind !== "medication" || item.obligation !== "may") {
+      return { kind: "not-prn-medication" };
+    }
     // THE ITEM'S FIRST DOSE ROW, BORN HERE, IN THIS TRANSACTION. Same shape the item
     // form gives a PRN dose — an amount, no time of day, no calendar — through the
     // same `insertIntakeDose` the form uses, so it is stamped and carries its first

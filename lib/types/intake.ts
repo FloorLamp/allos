@@ -357,6 +357,11 @@ export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
 //                this door stated no amount to born one with (#5981); nothing written.
 //                Distinct from stale-item because nothing was removed: the answer is
 //                what the medicine's dose is, not an apology for a deletion.
+//   not-prn-medication — the item is there and has no dose row, and an amount was
+//                posted to born one with, but the item is not an as-needed
+//                medication (#5985), which is the only thing this door borns a row
+//                on. Distinct from needs-dose because an amount WAS stated: asking
+//                for one again would invite a retry that can never be accepted.
 //   inactive   — the item is paused/stopped; nothing written.
 export type AdministrationOutcome =
   | { kind: "logged"; count: number; date: string }
@@ -364,6 +369,7 @@ export type AdministrationOutcome =
   | { kind: "invalid-time" }
   | { kind: "stale-item" }
   | { kind: "needs-dose" }
+  | { kind: "not-prn-medication" }
   | { kind: "inactive" };
 
 // The administration-armed Telegram redose button adds one refusal the reusable

@@ -40,6 +40,23 @@ function seedDoseLessPrnMed(): { profileId: number; itemId: number } {
   return { profileId, itemId: created.id };
 }
 
+// The same seed at any other kind/obligation, which is what the #5983 falsifying
+// pass hand-crafted a post for. `food` is not an `IntakeItemKind` the item form can
+// write, so it is set on the column the way that post reached it.
+function seedDoseLessItem(
+  kind: string,
+  obligation: "may" | "must"
+): {
+  profileId: number;
+  itemId: number;
+} {
+  const { profileId, itemId } = seedDoseLessPrnMed();
+  db.prepare(
+    "UPDATE intake_items SET kind = ?, obligation = ? WHERE id = ?"
+  ).run(kind, obligation, itemId);
+  return { profileId, itemId };
+}
+
 function doseRows(itemId: number): { id: number; amount: string | null }[] {
   return db
     .prepare(
@@ -244,5 +261,55 @@ describe("a PRN medication with no dose row (#5981)", () => {
     expect(med.familyArming.kind).toBe("placed");
     const status = prnRowStatus(med, "UTC", new Date());
     expect(status.redoseLine).toContain("1 of 5");
+  });
+});
+
+// THE DOOR IS NO WIDER THAN THE OFFER (#5985). #5981's write path asked whether the
+// item had a dose row, never what kind of thing it was borning one on, so a
+// hand-crafted post naming any dose-less item this login may already write borned a
+// dose row on it. On the base commit each case below answered
+// `{kind:"logged",count:1}` with one dose row of "160 mg" and one administration.
+describe("borning a first dose row is scoped to as-needed medications (#5985)", () => {
+  const refused: [string, string, "may" | "must"][] = [
+    ["a food item", "food", "may"],
+    ["a supplement", "supplement", "may"],
+    ["a scheduled (must) medication", "medication", "must"],
+  ];
+  it.each(refused)(
+    "%s writes neither a dose row nor an administration",
+    (_label, kind, obligation) => {
+      const { profileId, itemId } = seedDoseLessItem(kind, obligation);
+      expect(
+        logAdministration(profileId, itemId, "page", undefined, null, "160 mg")
+          .kind
+      ).toBe("not-prn-medication");
+      expect(doseRows(itemId)).toEqual([]);
+      expect(adminRows(itemId)).toEqual([]);
+    }
+  );
+
+  // The refusal is about the AMOUNT this door may spend, not about logging: a post
+  // that states no amount still gets the answer it got before, for every kind.
+  it("a door that states no amount still answers needs-dose on a refused kind", () => {
+    const { profileId, itemId } = seedDoseLessItem("supplement", "may");
+    expect(logAdministration(profileId, itemId, "page").kind).toBe(
+      "needs-dose"
+    );
+    expect(doseRows(itemId)).toEqual([]);
+  });
+
+  // …and a refused kind that HAS a dose row is untouched: kind-neutral logging
+  // against an existing row is #797's behaviour and not what this scoping is about.
+  it("logs against an existing row on a refused kind", () => {
+    const { profileId, itemId } = seedDoseLessItem("supplement", "may");
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '400 mg', NULL, 'any', 0)`
+    ).run(itemId);
+    expect(
+      logAdministration(profileId, itemId, "page", undefined, null, "160 mg")
+        .kind
+    ).toBe("logged");
+    expect(doseRows(itemId).map((d) => d.amount)).toEqual(["400 mg"]);
   });
 });

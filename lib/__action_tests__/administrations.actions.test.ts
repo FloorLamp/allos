@@ -486,6 +486,36 @@ describe("logMedicationAdministration on an item with no dose row (#5981)", () =
     expect(adminRows(itemId)).toBe(0);
   });
 
+  // THE DOOR IS NO WIDER THAN THE OFFER (#5985), asked through the same post the
+  // falsifying pass hand-crafted: on the base commit each of these answered
+  // `{ok:true,outcome:"logged"}` and left one dose row and one administration behind.
+  // Only an as-needed medication gets its first dose row from a tap.
+  it.each([
+    ["a food item", "food", "may"],
+    ["a supplement", "supplement", "may"],
+    ["a scheduled (must) medication", "medication", "must"],
+  ])(
+    "refuses the posted amount for %s, writing nothing",
+    async (_label, kind, obligation) => {
+      const { profile } = seedActor();
+      const itemId = seedDoseLessPrnMed(profile.id);
+      db.prepare(
+        "UPDATE intake_items SET kind = ?, obligation = ? WHERE id = ?"
+      ).run(kind, obligation, itemId);
+      expect(
+        await logMedicationAdministration(
+          fd({ id: itemId, offset: "now", amount: "160 mg" })
+        )
+      ).toEqual({
+        ok: false,
+        error:
+          "This isn't an as-needed medication — add its dose on the item, then log it.",
+      });
+      expect(doseAmounts(itemId)).toEqual([]);
+      expect(adminRows(itemId)).toBe(0);
+    }
+  );
+
   it("names the missing dose when no amount was stated, and still says 'removed' for a deleted item", async () => {
     const { profile } = seedActor();
     const itemId = seedDoseLessPrnMed(profile.id);
