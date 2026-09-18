@@ -1,8 +1,8 @@
 # Change and test policy
 
-This is the shared policy for coding, dispatch, and review. Keep task-specific
-requirements in the task; use the [development guide](development.md) to find
-relevant code and checks.
+The shared policy for coding, dispatch, and review. Task-specific requirements
+stay in the task; the [development guide](development.md) finds relevant code
+and checks.
 
 ## Scope and code
 
@@ -11,7 +11,7 @@ relevant code and checks.
 - Reuse that owner. Avoid speculative abstractions, configuration, compatibility
   layers, parallel implementations, and unrelated cleanup. When a defect appears
   on one of several similar surfaces, fix the shared piece that makes it
-  impossible on all of them rather than patching one.
+  impossible everywhere rather than patching one.
 - Prefer types that make invalid internal states unrepresentable. Keep runtime
   validation at external-input and authorization boundaries.
 - A conversion removes the implementation it replaces. Design convergence must
@@ -20,13 +20,13 @@ relevant code and checks.
 - New registries, scanners, allowlists, or variants of existing helpers are not
   routine fixes. First try removing the cause or using the existing type/model.
   A source scan is a last resort after types and an existing ESLint rule; it
-  needs an explicitly scoped task and a named defect it would catch.
+  needs an explicitly scoped task and a named defect.
   Completeness belongs in a typed manifest (`Record<Kind, Entry>`, or
   `as const satisfies Record<string, Spec>`) that fails `tsc` on omission, not in
   a census test that scans `app/**` or `components/**` (#5340).
 - Comments explain reasoning the code cannot express. Update current docs in
   place when their contract changes; put incident narratives in the PR or git
-  history. Do not append a new policy for each bug.
+  history. Do not append a policy per bug.
 - Once the requested behavior and relevant checks pass, stop. Report unrelated
   findings briefly; do not turn them into implementation or tracker work.
 
@@ -35,12 +35,12 @@ relevant code and checks.
 - Name the failure a test catches and inspect existing coverage first. Extend an
   existing test where practical; add a file only for a distinct subject or setup.
 - Use the cheapest tier that observes the failure. A second tier must cover a
-  distinct integration risk, not repeat the same input/output cases.
+  distinct integration risk, not repeat the same cases.
 - Use tables when cases differ only in inputs and expected outputs. Reuse a
   fixture rather than copying setup. Assert meaningful outcomes rather than
   enumerating incidental details.
 - CSS-only changes do not automatically require new tests or changed assertions.
-  Do not change an expectation just to match the new implementation. If a test
+  Do not change an expectation just to match the implementation. If a test
   fails, determine whether the requested behavior or the implementation is wrong.
 - Do not test exact source wording, class strings, retired symbols that cannot
   return, or guarantees already proved by types. Browser geometry checks must
@@ -54,7 +54,7 @@ relevant code and checks.
   remove it with a stated coverage rationale. Targeted diagnostic repeats are
   appropriate; rerunning until green is not verification.
 - Delete obsolete tests when retiring their behavior. Explain what they protected
-  and what, if anything, protects the remaining behavior.
+  and what, if anything, still protects the rest.
 
 ## Development configuration
 
@@ -63,24 +63,26 @@ Do not add tests or guards that read ESLint/Vitest/TypeScript configuration,
 flags and restate their text, keys, lists, or wiring as assertions. A test may
 execute configuration or query a real tool's resolved behavior.
 
-The only existing dev-config exceptions are the `ci-skip-set` and
-`db-gate-trigger-set` count ratchets. Their limits may only decrease in the change
-that removes an entry. Keep them as counts, with no per-file list or import graph;
-they detect growth, not incorrect existing entries. Product-code ratchets are
-outside these two exceptions and still need to meet the test-value rules above.
+The only dev-config exceptions are the `ci-skip-set` and `db-gate-trigger-set`
+count ratchets. Their limits only decrease, in the change that removes an entry.
+Keep them as counts, with no per-file list or import graph; they detect growth,
+not incorrect existing entries. Product-code ratchets are outside these
+exceptions and still meet the test-value rules above.
 
 ## Review
 
 For each new abstraction or test file, explain the concrete gap existing code or
-coverage cannot cover. Report production and test additions/deletions separately;
-use the counts to scrutinize growth, not to reward compressed code or lost coverage.
+coverage cannot cover. Report production and test additions/deletions separately,
+to scrutinize growth rather than reward compressed code or lost coverage.
 Verification cleanup is subtractive first, neutral next, and additive only for a
 named defect or security gap.
 
-A PR that edits a product file over 1,500 lines lands with that file shorter
-than it found it; both counts exclude comment lines; blank lines count. The only
+A PR that edits a product file over 1,500 lines lands with it shorter than it
+found it; counts exclude comment lines and include blank lines. The only
 exemption is a P0/P1 defect fix, stated in the PR. Moving code to a new file
-counts only when the moved code gains an owner named in the
+counts only when it gains an owner named in the
 [development guide](development.md).
-The reviewer reads `git diff --stat`; there is no scanner. Branches banked or
-dispatched before 2026-09-09 20:49 UTC land under the old rule.
+The reviewer reads `git diff --stat`; there is no scanner. An empty or `Bin`
+line can mean git classified the file binary, not that nothing changed: strip
+the NULs from both blobs and diff those. Branches banked or dispatched before
+2026-09-09 20:49 UTC land under the old rule.
