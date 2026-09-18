@@ -8,7 +8,7 @@
 // (sleep / HRV) sample paths run through addMeasurements.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { getSleepMoodData } from "@/lib/queries";
 import { actAs, createLogin, createProfile, fd } from "./harness";
@@ -60,34 +60,32 @@ describe("manual metric samples", () => {
     const login = createLogin();
     const profile = createProfile("Vitals reader", login.id);
     actAs(login, profile);
+    // getSleepMoodData windows history over SLEEP_MOOD_HISTORY_DAYS ending at the
+    // profile's today, so the fixture date is the query's own day rather than a
+    // literal that ages out of the window. Computed once so both writes share it.
+    const date = today(profile.id);
 
-    await addMeasurements(
-      fd({ date: "2026-07-20", sleep_hours: "7", hrv: "42" })
-    );
-    await addMeasurements(
-      fd({ date: "2026-07-20", sleep_hours: "7.5", hrv: "45" })
-    );
+    await addMeasurements(fd({ date, sleep_hours: "7", hrv: "42" }));
+    await addMeasurements(fd({ date, sleep_hours: "7.5", hrv: "45" }));
 
     expect(sampleRows(profile.id)).toEqual([
       {
         metric: "hrv_ms",
         origin: null,
-        started_at: "2026-07-20T00:00:00",
-        ended_at: "2026-07-20T00:00:00",
+        started_at: `${date}T00:00:00`,
+        ended_at: `${date}T00:00:00`,
         value: 45,
       },
       {
         metric: "sleep_min",
         origin: null,
-        started_at: "2026-07-20T00:00:00",
-        ended_at: "2026-07-20T00:00:00",
+        started_at: `${date}T00:00:00`,
+        ended_at: `${date}T00:00:00`,
         value: 450,
       },
     ]);
     expect(
-      getSleepMoodData(profile.id).history.find(
-        (row) => row.date === "2026-07-20"
-      )
+      getSleepMoodData(profile.id).history.find((row) => row.date === date)
     ).toMatchObject({
       sleepHours: 7.5,
       sleepEditable: true,
