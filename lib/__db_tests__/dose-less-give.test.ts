@@ -144,8 +144,11 @@ describe("a PRN medication with no dose row (#5981)", () => {
   it("a second Give logs against the row the first one borned", () => {
     const { profileId, itemId } = seedDoseLessPrnMed();
     logAdministration(profileId, itemId, "page", undefined, null, "160 mg");
-    // Two hours later, and the panel no longer asks — so no amount rides along.
-    vi.setSystemTime(new Date(Date.now() + 2 * 3600_000));
+    // A second tap well outside the double-tap window, from a panel that no longer
+    // asks — so no amount rides along. The clock moves BACKWARD rather than forward
+    // because this tier freezes at 23:50 UTC, and a forward step would file the two
+    // administrations under different profile-local days.
+    vi.setSystemTime(new Date(Date.now() - 2 * 3600_000));
     expect(logAdministration(profileId, itemId, "page").kind).toBe("logged");
     expect(doseRows(itemId)).toHaveLength(1);
     expect(adminRows(itemId)).toHaveLength(2);
