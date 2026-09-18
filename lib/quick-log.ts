@@ -110,6 +110,20 @@ export interface QuickEntryPrefill {
   foodGroup?: string;
   measurementGroup?: MeasurementGroup;
   doseIntakeKind?: IntakeItemKind;
+  // THE MINUTE THE OPENER IS ANSWERING FOR (#5927): a profile-local "HH:MM" on the
+  // form's own day, or absent — which is every opener that has no minute to offer and
+  // leaves the body exactly as it was.
+  //
+  // NOT A SECOND SPELLING OF "the time this entry is for". That sentence already has
+  // one: `useTimeStatement`'s `proposed` (components/TimeStatement.tsx, rule 6 —
+  // "a host answering a timed observation may propose its minute", #5489). This field
+  // is only the CARRIAGE for it across the overlay boundary, so a prefill that names a
+  // minute is handed to that control unchanged and the rules about what a stated
+  // minute means stay where they are written. The name is the control's.
+  //
+  // Home's day chart is the opener this exists for: a click at a time on today opens
+  // the Quicklogger there, and the minute clicked is the minute the form opens on.
+  proposedAt?: string;
 }
 
 export type QuickLogTarget =

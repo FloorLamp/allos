@@ -150,6 +150,13 @@ export default function IntradayPanel({
         formatPrefs={formatPrefs}
         profileId={profileId}
         selectedWindow={selectedWindow}
+        // THE RECORD'S DAY VIEW ALREADY HAS A READER FOR THIS GESTURE (#5927).
+        // A tap here pins the start the add row states and the kind chips carry
+        // into their forms (#4950), on every day this page shows. The chart's
+        // Quicklogger door is for the surface with no add row — Home's day view,
+        // where "the Quicklogger is today's door" (#5435 §3.2) — so it is off
+        // here rather than giving one tap two meanings.
+        opensQuickLog={false}
       />
     </div>
   );

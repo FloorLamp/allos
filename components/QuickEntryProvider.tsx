@@ -254,23 +254,41 @@ export type { QuickEntryPrefill };
 
 const Ctx = createContext<QuickEntryHostApi | null>(null);
 
-export function useQuickEntry(): QuickEntryApi {
+/**
+ * THE OVERLAY WHEN ONE IS ABOVE, AND NULL WHEN NONE IS (#5927).
+ *
+ * `useQuickEntry` below is this with the absence turned into a throw, which is right
+ * for a control whose only purpose is to open a form. The day chart is the caller that
+ * needs the other answer: it renders inside the app shell, where the provider is always
+ * above it, AND on its own in a component test or a future surface, where it is not —
+ * the same "no provider is also a valid mount" rule `useIntradayInteraction` already
+ * follows. A chart with no overlay above it simply keeps its existing gestures.
+ */
+export function useOptionalQuickEntry(): QuickEntryApi | null {
   const ctx = useContext(Ctx);
   const dayContext = useOptionalDayContext();
-  if (!ctx)
-    throw new Error("useQuickEntry must be used within a QuickEntryProvider");
   return useMemo(
-    () => ({
-      close: ctx.close,
-      noteSlotBoundaries: ctx.noteSlotBoundaries,
-      open: (
-        form: QuickEntryForm,
-        prefill?: QuickEntryPrefill,
-        subjectProfileId?: number
-      ) => ctx.open(form, prefill, subjectProfileId, dayContext),
-    }),
+    () =>
+      ctx
+        ? {
+            close: ctx.close,
+            noteSlotBoundaries: ctx.noteSlotBoundaries,
+            open: (
+              form: QuickEntryForm,
+              prefill?: QuickEntryPrefill,
+              subjectProfileId?: number
+            ) => ctx.open(form, prefill, subjectProfileId, dayContext),
+          }
+        : null,
     [ctx, dayContext]
   );
+}
+
+export function useQuickEntry(): QuickEntryApi {
+  const api = useOptionalQuickEntry();
+  if (!api)
+    throw new Error("useQuickEntry must be used within a QuickEntryProvider");
+  return api;
 }
 
 export function useQuickEntryVisit(
@@ -2231,6 +2249,10 @@ function QuickEntryBody({
             slot={data.slot}
             slotBoundaries={data.slotBoundaries}
             initialFoodGroup={prefill?.foodGroup}
+            // The opener's minute (#5927), handed to the bar's existing eating-time
+            // statement. Absent for every other opener, which leaves the statement
+            // closed and empty exactly as it was.
+            proposedAt={prefill?.proposedAt}
             proteinQuickAdd={
               // Ranked in for a protein-tracking profile (#1980), rendered at the
               // position the one ranking put it in. A profile with no scoop size to
