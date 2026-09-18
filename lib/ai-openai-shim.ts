@@ -7,7 +7,7 @@
 // + tool_choice) into a POST to `${baseUrl}/chat/completions`, and translates the
 // response (text or a function/tool call, finish_reason, usage) back into the
 // Anthropic-shaped message the call sites read. Only the widely-supported params are
-// sent — model, messages, max_tokens, tools, tool_choice — so an "OpenAI-compatible"
+// sent — model, messages, token limit, tools, tool_choice — so an "OpenAI-compatible"
 // backend that rejects exotic params (the CometAPI-compatibility caveat) still works.
 //
 // The pure translation functions are exported and unit-tested with fixtures; the
@@ -210,6 +210,13 @@ async function dispatch(
   req: AnthropicRequest
 ): Promise<ShapedMessage> {
   const f = opts.fetchImpl ?? fetch;
+  const body = toOpenAiRequest(req);
+  // OpenAI's reasoning models require the current completion-token parameter.
+  // Keep the legacy parameter for other compatible servers.
+  if (new URL(opts.baseUrl).hostname === "api.openai.com") {
+    body.max_completion_tokens = body.max_tokens;
+    delete body.max_tokens;
+  }
   const res = await f(chatCompletionsUrl(opts.baseUrl), {
     method: "POST",
     headers: {
@@ -217,7 +224,7 @@ async function dispatch(
       // Local servers ignore the key; a real one needs the bearer.
       ...(opts.apiKey ? { authorization: `Bearer ${opts.apiKey}` } : {}),
     },
-    body: JSON.stringify(toOpenAiRequest(req)),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
