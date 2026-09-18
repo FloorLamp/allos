@@ -114,6 +114,9 @@ vi.mock("@/app/(app)/supplies/actions", () => ({
 }));
 
 const TODAY = new Date().toISOString().slice(0, 10);
+const YESTERDAY = new Date(Date.parse(TODAY) - 86400000)
+  .toISOString()
+  .slice(0, 10);
 const SUBJECT = 42;
 
 const ANTIPYRETIC: PrnMedForQuickLog = {
@@ -180,13 +183,7 @@ function bar(
   );
   render(
     props.dayToggle ? (
-      <CockpitDayProvider
-        date={TODAY}
-        altDate={new Date(Date.parse(TODAY) - 86400000)
-          .toISOString()
-          .slice(0, 10)}
-        tz="UTC"
-      >
+      <CockpitDayProvider date={TODAY} altDate={YESTERDAY} tz="UTC">
         {content}
       </CockpitDayProvider>
     ) : (
@@ -334,6 +331,37 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
     );
     expect(String(posted.activate[0].get("profile_id"))).toBe(String(SUBJECT));
     expect(screen.queryByTestId("fever-offer")).toBeNull();
+  });
+
+  // THE EPISODE STARTS ON THE DAY THIS BAR SHOWS (#5969). The db tier drives the
+  // action with a hand-built FormData, so only the bar can say which day it posts:
+  // under Yesterday the reading landed on that day, and an episode opened on TODAY
+  // leaves the reading a day outside its own window. Both doors onto
+  // `activateIllnessForSymptoms` are the same function, so both are asserted here.
+  it("posts the day the bar is showing, not today, under Yesterday", async () => {
+    bar({
+      hasOpenEpisode: false,
+      suggestActivateIllness: true,
+      dayToggle: true,
+    });
+    fireEvent.click(screen.getByTestId("symptom-day-alt"));
+    await openFold();
+    // A day that has ended has no "now", so the reading states its minute (#4685).
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "19:10" },
+    });
+    await logReading("102.1");
+    expect(posted.temperature[0].get("date")).toBe(YESTERDAY);
+
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("fever-offer-open-episode"))
+    );
+    expect(posted.activate[0].get("date")).toBe(YESTERDAY);
+
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-illness-bridge-activate"))
+    );
+    expect(posted.activate.at(-1)!.get("date")).toBe(YESTERDAY);
   });
 
   // DECLINING WRITES NOTHING EPISODE-SHAPED (the AC's own words): the reading already
