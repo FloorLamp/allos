@@ -21,6 +21,12 @@ import { makeTmpDir } from "./tmp-dir";
 // So the set is pinned rather than left to grow quietly. Adding a NUL to a file is
 // still allowed; doing it silently is not.
 //
+// UNDER THE SOURCE TREES IT IS NOT ALLOWED AT ALL (#5954). Git's binary heuristic
+// looks for a NUL in the first 8000 bytes of EITHER blob, and a file it calls binary
+// diffs as `Bin 9033 -> 10437 bytes` with no hunks: `git diff --stat`, the hunk-
+// reading checks and every `git diff | grep` read a change to it as nothing. A
+// registry entry keeps a raw NUL honest for a sweep; it cannot keep one reviewable.
+//
 // THE CHECK IS A BYTE READ, deliberately. `grep -P '\x00'` was the first thing tried
 // on the tracker and it reported all three known files clean, and `rg -l $'\0'` is
 // worse than useless — bash cannot put a NUL in an argument, so that collapses to an
@@ -54,10 +60,6 @@ const DELIBERATE_NULS: Record<string, string> = {
   "lib/queries/coverage.ts": "composite key: item kind and item key",
   "e2e/video-fixture.ts":
     "literal bytes of a synthetic QuickTime atom, where a zero byte is the format",
-  "scripts/orchestration/reconcile-tracker-core.ts":
-    "composite key: issue file and citation path",
-  "scripts/phi-scan.ts":
-    "a placeholder sentinel, held while a glob's `**` is rewritten, that no glob can itself contain",
   "screenshots/5521/after/dose-1280.png": PNG_EVIDENCE,
   "screenshots/5521/after/dose-390.png": PNG_EVIDENCE,
   "screenshots/5521/after/measurements-1280.png": PNG_EVIDENCE,
@@ -79,6 +81,9 @@ const DELIBERATE_NULS: Record<string, string> = {
   "screenshots/5663/after/stool-390-12h.png": PNG_EVIDENCE,
   "screenshots/5663/after/stool-390.png": PNG_EVIDENCE,
 };
+
+/** Where a NUL is refused outright, registered or not: the reviewed source. */
+const SOURCE_DIRS = ["app/", "components/", "lib/", "scripts/"];
 
 function trackedFiles(): string[] {
   return execFileSync("git", ["ls-files", "-z"], {
@@ -121,6 +126,18 @@ describe("the NUL-byte census", () => {
           `add it to DELIBERATE_NULS with the reason it must be a raw byte.`
       );
     expect(unregistered).toEqual([]);
+  });
+
+  it("refuses a NUL under a source directory, registered or not", () => {
+    // The fix is the escape spelling, which the third describe proves is text.
+    const refused = [...found]
+      .filter(([relative]) => SOURCE_DIRS.some((d) => relative.startsWith(d)))
+      .map(
+        ([relative, offsets]) =>
+          `${relative} (first NUL at byte ${offsets[0]}) — git diffs this file as ` +
+          `binary once a NUL reaches its first 8000 bytes; spell it \\u0000.`
+      );
+    expect(refused).toEqual([]);
   });
 
   it("keeps the registry from outliving the bytes it describes", () => {
