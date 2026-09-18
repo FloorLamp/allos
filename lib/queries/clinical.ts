@@ -305,12 +305,13 @@ const CARE_PLAN_ITEMS_STMT = hoistedStatement(
           cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
           cp.source_kind, cp.source_imaging_study_id,
           cp.source_medical_record_id, cp.source_dental_procedure_id,
-          cp.source_skin_lesion_id,
+          cp.source_skin_lesion_id, cp.source_metric_sample_id,
           cp.recommended_interval_days, cp.resolution,
           cp.resolved_by_imaging_study_id,
           cp.resolved_by_medical_record_id,
           cp.resolved_by_dental_procedure_id,
-          cp.resolved_by_skin_lesion_id, cp.resolved_at,
+          cp.resolved_by_skin_lesion_id, cp.resolved_by_metric_sample_id,
+          cp.resolved_at,
           cp.settled_disposition, cp.settled_on, cp.settled_reason
      FROM care_plan_items cp
      LEFT JOIN providers p ON p.id = cp.provider_id

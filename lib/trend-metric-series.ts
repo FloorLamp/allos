@@ -13,6 +13,7 @@ import {
 } from "./queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
 import { PEAK_FLOW_METRIC } from "./peak-flow";
+import { BREATHING_RATE_METRIC } from "./breathing-rate";
 import { WAIST_CIRC_METRIC } from "./waist-circ-extract";
 import { bmiSeriesDatePaired } from "./growth-series";
 import { getProfileBirthdate } from "./settings/profile-attrs";
@@ -107,6 +108,29 @@ const STREAM_SERIES: Record<TrendMetricSlug, StreamRead> = {
       (row) => ({
         date: row.date,
         value: round(row.value, TREND_METRIC_META["skin-temp"].decimals),
+      })
+    ),
+  // The sleeping breathing rate (#5409). One reading per night, so the daily bucket is
+  // a passthrough on almost every day — but NOT on all of them, and the two ways it is
+  // not are answered by two different rules.
+  //
+  // ONE SOURCE, TWO SESSIONS IN ONE WAKE DAY — a nap and the night, each keyed on its
+  // own session start. That is what `AVERAGED_METRICS` is for: the additive default
+  // would chart 13.6 + 13.6 as a 27.2 br/min night nobody breathed, and a day's two
+  // sleeps are two readings of one quantity, so they average.
+  //
+  // TWO SOURCES ON ONE NIGHT — a live Health Connect sync and a Fitbit Takeout archive
+  // covering the same week (ten such nights on the record that raised the issue). Those
+  // are two SPELLINGS of one vendor number and they ELECT rather than average, through
+  // `pointSourceRank` inside `getMetricDailyTotals`: a real window beats a day label,
+  // the same rank the sleep row uses. Averaging them instead — which this reader did
+  // until the falsifying pass on PR #5880 measured it — states a number neither device
+  // reported (14.8 br/min against a 13.6 sleep row, on the same night).
+  "breathing-rate": ({ profileId }) =>
+    getMetricDailyTotals(profileId, BREATHING_RATE_METRIC, ALL_ROWS).map(
+      (row) => ({
+        date: row.date,
+        value: round(row.value, TREND_METRIC_META["breathing-rate"].decimals),
       })
     ),
   weight: ({ profileId, weightUnit }) =>

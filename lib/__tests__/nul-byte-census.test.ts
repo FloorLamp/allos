@@ -46,18 +46,10 @@ const PNG_EVIDENCE =
   "binary PNG evidence for a reviewed before/after comparison";
 
 const DELIBERATE_NULS: Record<string, string> = {
-  "lib/__db_tests__/api-portals-route.test.ts":
-    "joins a response body's strings on NUL so a disclosure assertion cannot match across two adjacent fields",
-  "lib/__tests__/api-token-format.test.ts":
-    "a NUL-bearing token is one of the hostile inputs the token parse must refuse",
-  "lib/__tests__/biomarker-panel-groups.test.ts":
-    "composite key: profile id and biomarker name key",
-  "lib/integrations/sync-log.ts": "composite key: profile id and source id",
   "lib/migrations/versions/038-food-habit-unique.ts":
     "composite key: profile id and habit scope value",
   "lib/migrations/versions/20260812-saved-biomarker-backed.ts":
     "composite key: profile id and biomarker family",
-  "lib/queries/coverage.ts": "composite key: item kind and item key",
   "e2e/video-fixture.ts":
     "literal bytes of a synthetic QuickTime atom, where a zero byte is the format",
   "screenshots/5521/after/dose-1280.png": PNG_EVIDENCE,

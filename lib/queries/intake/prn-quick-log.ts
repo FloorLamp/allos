@@ -57,7 +57,18 @@ export interface PrnMedForQuickLog {
   kind: IntakeItemKind;
   displayName?: string;
   product: string | null;
-  amount: string | null;
+  // THE ITEM'S FIRST LOGGABLE DOSE ROW — AND WHETHER IT HAS ONE AT ALL (#5981).
+  // Three answers rather than two, because "no amount on the row" and "no row" are
+  // different states and only one of them is loggable:
+  //   absent   — the item has NO non-retired dose row. Nothing to log against, so the
+  //              Give panel asks for the amount in place and the write creates the
+  //              row (logAdministration's `firstDoseAmount`).
+  //   null     — a dose row exists and states no amount.
+  //   a string — the row's amount, which is the chip's payload.
+  // It rides on THIS field rather than beside it because every host already forwards
+  // it: a surface cannot go on drawing a Give chip with no row behind it by simply
+  // not knowing to ask.
+  amount?: string | null;
   // The item's OWN administrations on the profile-local day — the "2 today · last
   // 4:02pm" label, which genuinely renders a DAY and is untouched by #4686.
   count: number;
@@ -97,6 +108,11 @@ const PRN_QUICK_LOG_STMT = hoistedStatement(
               (SELECT d.amount FROM intake_item_doses d
                 WHERE d.item_id = s.id AND d.retired = 0
                 ORDER BY d.sort, d.id LIMIT 1) AS amount,
+              -- Whether that row EXISTS, which the amount above cannot say: a row
+              -- stating no amount reads NULL exactly like no row at all (#5981).
+              -- Same ordering-free predicate the log path asks.
+              EXISTS (SELECT 1 FROM intake_item_doses d
+                WHERE d.item_id = s.id AND d.retired = 0) AS hasDoseRow,
               (SELECT COUNT(*) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
                 AS count,
@@ -145,6 +161,7 @@ function getPrnQuickLogItems(
     supply_name: string | null;
     armingId: number | null;
     armingAt: string | null;
+    hasDoseRow: number;
   })[];
   const families = getMedicationFamilyStates(
     profileId,
@@ -158,11 +175,14 @@ function getPrnQuickLogItems(
       supply_name,
       armingId,
       armingAt,
+      hasDoseRow,
       ...r
     }) => {
       const fam = families.get(r.id);
       return {
         ...r,
+        // A dose-less item states no amount at all, rather than stating none (#5981).
+        amount: hasDoseRow ? r.amount : undefined,
         identity: prnLabelIdentityFor({
           name: r.name,
           supplyId: supply_id,

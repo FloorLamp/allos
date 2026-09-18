@@ -352,14 +352,18 @@ export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
 //                supply untouched, and the standing count reported.
 //   invalid-time — the supplied recorded_at failed the window guard (#614: a forged or
 //                far-off time); nothing written.
-//   stale-item — the item isn't this profile's, has no loggable (non-retired) dose,
-//                or was deleted; nothing written.
+//   stale-item — the item isn't this profile's, or was deleted; nothing written.
+//   needs-dose — the item is there and has no loggable (non-retired) dose row, and
+//                this door stated no amount to born one with (#5981); nothing written.
+//                Distinct from stale-item because nothing was removed: the answer is
+//                what the medicine's dose is, not an apology for a deletion.
 //   inactive   — the item is paused/stopped; nothing written.
 export type AdministrationOutcome =
   | { kind: "logged"; count: number; date: string }
   | { kind: "duplicate"; count: number; date: string }
   | { kind: "invalid-time" }
   | { kind: "stale-item" }
+  | { kind: "needs-dose" }
   | { kind: "inactive" };
 
 // The administration-armed Telegram redose button adds one refusal the reusable

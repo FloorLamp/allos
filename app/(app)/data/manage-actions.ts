@@ -16,6 +16,7 @@ import {
 } from "@/lib/queries";
 import { undoKindForTable } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
+import { unlinkFollowUpsForMetricSample } from "@/lib/followup-write";
 import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
@@ -241,6 +242,39 @@ export async function deleteAllDatasetRows(
   // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
   // resurrect the whole set (#653). Captured before the delete.
   const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
+  // A `metric_samples` row can be named by a care-plan follow-up (#5409). The
+  // selected-rows path above takes the undo branch for this table (DATASET_UNDO_KIND
+  // maps it, and the type forces that decision), so its detach seam runs inside
+  // captureDelete; this wipe takes no capture, so nothing runs it here. The pair is
+  // ON DELETE SET NULL, so the wipe below would not throw — SQLite would null the id
+  // and leave `source_kind` standing over an all-null source, the dangling
+  // discriminator migration 184 exists to repair. So run the same shared seam first,
+  // for this profile's links to the rows this wipe removes.
+  //
+  // Anchored on `metric_samples` rather than on `care_plan_items`. The seam frees by
+  // sample id within THIS profile (`unlinkFollowUpsForMetricSample` scopes both of its
+  // statements to the caller's profile), so an id set read off the follow-ups could
+  // carry the id of ANOTHER profile's sample and free this profile's link to a row
+  // the wipe below is not removing. Read off this profile's own samples, every id the
+  // seam is handed is a row the wipe removes.
+  //
+  // The seam is not in a transaction with the wipe: a wipe that failed after it would
+  // leave these links already freed.
+  if (resolved.table === "metric_samples") {
+    const linked = db
+      .prepare(
+        `SELECT DISTINCT s.id AS id
+           FROM metric_samples s
+           JOIN care_plan_items c
+             ON c.profile_id = s.profile_id
+            AND (c.source_metric_sample_id = s.id
+                 OR c.resolved_by_metric_sample_id = s.id)
+          WHERE s.profile_id = ?`
+      )
+      .all(profile.id) as { id: number }[];
+    for (const { id } of linked)
+      unlinkFollowUpsForMetricSample(profile.id, id);
+  }
   // "Delete all" is still scoped to this profile — never wipe another profile's
   // rows from the shared table. It is intentionally NOT undoable (the confirm
   // says so): capturing an entire table into the holding store could be huge.

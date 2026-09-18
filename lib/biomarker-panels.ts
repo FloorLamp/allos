@@ -534,6 +534,12 @@ export const BIOMARKER_PANELS: Record<
     "Respiratory Rate",
     "Oxygen Saturation",
     "Body Temperature",
+    // The wearable's nightly breathing rate (#5409) sits HERE and not in
+    // `respiratory`, for the reason Resting Heart Rate sits here beside it: that panel
+    // is one pulmonology ORDER — a report prints peak flow and the spirometry trio
+    // together — and a wrist tracker's overnight average is not part of it. It is a
+    // vital sign measured continuously, which is exactly what this panel holds.
+    "Breathing Rate (sleep)",
   ],
   // Cardiac electrical activity (#2322). ONE tracing prints all of these: the
   // intervals, the three frontal-plane axes, the ventricular rate the machine

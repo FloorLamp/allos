@@ -381,6 +381,10 @@ describe("baselineDeltaPhrase", () => {
     baselineAvgMin: 480,
     baselineNights: 7,
     stages: null,
+    // A manual logger's night carries no wearable reading (#5409). The field is
+    // completed rather than the fixture widened: `baselineDeltaPhrase` reads the
+    // duration half only, and these assertions are unchanged.
+    breathingRateBpm: null,
     source: "manual",
   };
   it("phrases under / over / on-average", () => {
