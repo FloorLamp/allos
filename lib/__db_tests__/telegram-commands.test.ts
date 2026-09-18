@@ -384,7 +384,7 @@ describe("/practice on demand (#1895)", () => {
 });
 
 describe("/weight on demand (#1895)", () => {
-  it("prompts with a kind that records the pointer the reply resolves against", async () => {
+  it("prompts with the mark that records the pointer the reply resolves against", async () => {
     await say("/weight");
     expect(sendMock).toHaveBeenCalledTimes(1);
     const msg = sendMock.mock.calls[0][1] as { body: unknown; kind?: string };
