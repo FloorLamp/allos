@@ -300,8 +300,11 @@ export default async function BodySection({
   // exactly as HRV and skin temperature are and for the same reason: it lives in
   // `metric_samples` keyed to the sleep session, not in `medical_records`. It is NOT the
   // `respiratory-rate` series two lines up — that one stays `getBiomarkerSeries(…,
-  // "Respiratory Rate")`, the clinical spot count judged at 12–20, and after this
-  // issue's migration it carries only those clinical rows. Two identities, two charts.
+  // "Respiratory Rate")`, the spot count judged at 12–20, and after this issue's
+  // migration it carries what the migration leaves in `medical_records` under that
+  // name — a wearable spot reading with no sleep session around it, which the adoption
+  // declines to move, among them (lib/reading-identity-map.ts). Two identities, two
+  // charts.
   //
   // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums:
   // one source's nap and night in one wake day are two rows on two session starts, and
