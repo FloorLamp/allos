@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readManifest, VERSIONS_DIR } from "../migrations/manifest";
 import { makeTmpDir } from "./tmp-dir";
 
 // A LITERAL NUL IN A SOURCE FILE MAKES THAT FILE INVISIBLE TO A DEFAULT GREP (#3206).
@@ -27,6 +28,11 @@ import { makeTmpDir } from "./tmp-dir";
 // reading checks and every `git diff | grep` read a change to it as nothing. A
 // registry entry keeps a raw NUL honest for a sweep; it cannot keep one reviewable.
 //
+// The one exemption is a file lib/migrations/manifest.json hash-pins. Those bytes
+// are frozen by the manifest and by migration-immutability.test.ts, so no edit can
+// respell the NUL, and the refusal below has nothing it could ask for. The guard
+// reads the manifest to decide that, so what is exempt is what is actually pinned.
+//
 // THE CHECK IS A BYTE READ, deliberately. `grep -P '\x00'` was the first thing tried
 // on the tracker and it reported all three known files clean, and `rg -l $'\0'` is
 // worse than useless — bash cannot put a NUL in an argument, so that collapses to an
@@ -34,6 +40,33 @@ import { makeTmpDir } from "./tmp-dir";
 // question.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+/**
+ * The repo-relative paths the immutability manifest hash-pins.
+ *
+ * READ FROM THE MANIFEST, never copied into a list here: a migration that ships
+ * tomorrow is exempt the day its hash lands, and one that has not shipped is not
+ * exempt for sitting in the same directory. `readManifest()` is the single spelling
+ * of that file (lib/migrations/manifest.ts), keyed by bare filename.
+ */
+function hashPinned(): Set<string> {
+  const versions = path.relative(REPO, VERSIONS_DIR);
+  return new Set(
+    Object.keys(readManifest()).map((file) => `${versions}/${file}`)
+  );
+}
+
+/**
+ * What the guard says about an exempt file that carries a NUL.
+ *
+ * It names the rule and stops. Advising the escape spelling here would be advice
+ * nobody is allowed to take, and the reader would then either edit an immutable
+ * file or quiet the guard instead (#5954, ruling 40a).
+ */
+const immutableNote = (relative: string): string =>
+  `${relative} carries a NUL and is exempt: lib/migrations/manifest.json hash-pins ` +
+  `it, so the file is immutable (lib/migrations/AGENTS.md:5, CLAUDE.md:45) and stays ` +
+  `exactly as it shipped. A schema change is a new migration, never an edit to this one.`;
 
 /**
  * Files that carry a literal NUL on purpose, each with the reason it is there.
@@ -47,9 +80,9 @@ const PNG_EVIDENCE =
 
 const DELIBERATE_NULS: Record<string, string> = {
   "lib/migrations/versions/038-food-habit-unique.ts":
-    "composite key: profile id and habit scope value",
+    "shipped and hash-pinned, so the bytes stay as they are (lib/migrations/AGENTS.md:5); the NUL is a composite key over profile id and habit scope value",
   "lib/migrations/versions/20260812-saved-biomarker-backed.ts":
-    "composite key: profile id and biomarker family",
+    "shipped and hash-pinned, so the bytes stay as they are (lib/migrations/AGENTS.md:5); the NUL is a composite key over profile id and biomarker family",
   "e2e/video-fixture.ts":
     "literal bytes of a synthetic QuickTime atom, where a zero byte is the format",
   "screenshots/5521/after/dose-1280.png": PNG_EVIDENCE,
@@ -74,7 +107,7 @@ const DELIBERATE_NULS: Record<string, string> = {
   "screenshots/5663/after/stool-390.png": PNG_EVIDENCE,
 };
 
-/** Where a NUL is refused outright, registered or not: the reviewed source. */
+/** Where a NUL is refused, registered or not, unless the manifest pins it. */
 const SOURCE_DIRS = ["app/", "components/", "lib/", "scripts/"];
 
 function trackedFiles(): string[] {
@@ -107,23 +140,33 @@ function census(files: string[]): Map<string, number[]> {
 
 describe("the NUL-byte census", () => {
   const found = census(trackedFiles());
+  const immutable = hashPinned();
 
   it("finds no NUL outside the registry", () => {
     const unregistered = [...found]
       .filter(([relative]) => !(relative in DELIBERATE_NULS))
-      .map(
-        ([relative, offsets]) =>
-          `${relative} (byte ${offsets.join(", ")}) — ripgrep now SKIPS this file ` +
-          `in a default search. Spell the NUL as \\u0000 to keep the file text, or ` +
-          `add it to DELIBERATE_NULS with the reason it must be a raw byte.`
+      .map(([relative, offsets]) =>
+        immutable.has(relative)
+          ? `${immutableNote(relative)} Record it in DELIBERATE_NULS with that ` +
+            `reason, so a sweep still knows the byte is there.`
+          : `${relative} (byte ${offsets.join(", ")}) — ripgrep now SKIPS this file ` +
+            `in a default search. Spell the NUL as \\u0000 to keep the file text, or ` +
+            `add it to DELIBERATE_NULS with the reason it must be a raw byte.`
       );
     expect(unregistered).toEqual([]);
   });
 
-  it("refuses a NUL under a source directory, registered or not", () => {
-    // The fix is the escape spelling, which the third describe proves is text.
+  it("refuses a NUL under a source directory the manifest does not pin", () => {
+    // The fix is the escape spelling, which the third describe proves is text, and
+    // a hash-pinned file is exempt because that fix cannot reach it — not because a
+    // pair of paths is remembered here. Registered or not is irrelevant: a registry
+    // entry records a NUL, it does not license one under the source trees.
     const refused = [...found]
-      .filter(([relative]) => SOURCE_DIRS.some((d) => relative.startsWith(d)))
+      .filter(
+        ([relative]) =>
+          SOURCE_DIRS.some((d) => relative.startsWith(d)) &&
+          !immutable.has(relative)
+      )
       .map(
         ([relative, offsets]) =>
           `${relative} (first NUL at byte ${offsets[0]}) — git diffs this file as ` +
