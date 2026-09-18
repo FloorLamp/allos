@@ -302,6 +302,16 @@ function recordPointer(
     );
     return;
   }
+  // THE THIRD DISJUNCT WAS THE KIND LIST AND IS THE MARK NOW, and `refill` was on that
+  // list. Every refill message a builder actually produces still records its pointer from
+  // its KEYBOARD, which is where refill's pointers always came from: the low-supply
+  // reminder gives each item an Ordered button unconditionally, and the receipt prompt is
+  // only ever SENT in its open state, which pushes Cancel (./refill; its other two
+  // `receiptPrompt` calls rebuild an existing message and reach nothing here). What the
+  // narrowing drops is a row for a keyboardless, prose-less refill send —
+  // `renderPoolRefillMessage` with no public URL and no Received action is the one shape
+  // that reaches it — a row with no keyboard to reconcile and no body hash to compare,
+  // which no reader needed: a receipt is admitted through its offer row's own `promptId`.
   if (keyboard.length === 0 && !prose && !prompt) return;
   // A PROMPT IS ADDRESSED TO ONE PROFILE. `resolveSubject` gives a CHAT_WIDE message the
   // chat's LOWEST profile rather than nobody, so a marked prompt sent chat-wide would
