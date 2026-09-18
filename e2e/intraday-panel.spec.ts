@@ -551,10 +551,9 @@ test.describe("the day view's intraday panel (#1068)", () => {
   // put ONE declared door on the family row so a tap on the drawing landed on the day
   // the drawing is of, and this proved the pointer found that href, that there was
   // exactly one primary surface, and that the figure was `inert` so the keyboard could
-  // not reach past the door. Home has no family row and no door on the Glance card:
-  // the chart-click door is #5435 §3.3 and it is NOT DELIVERED IN PR 2. This is
-  // recorded rather than quietly dropped — when that door lands, the reach assertions
-  // belong here again, against whatever element carries it.
+  // not reach past the door. Home has no family row, and the Glance card's door is not
+  // an href at all: §3.2/§6.6's chart-click door opens the Quicklogger in place (#5927),
+  // and the test below it is where that reach is asserted.
   test("Home's Glance card draws today's chart and states the same lag as the panel", async ({
     browser,
   }) => {
@@ -604,6 +603,63 @@ test.describe("the day view's intraday panel (#1068)", () => {
       const panel = appContent(member).getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
       await expect(panel.getByTestId("intraday-freshness")).toHaveText(homeLag);
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // ── THE CHART-CLICK DOOR (#5927; §3.2 and §6.6) ─────────────────────────────
+  //
+  // ONE BROWSER CASE, and it is here because no cheaper tier can run it: the click
+  // crosses from the chart into the Quicklogger's overlay — two components with no
+  // shared render, a lazily loaded body and a server gather between them — and what
+  // has to be true at the end is that the FORM THAT MOUNTED is holding the minute the
+  // pointer was put at.
+  //
+  // THE MINUTE IS THE CLICKED ONE, which is the whole point: the chart is the prompt.
+  // The run's clock is frozen ~13:00 (e2e/pinned-timezone.ts) and the click lands on
+  // 12:20, so an implementation that proposed "now" would fail this rather than pass
+  // it by coincidence.
+  //
+  // The component tier owns the rest of the rule — which minute is handed over, the
+  // past day that hands over none, and the record's day view that keeps this gesture
+  // for its own add row (components/__tests__/intraday-quick-log-door.test.tsx).
+  test("clicking Home's chart at a time opens the Quicklogger on that minute", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/");
+      const glance = appContent(member).getByTestId("home-glance");
+      const chart = glance.locator(COMPACT);
+      // The DRAWING, not the frame: a click before the layers land is a click on an
+      // empty box, and the plot is what carries the minutes.
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+
+      const svg = chart.getByTestId("intraday-svg");
+      const [box] = await settledBoxes([svg]);
+      const geo = INTRADAY_VARIANTS.compact;
+      const minute = 12 * 60 + 20;
+      // The fixture day is empty at 12:20 — no tick, no block — so this is a click on
+      // the PLOT rather than on one of the anchors the chart already carries.
+      const plotX =
+        geo.padLeft +
+        (minute / (24 * 60)) * (geo.viewBoxWidth - geo.padLeft - geo.padRight);
+      await member.mouse.click(
+        box.x + (plotX / geo.viewBoxWidth) * box.width,
+        box.y + ((geo.padTop + 20) / geo.viewBoxWidth) * box.width
+      );
+
+      const sheet = member.getByTestId("quick-entry-sheet");
+      await expect(sheet).toBeVisible();
+      // The eating-time statement, open and holding the clicked minute — the shared
+      // control's `proposed` (#5489 rule 6) reached through the prefill.
+      await expect(sheet.getByTestId("food-when-time")).toHaveValue("12:20");
     } finally {
       await member.context().close();
     }
