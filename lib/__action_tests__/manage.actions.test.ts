@@ -12,11 +12,16 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   deleteDatasetRows,
   deleteAllDatasetRows,
 } from "@/app/(app)/data/manage-actions";
+import {
+  resolveFollowUpCore,
+  trackImagingFollowUpCore,
+  trackLabFollowUpCore,
+} from "@/lib/followup-write";
 import { seedActor, createProfile } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -341,5 +346,183 @@ describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#65
         .get(profile.id) as { c: number }
     ).c;
     expect(remaining).toBe(0);
+  });
+});
+
+// #5966 — "Delete all" on a dataset whose rows a tracked follow-up names. The
+// `care_plan_items` source/resolved-by pairs for these two tables are declared with no
+// ON DELETE action, so before the seam ran here the wipe raised
+// SQLITE_CONSTRAINT_FOREIGNKEY and rolled back: a person who had tracked one follow-up
+// could not bulk-delete the dataset at all. The positive control below is what these
+// assertions are observing — the same fixture, the same statement, no seam.
+//
+// Both tables are seeded through their REAL track cores (lib/followup-write.ts), so the
+// link under test is the one the Track follow-up button writes, not a hand-set column.
+describe("Delete all frees a tracked follow-up's link (#5966)", () => {
+  const DAY = "2026-05-01";
+
+  function addLabReading(profileId: number): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, value_num, unit,
+              canonical_name, flag, source)
+           VALUES (?, ?, 'lab', 'Hemoglobin A1c', '8.2', 8.2, '%',
+                   'Hemoglobin A1c', 'high', 'manual')`
+        )
+        .run(profileId, DAY).lastInsertRowid
+    );
+  }
+
+  function addImagingStudy(profileId: number): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO imaging_studies (profile_id, study_date, modality, body_region)
+           VALUES (?, ?, 'mri', 'knee')`
+        )
+        .run(profileId, DAY).lastInsertRowid
+    );
+  }
+
+  // Each case: the dataset key, the seed that writes one row, the real track core that
+  // links a follow-up to it, and the source column that link lands in.
+  const CASES = [
+    {
+      key: "medical_records",
+      what: "a flagged lab reading",
+      sourceColumn: "source_medical_record_id",
+      seed: addLabReading,
+      track: (profileId: number, rowId: number) =>
+        trackLabFollowUpCore(profileId, rowId, 91, DAY),
+    },
+    {
+      key: "imaging_studies",
+      what: "an imaging finding",
+      sourceColumn: "source_imaging_study_id",
+      seed: addImagingStudy,
+      track: (profileId: number, rowId: number) =>
+        trackImagingFollowUpCore(profileId, rowId, 180, DAY),
+    },
+  ] as const;
+
+  function rowCount(table: string, profileId: number): number {
+    return (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE profile_id = ?`)
+        .get(profileId) as { c: number }
+    ).c;
+  }
+
+  function followUpLinks(carePlanItemId: number) {
+    return db
+      .prepare(
+        `SELECT source_kind, source_medical_record_id, source_imaging_study_id,
+                resolved_by_medical_record_id, resolved_by_imaging_study_id
+           FROM care_plan_items WHERE id = ?`
+      )
+      .get(carePlanItemId);
+  }
+
+  it.each(CASES)(
+    "$key: Delete all completes with a follow-up tracked from $what",
+    async ({ key, seed, track, sourceColumn }) => {
+      const { login, profile } = seedActor();
+      const rowId = seed(profile.id);
+      const tracked = track(profile.id, rowId);
+      expect(tracked.kind).toBe("created");
+      if (tracked.kind !== "created") return;
+      // The link the button writes really is there before the wipe.
+      expect(followUpLinks(tracked.carePlanItemId)).toMatchObject({
+        [sourceColumn]: rowId,
+      });
+
+      // Another profile with its own tracked follow-up on its own row: the seam frees
+      // by row id, so an id set read off `care_plan_items` instead of off the table
+      // being deleted could reach this one. Acting as A must not touch it.
+      const other = createProfile(`Other ${key}`, login.id);
+      const otherRow = seed(other.id);
+      const otherTracked = track(other.id, otherRow);
+      expect(otherTracked.kind).toBe("created");
+      if (otherTracked.kind !== "created") return;
+
+      const res = await deleteAllDatasetRows(key);
+      expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+      expect(rowCount(key, profile.id)).toBe(0);
+
+      // The source id AND the discriminator go together — the asymmetry migration 184
+      // repairs. The care-plan item itself survives: a freed link degrades a follow-up
+      // to the plain planned care it now is, it does not delete the person's plan.
+      expect(followUpLinks(tracked.carePlanItemId)).toEqual({
+        source_kind: null,
+        source_medical_record_id: null,
+        source_imaging_study_id: null,
+        resolved_by_medical_record_id: null,
+        resolved_by_imaging_study_id: null,
+      });
+      expect(
+        db
+          .prepare("SELECT description FROM care_plan_items WHERE id = ?")
+          .get(tracked.carePlanItemId)
+      ).toBeTruthy();
+
+      // The other profile's row and its link are untouched.
+      expect(rowCount(key, other.id)).toBe(1);
+      expect(followUpLinks(otherTracked.carePlanItemId)).toMatchObject({
+        [sourceColumn]: otherRow,
+      });
+      expect(rawDb.pragma("foreign_key_check")).toEqual([]);
+    }
+  );
+
+  it.each(CASES)(
+    "positive control — $key: the same wipe with no seam ahead of it throws and rolls back",
+    async ({ key, seed, track }) => {
+      // WHAT THE TWO CASES ABOVE ARE OBSERVING. Without this, a fixture that never
+      // wrote the link, or a harness running with foreign keys off, would let them
+      // pass while proving nothing. This is the pre-fix statement, run by hand.
+      const { profile } = seedActor();
+      const rowId = seed(profile.id);
+      expect(track(profile.id, rowId).kind).toBe("created");
+      expect(rawDb.pragma("foreign_keys", { simple: true })).toBe(1);
+
+      expect(() =>
+        db.prepare(`DELETE FROM ${key} WHERE profile_id = ?`).run(profile.id)
+      ).toThrow(/FOREIGN KEY constraint failed/);
+      // Rolled back — nothing was deleted, which is why the person was stuck.
+      expect(rowCount(key, profile.id)).toBe(1);
+    }
+  );
+
+  it("a resolved-by link is freed alone, leaving the source link standing", async () => {
+    // The other half of the asymmetry. A resolved imaging follow-up names TWO studies:
+    // the finding it came from and the later study that settled it. Deleting only the
+    // resolving study must drop that link and keep the source link and the
+    // discriminator, so the item still reads as the imaging follow-up it is.
+    const { profile } = seedActor();
+    const source = addImagingStudy(profile.id);
+    const later = addImagingStudy(profile.id);
+    const tracked = trackImagingFollowUpCore(profile.id, source, 180, DAY);
+    expect(tracked.kind).toBe("created");
+    if (tracked.kind !== "created") return;
+    expect(
+      resolveFollowUpCore(profile.id, tracked.carePlanItemId, "stable", later)
+        .kind
+    ).toBe("resolved");
+
+    const res = await deleteDatasetRows("imaging_studies", [later]);
+    expect(res).toMatchObject({ ok: true, deleted: 1 });
+    expect(followUpLinks(tracked.carePlanItemId)).toMatchObject({
+      source_kind: "imaging",
+      source_imaging_study_id: source,
+      resolved_by_imaging_study_id: null,
+    });
+    // The outcome text the person recorded survives the dead link.
+    expect(
+      db
+        .prepare("SELECT resolution FROM care_plan_items WHERE id = ?")
+        .get(tracked.carePlanItemId)
+    ).toEqual({ resolution: "stable" });
   });
 });
