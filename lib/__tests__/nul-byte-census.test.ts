@@ -157,7 +157,7 @@ describe("the NUL-byte census", () => {
   });
 
   it("refuses a NUL under a source directory the manifest does not pin", () => {
-    // The fix is the escape spelling, which the third describe proves is text, and
+    // The fix is the escape spelling, which the census’s reach proves is text, and
     // a hash-pinned file is exempt because that fix cannot reach it — not because a
     // pair of paths is remembered here. Registered or not is irrelevant: a registry
     // entry records a NUL, it does not license one under the source trees.
