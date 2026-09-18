@@ -263,6 +263,10 @@ export default function IllnessMedicationLogger({
             action={addIntakeItem}
             kind="medication"
             intakeContext={intakeContext}
+            // THE SUBJECT THE DOSE PANEL ABOVE POSTS (#5970): on a household member's
+            // cockpit the new item is that member's, write-gated by the action on the
+            // posted `profile_id`; absent, the action takes the acting-profile path.
+            subjectProfileId={profileId}
             onDone={() => panels.setOpenKey(null)}
           />
         </div>
