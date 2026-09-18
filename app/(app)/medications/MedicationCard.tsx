@@ -595,6 +595,9 @@ export default function MedicationCard({
             data-testid="prn-administrations"
           >
             {canConfirm ? (
+              /* `doses` is the LIVE schedule, so no first element means no loggable
+                 dose row at all — which is a different state from a row that states
+                 no amount, and the one that makes the panel ask for one (#5981). */
               <QuickLogPrnControl
                 identity={prnLabelIdentityFor({
                   name: s.name,
@@ -605,7 +608,7 @@ export default function MedicationCard({
                 })}
                 itemId={s.id}
                 name={s.name}
-                doseAmount={doses[0]?.amount ?? null}
+                doseAmount={doses[0]?.amount}
                 product={s.product}
                 dayLabel={prnDayLabel ?? "None today"}
                 redoseLine={prnRedoseLine}

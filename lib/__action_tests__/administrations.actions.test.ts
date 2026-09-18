@@ -14,7 +14,7 @@ import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone, setProfileBirthdate } from "@/lib/settings";
 import { logHistoricalDose } from "@/lib/queries";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
-import { seedActor, fd } from "./harness";
+import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -340,5 +340,161 @@ describe("logMedicationAdministration action (#797)", () => {
       (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
     ).toBe(true);
     expect(loggedAmount(itemId)).toBe("400 mg");
+  });
+});
+
+// THE DOSE-LESS ITEM'S GIVE (#5981). The panel asks for the amount in place and posts
+// it with the dose; this tier is where the SUBJECT and the refusals are visible — the
+// cross-profile gate the cockpit rides, the item form's amount rule, and the two
+// refusals that must leave the schedule alone.
+describe("logMedicationAdministration on an item with no dose row (#5981)", () => {
+  // The item "Also for" lands when no amount could be derived: active, PRN, no rows.
+  function seedDoseLessPrnMed(profileId: number): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+           VALUES (?, 'Acetaminophen - Kids', 1, 'medication', 'daily', 'may', 10, 1)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+  }
+
+  function doseAmounts(itemId: number): (string | null)[] {
+    return (
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_doses WHERE item_id = ? ORDER BY id"
+        )
+        .all(itemId) as { amount: string | null }[]
+    ).map((d) => d.amount);
+  }
+
+  it("writes the first dose row and the administration from one post", async () => {
+    const { profile } = seedActor();
+    const itemId = seedDoseLessPrnMed(profile.id);
+    expect(
+      await logMedicationAdministration(
+        fd({ id: itemId, offset: "now", amount: "160 mg" })
+      )
+    ).toEqual({ ok: true, outcome: "logged" });
+    expect(doseAmounts(itemId)).toEqual(["160 mg"]);
+    expect(adminRows(itemId)).toBe(1);
+    expect(loggedAmount(itemId)).toBe("160 mg");
+  });
+
+  // THE CROSS-PROFILE SUBJECT (#858), which this write now carries a SCHEDULE on: the
+  // row and the log both land on the member, and a caregiver who may only read that
+  // member gets neither. Driven through the action so the gate is exercised rather
+  // than asserted to exist.
+  it("lands the row and the log on the household member, write-gated", async () => {
+    // A MEMBER login, not the harness's default admin: per-profile access is what is
+    // under test here, and an admin reaches every profile by role.
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("Caregiver", login.id);
+    actAs(login, profile);
+    const member = createProfile("Member", login.id);
+    const itemId = seedDoseLessPrnMed(member.id);
+    expect(
+      await logMedicationAdministration(
+        fd({ id: itemId, offset: "now", amount: "160 mg", profileId: member.id })
+      )
+    ).toEqual({ ok: true, outcome: "logged" });
+    expect(doseAmounts(itemId)).toEqual(["160 mg"]);
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM intake_item_logs l
+               JOIN intake_items s ON s.id = l.item_id
+              WHERE l.item_id = ? AND s.profile_id = ?`
+          )
+          .get(itemId, member.id) as { c: number }
+      ).c
+    ).toBe(1);
+    // The acting profile recorded nothing of its own.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS c FROM intake_items WHERE profile_id = ?"
+          )
+          .get(profile.id) as { c: number }
+      ).c
+    ).toBe(0);
+
+    const readOnlyMember = createProfile("Read-only member", login.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(login.id, readOnlyMember.id);
+    const theirItem = seedDoseLessPrnMed(readOnlyMember.id);
+    await expect(
+      logMedicationAdministration(
+        fd({
+          id: theirItem,
+          offset: "now",
+          amount: "160 mg",
+          profileId: readOnlyMember.id,
+        })
+      )
+    ).rejects.toThrow();
+    expect(doseAmounts(theirItem)).toEqual([]);
+    expect(adminRows(theirItem)).toBe(0);
+  });
+
+  it.each([
+    {
+      refusal: "a day with no time stated",
+      post: { offset: "now", date: "2026-01-02", amount: "160 mg" },
+      error: "Add the time this dose was given.",
+    },
+    {
+      refusal: "an unreadable clock",
+      post: { offset: "custom", time: "not a time", amount: "160 mg" },
+      error: "Enter a valid time.",
+    },
+  ])("$refusal creates neither the row nor the log", async ({ post, error }) => {
+    const { profile } = seedActor();
+    const itemId = seedDoseLessPrnMed(profile.id);
+    expect(
+      await logMedicationAdministration(fd({ id: itemId, ...post }))
+    ).toEqual({ ok: false, error });
+    expect(doseAmounts(itemId)).toEqual([]);
+    expect(adminRows(itemId)).toBe(0);
+  });
+
+  // The amount is the ITEM FORM's rule, called rather than restated — the same
+  // refusal an add gets, because this post puts the number on the same schedule.
+  it("refuses an amount the dose reader cannot read, writing nothing", async () => {
+    const { profile } = seedActor();
+    const itemId = seedDoseLessPrnMed(profile.id);
+    const res = await logMedicationAdministration(
+      fd({ id: itemId, offset: "now", amount: "1 000 mg" })
+    );
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain("as a dose amount");
+    expect(doseAmounts(itemId)).toEqual([]);
+    expect(adminRows(itemId)).toBe(0);
+  });
+
+  it("names the missing dose when no amount was stated, and still says 'removed' for a deleted item", async () => {
+    const { profile } = seedActor();
+    const itemId = seedDoseLessPrnMed(profile.id);
+    expect(
+      await logMedicationAdministration(fd({ id: itemId, offset: "now" }))
+    ).toEqual({
+      ok: false,
+      error: "Add the dose amount for this medication, then log it.",
+    });
+    db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
+    expect(
+      await logMedicationAdministration(
+        fd({ id: itemId, offset: "now", amount: "160 mg" })
+      )
+    ).toEqual({
+      ok: false,
+      error: "Couldn't log that — it may have been removed.",
+    });
   });
 });

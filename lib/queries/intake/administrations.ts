@@ -19,6 +19,7 @@
 // The no-rearm rule is imported rather than restated: an amend that moves a row onto
 // another date un-marks the dose for the day it left, so that day is stamped handled.
 import { suppressEscalationRearm } from "./no-rearm";
+import { insertIntakeDose } from "../../intake-item-create";
 import { db, today, writeTx } from "../../db";
 import type { LoggedVia } from "../../logged-via";
 import type { BundleId } from "../../bundle";
@@ -65,7 +66,8 @@ function logAdministrationTx(
   occurredAtStr: string,
   expectedRedoseAdministrationId: null,
   loggedVia: LoggedVia,
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  firstDoseAmount?: string | null
 ): AdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
@@ -85,12 +87,22 @@ function logAdministrationTx(
   occurredAtStr: string,
   expectedRedoseAdministrationId: number | null,
   loggedVia: LoggedVia,
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // The amount to BORN this item's first dose row with, when it has none (#5981).
+  // Only the live PRN door offers it — the redose-window overload above cannot spell
+  // it, because consuming a window presupposes the administration that armed it and
+  // therefore the row that administration was logged against.
+  firstDoseAmount?: string | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
-  // the profile through the parent item. A PRN med always has at least one dose row
-  // (the item form guarantees it); its amount rides onto the log so history survives
-  // a later dosage edit.
+  // the profile through the parent item. Its amount rides onto the log so history
+  // survives a later dosage edit.
+  //
+  // A MISS HERE IS NOT ONE ANSWER (#5981). It used to be read as "removed", under a
+  // comment claiming the item form guaranteed a dose row — a guarantee the "Also for"
+  // copy does not keep: it lands an active item with no rows at all when the label
+  // chart derives no amount. So the miss is taken to the ITEM, which answers which of
+  // the three states this is: gone, paused, or present with nothing to log against.
   const dose = db
     .prepare(
       `SELECT d.id AS dose_id, d.amount AS amount, s.active AS active
@@ -102,8 +114,41 @@ function logAdministrationTx(
     )
     .get(itemId, profileId) as
     { dose_id: number; amount: string | null; active: number } | undefined;
-  if (!dose) return { kind: "stale-item" };
-  if (!dose.active) return { kind: "inactive" };
+  let doseId: number;
+  let doseAmount: string | null;
+  if (dose) {
+    if (!dose.active) return { kind: "inactive" };
+    // A posted `firstDoseAmount` is spent only on an item that has no row. A panel
+    // rendered before somebody else added one still logs this administration, against
+    // the row that now exists — it does not overwrite a schedule it never showed.
+    doseId = dose.dose_id;
+    doseAmount = dose.amount;
+  } else {
+    const item = db
+      .prepare(`SELECT active FROM intake_items WHERE id = ? AND profile_id = ?`)
+      .get(itemId, profileId) as { active: number } | undefined;
+    if (!item) return { kind: "stale-item" };
+    if (!item.active) return { kind: "inactive" };
+    if (firstDoseAmount == null) return { kind: "needs-dose" };
+    // THE ITEM'S FIRST DOSE ROW, BORN HERE, IN THIS TRANSACTION. Same shape the item
+    // form gives a PRN dose — an amount, no time of day, no calendar — through the
+    // same `insertIntakeDose` the form uses, so it is stamped and carries its first
+    // schedule version like any other. Its birth day is the day this administration
+    // is filed under, which is the day its schedule has to resolve for.
+    doseId = insertIntakeDose(
+      itemId,
+      {
+        amount: firstDoseAmount,
+        time_of_day: null,
+        food_timing: "any",
+        weekdays: null,
+        start_date: null,
+        end_date: null,
+      },
+      date
+    );
+    doseAmount = firstDoseAmount;
+  }
 
   if (expectedRedoseAdministrationId != null) {
     const state = redoseWindowState(
@@ -127,7 +172,7 @@ function logAdministrationTx(
         LIMIT 1`
     )
     .get(
-      dose.dose_id,
+      doseId,
       recordedAtStr,
       ADMIN_DEDUP_WINDOW_SEC,
       occurredAtStr,
@@ -140,10 +185,10 @@ function logAdministrationTx(
           notify_message_id, logged_via)
        VALUES (?,?,?,?,?,?,?,?)`
     ).run(
-      dose.dose_id,
+      doseId,
       itemId,
       date,
-      dose.amount,
+      doseAmount,
       recordedAtStr,
       occurredAtStr,
       notifyMessageId ?? null,
@@ -188,7 +233,13 @@ export function logAdministration(
   // the chat rather than the message it came from (#2418 part 2): the digest's offer
   // list is not a dose reminder, so its taps have to say where they happened or their
   // 🕐 chips surface on an unrelated reminder.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // WHAT TO BORN THE ITEM'S FIRST DOSE ROW WITH (#5981), when it has none. The PRN
+  // panel asks for it in place on a dose-less medication, and the row and this
+  // administration are then written in the ONE transaction below — a caregiver who
+  // is refused the time gets neither. Absent (the Telegram tap, the command palette,
+  // any surface that did not ask) a dose-less item answers `needs-dose` instead.
+  firstDoseAmount?: string | null
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
   const capturedAt = clockNow();
@@ -209,7 +260,8 @@ export function logAdministration(
       occurredAtStr,
       null,
       loggedVia,
-      notifyMessageId
+      notifyMessageId,
+      firstDoseAmount
     )
   );
 }
