@@ -55,7 +55,11 @@ function adminRows(
     .prepare(
       "SELECT dose_id, amount, status FROM intake_item_logs WHERE item_id = ? ORDER BY id"
     )
-    .all(itemId) as { dose_id: number; amount: string | null; status: string }[];
+    .all(itemId) as {
+    dose_id: number;
+    amount: string | null;
+    status: string;
+  }[];
 }
 
 describe("a PRN medication with no dose row (#5981)", () => {
@@ -188,7 +192,9 @@ describe("a PRN medication with no dose row (#5981)", () => {
 
   it("a door that states no amount answers needs-dose, not a deletion", () => {
     const { profileId, itemId } = seedDoseLessPrnMed();
-    expect(logAdministration(profileId, itemId, "page").kind).toBe("needs-dose");
+    expect(logAdministration(profileId, itemId, "page").kind).toBe(
+      "needs-dose"
+    );
     expect(doseRows(itemId)).toEqual([]);
     expect(adminRows(itemId)).toEqual([]);
   });

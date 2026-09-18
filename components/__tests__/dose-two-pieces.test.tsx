@@ -1694,21 +1694,22 @@ describe("a PRN row whose item has no dose row asks for the amount (#5981)", () 
   it.each([
     { arm: "the labeled chip", compactActions: false },
     { arm: "the icon-only arm", compactActions: true },
-  ])("$arm holds Give shut until an amount is typed", async ({
-    compactActions,
-  }) => {
-    row({ compactActions });
-    expect(give().disabled).toBe(true);
-    await act(async () =>
-      fireEvent.change(field(), { target: { value: "  " } })
-    );
-    // Whitespace is not a stated amount.
-    expect(give().disabled).toBe(true);
-    await act(async () =>
-      fireEvent.change(field(), { target: { value: "160 mg" } })
-    );
-    expect(give().disabled).toBe(false);
-  });
+  ])(
+    "$arm holds Give shut until an amount is typed",
+    async ({ compactActions }) => {
+      row({ compactActions });
+      expect(give().disabled).toBe(true);
+      await act(async () =>
+        fireEvent.change(field(), { target: { value: "  " } })
+      );
+      // Whitespace is not a stated amount.
+      expect(give().disabled).toBe(true);
+      await act(async () =>
+        fireEvent.change(field(), { target: { value: "160 mg" } })
+      );
+      expect(give().disabled).toBe(false);
+    }
+  );
 
   it("posts the typed amount with the dose, and states it on the chip", async () => {
     row({ profileId: 9 });

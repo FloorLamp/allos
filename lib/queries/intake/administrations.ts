@@ -125,7 +125,9 @@ function logAdministrationTx(
     doseAmount = dose.amount;
   } else {
     const item = db
-      .prepare(`SELECT active FROM intake_items WHERE id = ? AND profile_id = ?`)
+      .prepare(
+        `SELECT active FROM intake_items WHERE id = ? AND profile_id = ?`
+      )
       .get(itemId, profileId) as { active: number } | undefined;
     if (!item) return { kind: "stale-item" };
     if (!item.active) return { kind: "inactive" };

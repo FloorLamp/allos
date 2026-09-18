@@ -398,7 +398,12 @@ describe("logMedicationAdministration on an item with no dose row (#5981)", () =
     const itemId = seedDoseLessPrnMed(member.id);
     expect(
       await logMedicationAdministration(
-        fd({ id: itemId, offset: "now", amount: "160 mg", profileId: member.id })
+        fd({
+          id: itemId,
+          offset: "now",
+          amount: "160 mg",
+          profileId: member.id,
+        })
       )
     ).toEqual({ ok: true, outcome: "logged" });
     expect(doseAmounts(itemId)).toEqual(["160 mg"]);
@@ -454,15 +459,18 @@ describe("logMedicationAdministration on an item with no dose row (#5981)", () =
       post: { offset: "custom", time: "not a time", amount: "160 mg" },
       error: "Enter a valid time.",
     },
-  ])("$refusal creates neither the row nor the log", async ({ post, error }) => {
-    const { profile } = seedActor();
-    const itemId = seedDoseLessPrnMed(profile.id);
-    expect(
-      await logMedicationAdministration(fd({ id: itemId, ...post }))
-    ).toEqual({ ok: false, error });
-    expect(doseAmounts(itemId)).toEqual([]);
-    expect(adminRows(itemId)).toBe(0);
-  });
+  ])(
+    "$refusal creates neither the row nor the log",
+    async ({ post, error }) => {
+      const { profile } = seedActor();
+      const itemId = seedDoseLessPrnMed(profile.id);
+      expect(
+        await logMedicationAdministration(fd({ id: itemId, ...post }))
+      ).toEqual({ ok: false, error });
+      expect(doseAmounts(itemId)).toEqual([]);
+      expect(adminRows(itemId)).toBe(0);
+    }
+  );
 
   // The amount is the ITEM FORM's rule, called rather than restated — the same
   // refusal an add gets, because this post puts the number on the same schedule.
