@@ -859,17 +859,25 @@ export function emptyTrash(profileId: WriteAuthorizedProfileId): number {
 }
 
 // Every media file a set of holding rows captured — clips (#1290) AND photos
-// (#1847). One shape so the sweep and both by-hand purges reclaim BOTH kinds through
-// a single call rather than each remembering a list; a media core added later has one
+// (#1847). One shape so a path that destroys captures reclaims BOTH kinds through a
+// single call rather than each remembering a list; a media core added later has one
 // place to join. A malformed / legacy / non-registry payload (the bespoke
 // `administration` kind) never blocks a purge — its parse is caught and skipped,
 // because such a payload carries no reclaimable files.
+//
+// Collect and unlink are exported (#5957) because deleting a profile destroys its
+// captures inside the OWNED_TABLES sweep, and that action reads the payloads beside
+// its other path-collecting queries, before the sweep, then unlinks once the
+// transaction has committed — the same two moments the purges above run in, from a
+// module that must not re-derive the domain roots or the still-live probe by hand.
 interface CapturedFiles {
   video: CapturedVideoFile[];
   photo: CapturedPhotoFile[];
 }
 
-function capturedFilesOf(rows: readonly { payload: string }[]): CapturedFiles {
+export function capturedFilesOf(
+  rows: readonly { payload: string }[]
+): CapturedFiles {
   const out: CapturedFiles = { video: [], photo: [] };
   for (const r of rows) {
     try {
@@ -883,7 +891,7 @@ function capturedFilesOf(rows: readonly { payload: string }[]): CapturedFiles {
   return out;
 }
 
-function unlinkPurgedFiles(files: CapturedFiles): void {
+export function unlinkPurgedFiles(files: CapturedFiles): void {
   unlinkPurgedVideoFiles(files.video);
   unlinkPurgedPhotoFiles(files.photo);
 }
