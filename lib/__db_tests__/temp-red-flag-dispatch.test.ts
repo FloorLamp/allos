@@ -20,6 +20,7 @@ import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,
   setProfileSetting,
+  setProfileBirthdate,
   getProfileSettingKeysWithPrefix,
   resolveSituationId,
 } from "@/lib/settings";
@@ -32,7 +33,12 @@ import { logTemperatureCore } from "@/lib/temperature-log";
 import {
   dispatchTempRedFlagForEpisodeOpen,
   dispatchTempRedFlagForReading,
+  runTempRedFlag,
 } from "@/lib/notifications/temp-red-flag";
+import {
+  assembleIllnessEpisode,
+  episodeForProfileDate,
+} from "@/lib/illness-episode";
 import {
   getActiveSituations,
   setActiveSituations,
@@ -96,12 +102,13 @@ function makeSick(p: number, startDaysAgo: number): void {
 // `setActiveSituations`, which composes `syncOpenIllnessEpisode` inside its own write
 // transaction. Deliberately NOT `makeSick` above — that one inserts the episode row by
 // hand, which is fine for fixtures about an episode that already exists, and useless
-// for a test about the act of OPENING one.
-function openIllness(profileId: number): void {
+// for a test about the act of OPENING one. `startDay` is the day the bar was showing
+// when the door was walked (#5969); absent, the row starts today.
+function openIllness(profileId: number, startDay?: string): void {
   resolveSituationId(profileId, "Illness");
   const active = new Set(getActiveSituations(profileId));
   active.add("Illness");
-  setActiveSituations(profileId, [...active]);
+  setActiveSituations(profileId, [...active], startDay);
 }
 
 afterEach(() => {
@@ -337,5 +344,50 @@ describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
     openIllness(p);
     await dispatchTempRedFlagForEpisodeOpen(p);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // NO PUSH FOR A PAST-DAY READING (owner ruling 2026-09-18, #5969). The bar was
+  // showing Yesterday, the reading went in for yesterday, and the door opened the
+  // episode ON yesterday — so, unlike the stale crossing above, this reading IS the
+  // episode's latest. It still shows on the web surfaces; it does not go to a phone a
+  // day late, from the open or from the hourly tick. A crossing logged TODAY is a fresh
+  // finding and pushes as before.
+  it("an episode opened backdated onto yesterday's infant fever pushes nothing, from the open or the next tick; a new crossing today still does (#5969)", async () => {
+    const p = newProfile("TrfYesterdayOpen");
+    configureHA(p, CHILD_URL);
+    const fetchMock = stubFetch();
+    const date = today(p);
+    const yesterday = shiftDateStr(date, -1);
+    setProfileBirthdate(p, shiftDateStr(date, -60)); // ~2 months: the infant band
+
+    logTemperatureCore(p, 100.6, "F", yesterday, "page", "21:00");
+    openIllness(p, yesterday);
+    // The positive control: the reading is inside the episode and is its latest.
+    const episode = episodeForProfileDate(p, date);
+    expect(episode?.start).toBe(yesterday);
+    expect(assembleIllnessEpisode(p, episode!).latestTemp?.date).toBe(
+      yesterday
+    );
+
+    await dispatchTempRedFlagForEpisodeOpen(p);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The hourly tick asks the same orchestrator for the profile's today.
+    await runTempRedFlag(p, date);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Refused, not deferred: no marker was written for yesterday's key either.
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toEqual([]);
+
+    const fresh = logTemperatureCore(p, 100.8, "F", date, "page", "09:00");
+    expect(fresh.kind).toBe("logged");
+    await dispatchTempRedFlagForReading(p, 100.8);
+    expect(urls(fetchMock)).toEqual([CHILD_URL]);
+    const markers = getProfileSettingKeysWithPrefix(
+      p,
+      "notify_last_tempredflag_"
+    );
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toContain(`:${date}:infant_fever`);
   });
 });

@@ -19,6 +19,11 @@ import {
 } from "../../date";
 import type { ArrivalNight } from "../../notifications/digest-schedule";
 import { mainSleepPeriod } from "../../sleep-regularity";
+import {
+  BREATHING_RATE_METRIC,
+  breathingRateSourceRank,
+} from "../../breathing-rate";
+import type { BreathingRateByNight } from "../../sleep-summary";
 import { resolutionFor } from "./common";
 
 // Per-night MAIN-sleep stage totals (minutes), oldest→newest, pivoted from the four
@@ -556,4 +561,58 @@ export function canEditManualSleepOnDate(
 ): boolean {
   const row = getManualSleepEditability(profileId, date, date)[0];
   return row == null || row.editable === 1;
+}
+
+// The wearable breathing rates covering a calendar range of wake days (#5409), elected
+// to ONE reading per key and returned under BOTH keys the reading is stored with.
+//
+// THE SAME ELECTION THE RECORD'S SLEEP ROW MAKES, and deliberately not a second
+// spelling of it: `breathingRateSourceRank` is the shared rule — a Health Connect
+// reading states a real sleep window, a Fitbit Takeout one states a day label, so where
+// a night carries both, the windowed reading is the one the night shows. Both rows stay
+// readable per source in Data -> Manage; what this decides is which single number the
+// night STATES, and the hero and the Sleep row have to decide it the same way (#221).
+//
+// DATE-BOUNDED, never row-capped: the caller passes the one night's window (its stored
+// wake day and a day either side, because `metric_samples.date` is the SOURCE's
+// wake-day stamp and can sit a day off the profile-local one), so a dormant profile
+// whose latest night is two hundred days back reads the same three days as an active
+// one reads.
+export function getBreathingRatesForNights(
+  profileId: number,
+  from: string,
+  to: string
+): BreathingRateByNight {
+  const rows = db
+    .prepare(
+      `SELECT started_at, date, value, source FROM metric_samples
+        WHERE profile_id = ? AND metric = ? AND date >= ? AND date <= ?
+        ORDER BY id`
+    )
+    .all(profileId, BREATHING_RATE_METRIC, from, to) as {
+    started_at: string;
+    date: string;
+    value: number;
+    source: string | null;
+  }[];
+  const bySessionStart = new Map<string, number>();
+  const byWakeDay = new Map<string, number>();
+  const ranks = new Map<string, number>();
+  const keep = (
+    map: Map<string, number>,
+    prefix: string,
+    key: string,
+    row: { value: number; source: string | null }
+  ) => {
+    const rank = breathingRateSourceRank(row.source);
+    const held = ranks.get(prefix + key);
+    if (held != null && held <= rank) return;
+    ranks.set(prefix + key, rank);
+    map.set(key, row.value);
+  };
+  for (const row of rows) {
+    keep(bySessionStart, "s:", row.started_at, row);
+    keep(byWakeDay, "d:", row.date, row);
+  }
+  return { bySessionStart, byWakeDay };
 }

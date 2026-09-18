@@ -201,7 +201,15 @@ describe("the placement rule — clauses 1 and 3", () => {
       "body_fat_pct",
       "resting_hr",
     ]);
-    expect(streamKeysPlacedIn("metric_samples")).toEqual(["peak_flow_lmin"]);
+    // #5409 added the second: a wearable's nightly breathing rate, under its OWN
+    // canonical name. `Respiratory Rate` stays observation-only, one identity over.
+    expect(streamKeysPlacedIn("metric_samples").sort()).toEqual([
+      "peak_flow_lmin",
+      "respiratory_rate_bpm",
+    ]);
+    expect(
+      canonicalForStreamKey("metric_samples", "respiratory_rate_bpm")
+    ).toBe("Breathing Rate (sleep)");
     expect(canonicalForStreamKey("metric_samples", "peak_flow_lmin")).toBe(
       "Peak Expiratory Flow"
     );

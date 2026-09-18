@@ -29,6 +29,8 @@ import {
   setSituationIllnessType,
 } from "@/lib/settings/profile-attrs";
 import { openEpisodeIdForDate } from "@/lib/illness-episode-store";
+import { getSituationEvents } from "@/lib/settings";
+import { shiftDateStr } from "@/lib/date";
 import { seedActor, fd } from "@/lib/__action_tests__/harness";
 
 const ILLNESS = "Illness";
@@ -199,5 +201,48 @@ describe("illness flag off — the start doors keep working (#5271)", () => {
     const res = await activateIllnessForSymptoms();
     expect(res.episodeId).not.toBeNull();
     expect(openEpisodes(profile.id)).toHaveLength(1);
+  });
+});
+
+// ── THE DOOR'S START DAY (#5969) ─────────────────────────────────────────────
+//
+// The bar can be showing Yesterday, and the reading the fever offer answers was logged
+// for that day. Both doors post the bar's day; the row and its start event start there,
+// and today's read still finds the row. The day is bounded like every dated write: a
+// day after today is refused with no row written, and no day means today.
+describe("the door's start day (#5969)", () => {
+  it("a posted day starts the row and its start event there, and today's read finds it", async () => {
+    const { profile } = seedActor({ profileName: "yesterday-door" });
+    const yesterday = shiftDateStr(today(profile.id), -1);
+
+    const res = await activateIllnessForSymptoms(fd({ date: yesterday }));
+    expect(res.ok).toBe(true);
+    const rows = openEpisodes(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].start_date).toBe(yesterday);
+    expect(res.episodeId).toBe(rows[0].id);
+    expect(openEpisodeIdForDate(profile.id, yesterday)).toBe(rows[0].id);
+    expect(getSituationEvents(profile.id)).toEqual([
+      { date: yesterday, situation: ILLNESS, change: "start" },
+    ]);
+  });
+
+  it.each([
+    { name: "no posted day starts today", offset: null, opens: true },
+    { name: "a day after today is refused", offset: 1, opens: false },
+  ])("$name", async ({ offset, opens }) => {
+    const { profile } = seedActor({ profileName: `door-day-${offset}` });
+    const day = offset == null ? null : shiftDateStr(today(profile.id), offset);
+
+    const res = await activateIllnessForSymptoms(fd({ date: day }));
+    expect(res.ok).toBe(opens);
+    const rows = openEpisodes(profile.id);
+    if (opens) {
+      expect(rows).toHaveLength(1);
+      expect(rows[0].start_date).toBe(today(profile.id));
+    } else {
+      expect(rows).toEqual([]);
+      expect(getActiveSituations(profile.id)).not.toContain(ILLNESS);
+    }
   });
 });

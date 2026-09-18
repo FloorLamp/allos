@@ -15,6 +15,8 @@ import {
   parseBodyFatCsv,
   parseDailyRestingHrCsv,
   parseDailyVitalCsv,
+  emptyTakeoutParsed,
+  resolveTakeoutBreathingRateWindows,
   parseVendorScoreCsv,
   parseComputedTemperatureCsv,
   parseExerciseJson,
@@ -271,7 +273,12 @@ describe("daily vitals", () => {
     expect(out.bodyMetrics).toEqual([{ date: "2026-06-10", resting_hr: 67 }]);
   });
 
-  it("maps respiratory rate to the SAME canonical the HC parser writes", () => {
+  it("makes the daily respiratory rate a NIGHTLY SAMPLE, never a clinical vital", () => {
+    // #5409: `daily_respiratory_rate` is the same per-sleep-log number Health Connect
+    // carries stamped at the session end, labelled by the wake day. It is a
+    // `Breathing Rate (sleep)` reading in `metric_samples`, and it is NOT a
+    // `Respiratory Rate` observation — the clinical identity that keeps LOINC 9279-1
+    // and the 12-20 band belongs to a spot count taken while awake.
     const out = parseDailyVitalCsv(
       [
         "timestamp,breaths per minute,data source",
@@ -280,16 +287,63 @@ describe("daily vitals", () => {
       TZ,
       "respiratory_rate"
     );
-    expect(out.vitals).toEqual([
+    expect(out.vitals).toEqual([]);
+    // The day-bucket window every other Takeout daily aggregate keys on. The archive's
+    // own sleep logs narrow it to the night (`resolveTakeoutBreathingRateWindows`).
+    expect(out.samples).toEqual([
       {
-        external_id: "fitbit-takeout:Respiratory Rate:2026-06-11T12:00:00Z",
+        metric: "respiratory_rate_bpm",
         date: "2026-06-11",
-        category: "vitals",
-        name: "Respiratory Rate",
-        canonical: "Respiratory Rate",
-        value_num: 13.8,
-        unit: "breaths/min",
+        started_at: "2026-06-11T00:00:00.000Z",
+        ended_at: "2026-06-11T23:59:59.999Z",
+        value: 13.8,
       },
+    ]);
+  });
+
+  it("narrows a day-labelled reading onto that wake day's MAIN session", () => {
+    const parsed = emptyTakeoutParsed();
+    parsed.samples.push(
+      {
+        metric: "sleep_min",
+        date: "2026-06-11",
+        started_at: "2026-06-11T00:40:00.000Z",
+        ended_at: "2026-06-11T07:10:00.000Z",
+        value: 390,
+      },
+      // A nap on the same wake day, which must not win.
+      {
+        metric: "sleep_min",
+        date: "2026-06-11",
+        started_at: "2026-06-11T14:00:00.000Z",
+        ended_at: "2026-06-11T14:35:00.000Z",
+        value: 35,
+      },
+      {
+        metric: "respiratory_rate_bpm",
+        date: "2026-06-11",
+        started_at: "2026-06-11T00:00:00.000Z",
+        ended_at: "2026-06-11T23:59:59.999Z",
+        value: 13.8,
+      },
+      // A day with no session keeps the day window — never a clock, never an
+      // observation (#5409's ruling on Takeout's day labels).
+      {
+        metric: "respiratory_rate_bpm",
+        date: "2026-06-12",
+        started_at: "2026-06-12T00:00:00.000Z",
+        ended_at: "2026-06-12T23:59:59.999Z",
+        value: 14.1,
+      }
+    );
+    resolveTakeoutBreathingRateWindows(parsed);
+    expect(
+      parsed.samples
+        .filter((s) => s.metric === "respiratory_rate_bpm")
+        .map((s) => [s.date, s.started_at, s.ended_at])
+    ).toEqual([
+      ["2026-06-11", "2026-06-11T00:40:00.000Z", "2026-06-11T07:10:00.000Z"],
+      ["2026-06-12", "2026-06-12T00:00:00.000Z", "2026-06-12T23:59:59.999Z"],
     ]);
   });
 
@@ -671,7 +725,8 @@ describe("daily aggregates are dated by their LABEL, not by conversion", () => {
         ].join("\n"),
         TZ,
         "respiratory_rate"
-      ).vitals[0].date
+        // A nightly SAMPLE since #5409, and the day label is still read verbatim.
+      ).samples[0].date
     ).toBe("2026-06-11");
 
     expect(

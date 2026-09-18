@@ -94,6 +94,33 @@ export interface LastNightSummary {
   // Source of the chosen main session when known. Null means a manual or legacy
   // row whose provenance was not recorded.
   source: string | null;
+  // The night's wearable breathing rate, breaths per minute, or null when the night
+  // has none (#5409, owner ruling 2026-09-11: the hero states it as ONE CELL, ONLY
+  // WHEN PRESENT). Absent is the ordinary case — a manual logger never has one, and
+  // neither does a night slept without the band — so this is nullable rather than
+  // zero-filled, and the surfaces render nothing at all rather than a placeholder.
+  //
+  // FILLED BY THE READER, NOT COMPUTED HERE. The reading is a `metric_samples` row and
+  // this module is pure (no DB), so it arrives the way `stagesByDay` does: elected by
+  // the caller, keyed the way the reading is stored.
+  breathingRateBpm: number | null;
+}
+
+/**
+ * The night's breathing rates, already elected per key by the caller (#5409).
+ *
+ * TWO MAPS, BECAUSE THE READING HAS TWO KEYS, and the Sleep row on the record reads
+ * them in exactly this order (`lib/history.ts`). `bySessionStart` is the natural key —
+ * the sleep session's own `started_at`, which is what a Health Connect reading is
+ * stored under — so the number on this night is the number for THIS session.
+ * `byWakeDay` is the fallback for a reading that has no session to key on: a Fitbit
+ * Takeout archive states a day label, not a window. It is a fallback rather than the
+ * rule because `metric_samples.date` is the SOURCE's wake-day stamp and can sit a day
+ * off the profile-local one.
+ */
+export interface BreathingRateByNight {
+  bySessionStart: Map<string, number>;
+  byWakeDay: Map<string, number>;
 }
 
 // Group valid sessions by profile-local wake-day (calendar date of the END), the
@@ -150,7 +177,8 @@ export function lastNightSummary(
   sessions: SleepSession[],
   zone: ProfileDayZone,
   stagesByDay: Map<string, SleepStageMinutes> = new Map(),
-  opts: { baselineDays?: number } = {}
+  opts: { baselineDays?: number } = {},
+  breathingRates?: BreathingRateByNight
 ): LastNightSummary | null {
   const baselineDays = opts.baselineDays ?? USUAL_BASELINE_DAYS;
   const byDay = groupByWakeDay(sessions, zone);
@@ -218,6 +246,13 @@ export function lastNightSummary(
     baselineNights,
     stages: stagesByDay.get(latest) ?? null,
     source: period.main.source ?? null,
+    // THE MAIN SESSION'S OWN START, not the merged period's. A segmented night (#1191)
+    // spans its fragments, but the reading is stored against the session the vendor
+    // summarized, which is the main one — the same key `lib/history.ts` reads first.
+    breathingRateBpm:
+      breathingRates?.bySessionStart.get(period.main.start) ??
+      breathingRates?.byWakeDay.get(latest) ??
+      null,
   };
 }
 
@@ -256,6 +291,10 @@ export function latestDailySleepSummary(
     deltaMin,
     baselineNights,
     stages: null,
+    // A MANUAL LOGGER'S HERO IS UNCHANGED (#5409, the 2026-09-11 ruling). This path is
+    // the duration-only row that carries no window at all, so there is no session for a
+    // wearable reading to have been keyed to.
+    breathingRateBpm: null,
     source,
   };
 }
