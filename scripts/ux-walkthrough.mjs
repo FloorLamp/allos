@@ -1302,6 +1302,36 @@ async function measureReachCosts(browser) {
 // silently skipping — this is a seeing tool, a blind spot must be visible).
 // Tap spans here are SURFACE-LOCAL (they count from the action's owning page);
 // total user cost = the hub's reach cost + the action's span — audit.md says so.
+// THE DESKTOP QUICK-LOG PATH, measured by driving (#5942). The sidebar's one
+// log affordance is `+ Log` (components/SidebarLogButton.tsx): from `md` up it
+// opens an anchored panel holding components/QuickLogMenu.tsx, a segmented
+// track whose opening segment is route- and habit-dependent (lib/log-sheet.ts
+// `openingLogSegment`), so a row may need its segment shown first. Every
+// gesture a person makes on the way to the row is counted: the opener, the
+// segment when the row is not already showing, and the row itself. `segment`
+// is the row's home in lib/log-sheet.ts `LOG_SEGMENT_CENSUS`. Returns whether
+// the row was tapped; a missing control is reported by the helpers, not thrown.
+async function openQuickLogRow(page, id, segment) {
+  if (!(await tapClick(page.getByTestId("sidebar-log")))) return false;
+  const panel = page.getByTestId("sidebar-log-panel");
+  if (
+    !(await panel
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false))
+  ) {
+    if (tapSpan) tapSpan.unreached.push("sidebar-log-panel (did not open)");
+    return false;
+  }
+  const row = panel.getByTestId(`quick-log-${id}`);
+  if (!(await row.isVisible().catch(() => false))) {
+    if (!(await tapClick(panel.getByTestId(`log-sheet-segment-${segment}`))))
+      return false;
+    await page.waitForTimeout(300);
+  }
+  return tapClick(row);
+}
+
 async function workflowsJourney(browser) {
   // #1510 Part 2 — reach costs first (mobile drawer, measured by driving).
   await measureReachCosts(browser);
@@ -1316,14 +1346,12 @@ async function workflowsJourney(browser) {
   if (tapSpan) tapSpan.inputs++; // the query = one input
   await page.waitForTimeout(1200);
   await shot(page, "workflow-search-results");
-  // Scope the option fallback to the palette dialog — an unscoped role=option
-  // matches the sidebar calendar's hidden native <select> options, which pass
-  // count() but can never be clicked (verified the hard way: the click retried
-  // for 45s against <option>Jan</option> and killed the whole run).
-  const paletteResult = page
-    .getByTestId("palette-result")
-    .or(page.getByRole("dialog").getByRole("option"))
-    .first();
+  // Scope the option to the palette dialog — an unscoped role=option matches
+  // the sidebar calendar's hidden native <select> options, which pass count()
+  // but can never be clicked (verified the hard way: the click retried for 45s
+  // against <option>Jan</option> and killed the whole run). No result carries a
+  // testid; the dialog's options are the results (components/CommandPalette.tsx).
+  const paletteResult = page.getByRole("dialog").getByRole("option").first();
   if (await paletteResult.isVisible().catch(() => false)) {
     // `tapClick` reports an unclickable control rather than throwing (#5924), so
     // the "visible but not clickable" case is its return value now, not a catch.
@@ -1341,8 +1369,19 @@ async function workflowsJourney(browser) {
   }
 
   // Workflow: quick-log an activity (the sidebar's primary action).
+  //
+  // `+ Log` (components/SidebarLogButton.tsx, `sidebar-log`) replaced the old
+  // "Log activity" button (#3154): on desktop it opens an anchored panel holding
+  // the quick-log menu, whose Train segment carries the activity row. The
+  // activity editor itself is unchanged, so the follow-on below still measures
+  // the same commit-a-suggestion flow (#5942). FROM THE DASHBOARD, freshly
+  // loaded: the search step leaves whatever its first result opened — with a
+  // seeded profile that is the Add-supplement sheet — over the sidebar, and a
+  // covered opener is a 90s timeout, not a measurement.
+  await page.goto(`${BASE}/`);
+  await page.waitForTimeout(2000);
   beginTaps("log activity, retro (from Dashboard)");
-  await tapClick(page.getByRole("button", { name: "Log activity" }).first());
+  await openQuickLogRow(page, "log-activity", "train");
   await page.waitForTimeout(1000);
   await shot(page, "workflow-log-activity-editor");
   const form = page.getByTestId("activity-form");
@@ -1353,7 +1392,7 @@ async function workflowsJourney(browser) {
     // shows "Not saved — Add an activity to start" until one is added
     // (verified the hard way: activities table stayed empty).
     const box = form.getByPlaceholder(/What did you do/);
-    await tapFill(box, "Walking").catch(() => {});
+    await tapFill(box, "Walking");
     await page.waitForTimeout(800);
     await shot(page, "workflow-log-activity-filled");
     // Scope to the editor — an unscoped role=option match hits the sidebar
@@ -1367,32 +1406,44 @@ async function workflowsJourney(browser) {
     await page.waitForTimeout(800);
     // A cardio part needs a distance or duration before the draft saves
     // ("Not saved — Enter a distance, duration, or a start & end time").
-    await tapFill(form.getByTestId("cardio-duration"), "30").catch(() => {});
+    await tapFill(form.getByTestId("cardio-duration"), "30");
     await page.waitForTimeout(800);
     await shot(page, "workflow-log-activity-committed");
-    const done = page.getByRole("button", { name: "Done" });
+    // The footer's plain dismissal (components/activity-form/ActivityFormFooter.tsx):
+    // "Done" for an ordinary entry, "Close" beside "Finish workout" once the draft
+    // is finishable (today's date, no end time, savable). Both run the same
+    // save-aware `requestClose`; Finish is a different flow (a recap), so a retro
+    // log ends here. Scoped to the footer: the panel header has its own ✕.
+    const footer = page
+      .getByTestId("activity-overlay-panel")
+      .getByTestId("activity-form-footer");
+    const done = footer
+      .getByRole("button", { name: "Done", exact: true })
+      .or(footer.getByRole("button", { name: "Close", exact: true }));
     if (await done.count()) {
       await tapClick(done.first());
       endTaps();
       await page.waitForTimeout(1200);
       await shot(page, "workflow-log-activity-done");
-      // Honest completion check: the new activity should be visible on the
-      // Training Log. A missing entry means the activity did NOT save — say so.
-      await page.goto(`${BASE}/training`);
-      await page.waitForTimeout(1200);
-      await shot(page, "workflow-log-activity-training-log");
-      const visible = await page
-        .getByText(/Walking/i)
-        .first()
-        .isVisible()
-        .catch(() => false);
+      // Honest completion check: the saved session shows in the Dashboard's day
+      // list, which is the page the editor closed over. (/training opens on its
+      // Overview tab, which no longer lists sessions — they sit under its Log
+      // tab.) A missing entry means the activity did NOT save — say so.
+      const visible =
+        (await page
+          .getByText(/Walking/i)
+          .filter({ visible: true })
+          .count()
+          .catch(() => 0)) > 0;
       if (!visible)
         log(
-          "log-activity: 'Walking' NOT visible on /training — the log likely did not save; check shots"
+          "log-activity: 'Walking' NOT visible on the Dashboard after Done — the log likely did not save; check shots"
         );
     } else {
-      endTaps("incomplete — no Done button");
-      log("log-activity: no Done button found — left editor open (see shots)");
+      endTaps("incomplete — no Done/Close button");
+      log(
+        "log-activity: no Done/Close button in the editor footer — left editor open (see shots)"
+      );
       await page.keyboard.press("Escape");
     }
   } else {
@@ -1400,22 +1451,46 @@ async function workflowsJourney(browser) {
     log("log-activity: editor did not open — check shots");
   }
 
-  // Workflow: daily check-in (tap a mood on the dashboard card).
+  // Workflow: daily check-in. The dashboard's how-are-you card is gone; mood is
+  // a quick-entry sheet reached through the same `+ Log` panel (#2130, #5942):
+  // open the panel, show the Care segment, tap the mood row, tap a face. The
+  // face IS the write (components/mood/MoodForm.tsx `tap` → `submit`), and the
+  // sheet closes behind it, so the span ends at the face.
   await page.goto(`${BASE}/`);
   await page.waitForTimeout(2000);
-  const checkin = page.getByTestId("how-are-you-card");
-  if (await checkin.count()) {
-    await checkin.scrollIntoViewIfNeeded();
+  beginTaps("mood check-in (from Dashboard, via + Log)");
+  const moodSheet = page.getByTestId("quick-entry-sheet");
+  const checkin = moodSheet.getByTestId("mood-form");
+  if (
+    (await openQuickLogRow(page, "log-mood", "care")) &&
+    (await checkin
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false))
+  ) {
     await shot(page, "workflow-checkin-before");
-    beginTaps("mood check-in (on Dashboard)");
-    await tapClick(checkin.getByTestId("mood-tap-4"));
+    await tapClick(checkin.getByTestId("quick-mood-tap-4"));
     endTaps();
-    await page.waitForTimeout(1500);
+    // The logged state: `complete` fires only after the server answered ok (or
+    // an offline queue accepted the write under a different message), and it
+    // toasts "Logged <mood> · <day>" — there is no in-sheet marker because the
+    // sheet closes on save. The toast is the "reached the server" evidence.
+    const logged = await page
+      .getByTestId("toast")
+      .filter({ hasText: /^Logged/ })
+      .first()
+      .waitFor({ state: "visible", timeout: 8_000 })
+      .then(() => true)
+      .catch(() => false);
     await shot(page, "workflow-checkin-after");
-    if (!(await checkin.getByTestId("mood-server-logged").count()))
-      log("checkin: mood tap did not reach the server — check shots");
+    if (!logged)
+      log(
+        "checkin: no 'Logged …' toast after the mood tap — the check-in may not have reached the server; check shots"
+      );
   } else {
-    log("checkin: how-are-you-card not on dashboard — check shots");
+    endTaps("incomplete — mood sheet did not open");
+    log("checkin: mood sheet did not open from + Log — check shots");
+    await page.keyboard.press("Escape");
   }
 
   // Workflow: log a food group serving (Nutrition → Food tab one-tap bar).
@@ -1438,52 +1513,91 @@ async function workflowsJourney(browser) {
     log("log-food: food-log-bar not found — check shots");
   }
 
-  // Workflow: log a weight (Trends → Body census quick-add).
+  // Workflow: log a weight (Trends → Body census quick-add). On desktop the
+  // census's "Log" button (app/(app)/trends/LogMeasurementsPanel.tsx,
+  // `log-measurements-toggle`) opens the shared measurements form in a modal,
+  // already on the Body group, so the weight field and "Save measurements" are
+  // one tap away (#5942). The toggle is desktop-only; this journey runs at
+  // 1280×900. Phones reach the same form through the quick-entry sheet.
   await page.goto(`${BASE}/trends#body`);
   await page.waitForTimeout(1500);
-  const weight = page.locator("#bm-weight");
-  if (await weight.count()) {
-    await weight.scrollIntoViewIfNeeded();
+  const weightToggle = page.getByTestId("log-measurements-toggle");
+  if (await weightToggle.count()) {
+    await weightToggle.scrollIntoViewIfNeeded();
     await shot(page, "workflow-weight-before");
     beginTaps("log weight (on Trends → Body census)");
-    await tapFill(weight, "82");
-    await tapClick(page.getByRole("button", { name: "Save entry" }));
-    endTaps();
-    // The history row lands after the server revalidation round-trips — poll
-    // instead of a single racy check (a false "not saved" here cried wolf once).
-    let saved = false;
-    for (let i = 0; i < 8 && !saved; i++) {
-      await page.waitForTimeout(1000);
-      saved = await page
-        .getByText(/82(\.\d)?\s*kg/)
-        .first()
-        .isVisible()
-        .catch(() => false);
-    }
-    await shot(page, "workflow-weight-after");
-    if (!saved)
-      log(
-        "log-weight: 82 kg not visible after save — the entry may not have saved"
+    await tapClick(weightToggle);
+    const weight = page
+      .getByTestId("log-measurements-modal-body")
+      .locator("#m-weight");
+    if (
+      await weight
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false)
+    ) {
+      await tapFill(weight, "82");
+      await tapClick(
+        page.getByRole("button", { name: "Save measurements", exact: true })
       );
+      endTaps();
+      // The history row lands after the server revalidation round-trips — poll
+      // instead of a single racy check (a false "not saved" here cried wolf once).
+      // The field carries the login's own unit, so either unit is the saved value,
+      // and any VISIBLE match counts: `.first()` can land on a hidden copy.
+      let saved = false;
+      for (let i = 0; i < 12 && !saved; i++) {
+        await page.waitForTimeout(1000);
+        saved =
+          (await page
+            .getByText(/\b82(\.\d)?\s*(kg|lb)\b/)
+            .filter({ visible: true })
+            .count()
+            .catch(() => 0)) > 0;
+      }
+      await shot(page, "workflow-weight-after");
+      if (!saved)
+        log(
+          "log-weight: 82 kg/lb not visible after save — the entry may not have saved"
+        );
+    } else {
+      endTaps("incomplete — measurements modal did not open");
+      log("log-weight: measurements modal did not open — check shots");
+      await page.keyboard.press("Escape");
+    }
   } else {
-    log("log-weight: quick-add weight field not found — check shots");
+    log("log-weight: log-measurements-toggle not found — check shots");
   }
 
-  // Workflow: quick-add a medication (Medications → Add medication → Quick add).
+  // Workflow: add a medication by name (Medications → Add medication → Add).
+  // The quick/full tab pair is gone (#3216): the toggle opens ONE summary-first
+  // form (`medication-add-panel` → IntakeItemForm) whose only required fact is
+  // the name; every other field sits behind its own summary. So the minimal
+  // add is name + Add, and that is what this measures (#5942). Typing a
+  // catalog name opens the suggestion list over the form, and a person either
+  // picks from it or dismisses it before reaching Add — the dismissal is the
+  // gesture counted here.
   await page.goto(`${BASE}/medications`);
   await page.waitForTimeout(1500);
   await shot(page, "workflow-med-before");
   const medToggle = page.getByTestId("medication-add-toggle");
   if (await medToggle.count()) {
-    beginTaps("quick-add medication (on Medications)");
+    beginTaps("add medication, name only (on Medications)");
     await tapClick(medToggle);
     await page.waitForTimeout(800);
-    const quick = page.getByTestId("quick-add-medication");
-    if (await quick.count()) {
-      await tapFill(quick.getByPlaceholder(/Ibuprofen/), "Ibuprofen");
-      await tapFill(quick.getByTestId("quick-add-amount"), "200 mg");
+    const medPanel = page.getByTestId("medication-add-panel");
+    if (await medPanel.count()) {
+      const medName = medPanel.getByRole("combobox", { name: "Name" });
+      await tapFill(medName, "Ibuprofen");
+      await page.waitForTimeout(600);
+      if (await page.getByRole("listbox").count()) {
+        tapGesture(); // dismiss the suggestion list to reach Add
+        await medName.press("Escape");
+      }
       await shot(page, "workflow-med-filled");
-      await tapClick(quick.getByRole("button", { name: "Quick add" }));
+      await tapClick(
+        medPanel.getByRole("button", { name: "Add", exact: true })
+      );
       endTaps();
       await page.waitForTimeout(2000);
       await shot(page, "workflow-med-added");
@@ -1494,11 +1608,11 @@ async function workflowsJourney(browser) {
         .catch(() => false);
       if (!visible)
         log(
-          "add-medication: Ibuprofen not visible after Quick add — may not have saved"
+          "add-medication: Ibuprofen not visible after Add — may not have saved"
         );
     } else {
-      endTaps("incomplete — quick-add form did not open");
-      log("add-medication: quick-add form did not open — check shots");
+      endTaps("incomplete — add panel did not open");
+      log("add-medication: add panel did not open — check shots");
     }
   } else {
     log("add-medication: Add medication toggle not found — check shots");

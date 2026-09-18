@@ -1,12 +1,23 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import CockpitRecoveryHeader from "@/components/illness/CockpitRecoveryHeader";
+import IllnessCockpitBody from "@/components/illness/IllnessCockpitBody";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import IllnessNowGroup, {
   type IllnessContextCockpit,
@@ -17,7 +28,12 @@ import { CockpitPanelProvider } from "@/components/illness/CockpitPanelContext";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { episodeHref } from "@/lib/hrefs";
-import type { EpisodeCollapsedStatus } from "@/lib/illness-episode-format";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
+import type {
+  AssembledEpisode,
+  EpisodeCollapsedStatus,
+} from "@/lib/illness-episode-format";
+import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 
@@ -581,5 +597,130 @@ describe("the accordion row goes quiet when it is expanded (#5488 fix 1)", () =>
     const toggle = screen.getByTestId("illness-cockpit-toggle-e1");
     expect(toggle.getAttribute("aria-label")).toContain("Illness episode 1");
     expect(toggle.getAttribute("aria-label")).toContain("Example Child");
+  });
+});
+
+// ── THE MEDS SECTION DRAWS ON EVERY WRITABLE COCKPIT (#5970) ────────────────
+//
+// Home v3 (#5435 §3.1) kept the add on the acting profile, so a household member's
+// cockpit drew this section only while the member had a current as-needed med and
+// never offered Add medication. The owner reversed that on 2026-09-18: the section
+// renders under the same gate for everyone, and an add made on a member's cockpit
+// is that member's item. These cases are the ruling as a caregiver sees it.
+const EPISODE: AssembledEpisode = {
+  id: 900,
+  situation: "Stomach bug",
+  start: "2026-09-02",
+  end: null,
+  ongoing: true,
+  firstDay: "2026-09-02",
+  lastActiveDay: "2026-09-02",
+  asOf: "2026-09-02",
+  dayCount: 1,
+  symptoms: [],
+  distinctSymptomCount: 0,
+  temperatures: [],
+  maxTempF: null,
+  latestTemp: null,
+  medications: [],
+  totalAdministrations: 0,
+  conditions: [],
+  notes: [],
+};
+
+// What the gather hands a writable cockpit whose person has no as-needed med — the
+// reported case: the child's fever reducers were all in Past.
+const NO_MEDS_MODEL: DashboardIllnessCockpitModel = {
+  date: "2026-09-02",
+  temperatureUnit: "F",
+  timeZone: "UTC",
+  nowIso: "2026-09-02T12:00:00.000Z",
+  feverFree: null,
+  controls: {
+    staleNudge: null,
+    medReconciliation: [],
+    prnMeds: [],
+    antipyreticPrnMeds: [],
+    intakeOptions: {
+      medications: [],
+      medicationBrands: [],
+      supplements: [],
+      stacks: [],
+    },
+    intakeForm: INTAKE_CONTEXT,
+    initial: {},
+    initialNotes: {},
+    customNames: [],
+    rankedKeys: [],
+  },
+};
+
+function cockpit(props: { crossProfile: boolean; canWrite: boolean }) {
+  render(
+    <ConfirmProvider>
+      <IllnessCockpitBody
+        profileId={42}
+        episode={EPISODE}
+        status={STATUS}
+        crossProfile={props.crossProfile}
+        canWrite={props.canWrite}
+        ownsSharedProfileControls
+        hasPluralOpenEpisodes={false}
+        profileDisplayName="Example Child"
+        // The gather builds no controls for a viewer who cannot write.
+        model={
+          props.canWrite ? NO_MEDS_MODEL : { ...NO_MEDS_MODEL, controls: null }
+        }
+      />
+    </ConfirmProvider>
+  );
+}
+
+describe("the Meds section draws on every writable cockpit (#5970)", () => {
+  beforeAll(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+  });
+  afterAll(() => vi.unstubAllGlobals());
+
+  it.each([
+    ["a household member's", true, "42"],
+    ["the acting profile's own", false, null],
+  ])(
+    "%s cockpit with no as-needed meds offers the section, and its add is that person's",
+    async (_, crossProfile, postedProfile) => {
+      vi.mocked(addIntakeItem).mockClear();
+      cockpit({ crossProfile, canWrite: true });
+      const section = screen.getByTestId("cockpit-prn");
+      expect(
+        within(section).getByTestId("quick-log-prn-empty").textContent
+      ).toBe("No medications added.");
+      await act(async () =>
+        fireEvent.click(within(section).getByTestId("illness-add-medication"))
+      );
+      fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+        target: { value: "Ibuprofen" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
+      // THE MEMBER'S ITEM, NOT THE VIEWER'S: the form posts the cockpit's subject and
+      // the action write-gates that posted `profile_id`. The acting profile's own
+      // cockpit posts none and takes the active-profile path it always took.
+      expect(vi.mocked(addIntakeItem).mock.calls[0][0].get("profile_id")).toBe(
+        postedProfile
+      );
+    }
+  );
+
+  it("draws no section for a viewer who cannot write to the member", () => {
+    cockpit({ crossProfile: true, canWrite: false });
+    expect(screen.getByTestId("cockpit-recovery-header")).toBeTruthy();
+    expect(screen.queryByTestId("cockpit-prn")).toBeNull();
   });
 });

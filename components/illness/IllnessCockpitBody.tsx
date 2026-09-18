@@ -47,9 +47,10 @@ import { CockpitPanelProvider } from "@/components/illness/CockpitPanelContext";
 // household member's accordion cockpit.
 //
 // `crossProfile` is true for a household member (not the acting profile): the bar +
-// med controls + end button then carry the target `profileId` so their writes gate on
-// THAT profile (requireProfileWriteAccess) without switching. On the acting profile's
-// own cockpit it is false and every write takes the plain active-profile path.
+// med controls (the dose panel and the add-medication form alike) + end button then
+// carry the target `profileId` so their writes gate on THAT profile
+// (requireProfileWriteAccess) without switching. On the acting profile's own cockpit
+// it is false and every write takes the plain active-profile path.
 export default function IllnessCockpitBody({
   profileId,
   episode,
@@ -181,30 +182,32 @@ export default function IllnessCockpitBody({
               </div>
             )}
 
-            {canWrite &&
-              controls &&
-              ownsSharedProfileControls &&
-              (controls.prnMeds.length > 0 || !crossProfile) && (
-                <div
-                  className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
-                  data-testid="cockpit-prn"
-                >
-                  {/* Its inline quick-add reads the SAME ranked medication options the
+            {/* ON EVERY WRITABLE COCKPIT, the acting profile's or a member's (#5970,
+                owner ruling 2026-09-18, reversing #5435 §3.1's acting-profile-only
+                add): the person whose fever this card reports is the person whose
+                reducer gets added here, without switching profiles. */}
+            {canWrite && controls && ownsSharedProfileControls && (
+              <div
+                className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
+                data-testid="cockpit-prn"
+              >
+                {/* Its inline quick-add reads the SAME ranked medication options the
               Medications page offers (#1677) — resolved for the patient whose cockpit
-              this is, not for whoever is looking at it. */}
-                  <IntakeOptionsProvider options={controls.intakeOptions}>
-                    <IllnessMedicationLogger
-                      meds={controls.prnMeds}
-                      tz={timeZone}
-                      profileId={target}
-                      intakeContext={controls.intakeForm}
-                      canAdd={!crossProfile}
-                      nowIso={nowIso}
-                      yieldsTo={controls.antipyreticPrnMeds}
-                    />
-                  </IntakeOptionsProvider>
-                </div>
-              )}
+              this is, not for whoever is looking at it — and posts its add to the
+              same `target` every other write on this card posts to. */}
+                <IntakeOptionsProvider options={controls.intakeOptions}>
+                  <IllnessMedicationLogger
+                    meds={controls.prnMeds}
+                    tz={timeZone}
+                    profileId={target}
+                    intakeContext={controls.intakeForm}
+                    canAdd
+                    nowIso={nowIso}
+                    yieldsTo={controls.antipyreticPrnMeds}
+                  />
+                </IntakeOptionsProvider>
+              </div>
+            )}
           </div>
         </CockpitPanelProvider>
       </DoseOfferProvider>
