@@ -56,9 +56,15 @@ import {
   type IopFollowUpObservation,
 } from "./followup-iop";
 import { dentalFollowUpAdapter, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
+import {
+  breathingRateFollowUpAdapter,
+  BREATHING_RATE_FOLLOWUP_KIND,
+  type BreathingRateFollowUpSample,
+} from "./followup-breathing-rate";
 import { skinFollowUpAdapter, SKIN_FOLLOWUP_KIND } from "./followup-skin";
+import { getBreathingRateFollowUpNights } from "./queries/metrics";
 import { followUpSourceReason } from "./reasons";
-import { clinicalResultDetailHref } from "./hrefs";
+import { clinicalResultDetailHref, metricDetailHref } from "./hrefs";
 import type { UpcomingItem } from "./upcoming";
 import type {
   CarePlanItem,
@@ -142,6 +148,22 @@ const SKIN_DOMAIN: FollowUpDomain<SkinLesion> = {
   recordId: (l) => l.id,
   sourceIdOf: (c) => c.source_skin_lesion_id,
   hrefFor: () => "/records/specialty/skin",
+};
+
+// Breathing rate (#5409): the nightly wearable reading a person asked to recheck. Its
+// source row lives in `metric_samples`, so this is the first domain whose source FK is
+// the metric-sample pair (migration 20260916-care-plan-metric-sample-links) — the
+// follow-up + its series live on the breathing-rate metric page, and a LATER night
+// resolves it. A follow-up reaches this domain by being CARRIED here: it was tracked on
+// the reading while that reading was still a `medical_records` vital, and the #5409
+// adoption re-pointed it at the night's sample rather than letting the move break it.
+const BREATHING_RATE_DOMAIN: FollowUpDomain<BreathingRateFollowUpSample> = {
+  kind: BREATHING_RATE_FOLLOWUP_KIND,
+  adapter: breathingRateFollowUpAdapter,
+  loadRecords: getBreathingRateFollowUpNights,
+  recordId: (s) => s.id,
+  sourceIdOf: (c) => c.source_metric_sample_id,
+  hrefFor: () => metricDetailHref("breathing-rate"),
 };
 
 // The follow-up items for ONE domain: every OPEN, linked (source_kind = domain.kind),
@@ -256,5 +278,6 @@ export function followUpItems(
     ...domainFollowUpItems(profileId, today, carePlan, IOP_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, DENTAL_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, SKIN_DOMAIN),
+    ...domainFollowUpItems(profileId, today, carePlan, BREATHING_RATE_DOMAIN),
   ];
 }

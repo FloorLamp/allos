@@ -388,6 +388,11 @@
       "description": "Respiratory rate is the number of breaths taken per minute. It is a basic vital sign, and abnormal rates can signal respiratory, cardiac, or metabolic problems."
     },
     {
+      "name": "Breathing Rate (sleep)",
+      "full_name": "Breathing Rate (sleep)",
+      "description": "Your average breaths per minute across a night's sleep, measured by a wearable. It is steady for most people, so what is worth watching is a change from your own usual nights rather than any particular number. It is not the same measurement as a respiratory rate counted while you are awake, and the 12-20 range used for that does not apply to it."
+    },
+    {
       "name": "Resting Heart Rate",
       "abbreviation": "RHR",
       "full_name": "Resting Heart Rate",

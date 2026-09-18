@@ -135,6 +135,9 @@ describe("administrationOutcomeText", () => {
     [{ kind: "invalid-time" }, "out of range"],
     [{ kind: "inactive" }, "paused"],
     [{ kind: "stale-item" }, "out of date"],
+    // The Telegram /dose tap on an item with no dose row names the MISSING DOSE.
+    // Before #5981 it reached the sentence above and blamed a deletion.
+    [{ kind: "needs-dose" }, "has no dose set"],
   ];
   it.each(cases)(
     "names the med and states the honest outcome",
@@ -160,6 +163,7 @@ describe("administrationOutcomeText", () => {
     expect(administrationLogged({ kind: "invalid-time" })).toBe(false);
     expect(administrationLogged({ kind: "inactive" })).toBe(false);
     expect(administrationLogged({ kind: "stale-item" })).toBe(false);
+    expect(administrationLogged({ kind: "needs-dose" })).toBe(false);
   });
 });
 

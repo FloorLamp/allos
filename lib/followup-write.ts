@@ -24,6 +24,7 @@ import {
 } from "./followup-iop";
 import { dentalFollowUpTitle, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpTitle, SKIN_FOLLOWUP_KIND } from "./followup-skin";
+import { BREATHING_RATE_FOLLOWUP_KIND } from "./followup-breathing-rate";
 import type { DentalProcedure, SkinLesion } from "./types";
 import { biomarkerFamily } from "./canonical-name";
 import { normalizeResolution, normalizeSettleDisposition } from "./followup";
@@ -156,6 +157,14 @@ const RESOLVE_TARGET_BY_KIND: Record<
   [SKIN_FOLLOWUP_KIND]: {
     table: "skin_lesions",
     resolvedCol: "resolved_by_skin_lesion_id",
+  },
+  // Breathing rate (#5409): the source reading is a nightly `metric_samples` row and a
+  // LATER night resolves it, so the resolving link is the metric-sample pair migration
+  // 20260916-care-plan-metric-sample-links added. Nothing else about the resolve
+  // changes — the same core, the same action, dispatched on the same discriminator.
+  [BREATHING_RATE_FOLLOWUP_KIND]: {
+    table: "metric_samples",
+    resolvedCol: "resolved_by_metric_sample_id",
   },
 };
 
@@ -674,4 +683,29 @@ export function unlinkFollowUpsForImagingStudy(
         SET resolved_by_imaging_study_id = NULL
       WHERE profile_id = ? AND resolved_by_imaging_study_id = ?`
   ).run(profileId, studyId);
+}
+
+// NULL the follow-up chain links that point at a `metric_samples` row about to be
+// deleted (#199-#203, #5409), the metric-sample mirror of the four seams above. The
+// pair that carries a breathing-rate follow-up is declared `ON DELETE SET NULL`
+// (20260916-care-plan-metric-sample-links) because `metric_samples` has delete paths
+// that know nothing about follow-ups, and SQLite can only null the column the action
+// is declared ON — so the action alone leaves `source_kind` standing over an all-null
+// source, the dangling discriminator migration 184 exists to repair. This is the
+// ordinary path, which frees both; the action stays as the backstop for a path that
+// does not reach here. Called BEFORE the metric_samples DELETE. Profile-scoped.
+export function unlinkFollowUpsForMetricSample(
+  profileId: number,
+  sampleId: number
+): void {
+  db.prepare(
+    `UPDATE care_plan_items
+        SET source_kind = NULL, source_metric_sample_id = NULL
+      WHERE profile_id = ? AND source_metric_sample_id = ?`
+  ).run(profileId, sampleId);
+  db.prepare(
+    `UPDATE care_plan_items
+        SET resolved_by_metric_sample_id = NULL
+      WHERE profile_id = ? AND resolved_by_metric_sample_id = ?`
+  ).run(profileId, sampleId);
 }

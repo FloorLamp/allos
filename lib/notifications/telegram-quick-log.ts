@@ -729,11 +729,13 @@ export async function handleTempCommand(
         // NO MARKER IN THE BODY (#5650, pointer-only). This prompt used to end in
         // `(#temp:<pid>)`, which the reply arm read back to decide the family and the
         // attribution — and `${who}` above is a profile NAME a person types in-app,
-        // rendered ahead of it. The pointer this send records is the attribution now.
+        // rendered ahead of it. The pointer this send records is the attribution now,
+        // and the prompt MARK spread in below is what makes the chokepoint record it
+        // (#5955): the kind alone records nothing.
         body:
           `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
           `(add C or F to be explicit).`,
-        kind: "temp",
+        ...typedReplyPrompt("temp"),
       },
       pid
     );
@@ -1066,7 +1068,7 @@ export async function handleWeightCommand(
         body:
           `Reply to this message with ${who}weight — e.g. 82.5, or 180 lb ` +
           `(kg unless you say otherwise).`,
-        kind: "weight",
+        ...typedReplyPrompt("weight"),
       },
       pid
     );
@@ -1127,10 +1129,7 @@ async function settleWeightReply(
 // message that asked the question now answers it, in the chat position the reader is
 // already looking at. Dropping the POINTER is what closes the question — a prompt is
 // "open" exactly while its pointer stands, so an answered `/temp` can no longer swallow
-// the next bare number somebody types for an unrelated reason. The MARKER stays in the
-// edited body on purpose: it is the attribution on an explicit Reply, and a second
-// reading typed as a Reply to the same prompt is a legitimate thing to do (the marker was
-// always stateless), it simply has to be aimed rather than assumed.
+// the next bare number somebody types for an unrelated reason.
 //
 // DROPPING THE POINTER STRANDS NOTHING (#1779). What the edited prompt can carry is a
 // deep LINK — `/temp`'s episode button — which is a URL and makes no state claim; neither
@@ -1162,8 +1161,8 @@ async function settlePrompt(
       reply.profileId,
       ctx.chatId,
       () => rebuildMessage(reply.profileId, ctx.chatId, promptId, msg),
-      // The sentence, without the prompt's `kind` and without the episode link: a result
-      // stated in a new message is not a new question, and must not become one.
+      // The sentence, without the episode link: a result stated in a new message is not
+      // a new question. It carries no prompt mark, so it cannot become one (#5955).
       { title: msg.title, body: msg.body }
     );
   } finally {
@@ -1197,7 +1196,7 @@ function openTypedPrompts(
     senderId == null ? [] : [...openRefillPrompts(chatId, senderId)];
   for (const profileId of getProfilesByTelegramChatId(chatId)) {
     const date = today(profileId);
-    for (const family of ["temp", "weight"] as const)
+    for (const family of POINTER_RESOLVED_FAMILIES)
       for (const pointer of liveMessagePointersForKind(
         profileId,
         chatId,
@@ -1353,9 +1352,10 @@ export async function handleTypedReply(
     // it would put a name this chat is not entitled to into the chat. An unauthorized
     // refusal is chat-wide and says nothing about whose profile was quoted.
     //
-    // NO `kind` HERE, and that is load-bearing rather than incidental: a refusal carrying
-    // a typed-reply kind would record a pointer of its own and become answerable, which
-    // `recordPointer`'s chat-wide refusal does NOT catch on the authorized branch.
+    // NO PROMPT MARK HERE, so this is a sentence and not a question: `recordPointer`
+    // records an answerable pointer only for a marked message (#5955), and a refusal
+    // that carried the family's kind would still record none. No `kind` either — a
+    // refusal is not a re-issuable command reply and claims nothing to reconcile.
     await sendTelegramMessage(
       chatId,
       { title: REFUSAL_TITLE[reply.family], body: outcome.refusal },
@@ -1679,8 +1679,10 @@ import { fmtTemp } from "../units";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
+  POINTER_RESOLVED_FAMILIES,
   pointerResolvedFamily,
   resolveTypedReply,
+  typedReplyPrompt,
   TYPED_REPLY_AMBIGUOUS,
   TYPED_REPLY_REACTION,
   TYPED_REPLY_UNAUTHORIZED,

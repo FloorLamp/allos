@@ -462,7 +462,7 @@ describe("a sheet showing the day shows ONE person's day", () => {
 // exactly the drift this ruling exists to close.
 describe("the count line's day word", () => {
   const today = "2026-07-08";
-  const sheetOn = (day: string) =>
+  const sheetOn = (day: string, todayCount = 1) =>
     render(
       <FormatPrefsProvider prefs={{ timeFormat: "12h", dateFormat: "mdy" }}>
         <DayContextProvider
@@ -472,7 +472,7 @@ describe("the count line's day word", () => {
           backing={{ kind: "state", initialDay: day }}
         >
           <BoundedDaySwitcher />
-          <StoolTypeControl todayCount={1} today={today} />
+          <StoolTypeControl todayCount={todayCount} today={today} />
         </DayContextProvider>
       </FormatPrefsProvider>
     );
@@ -505,6 +505,35 @@ describe("the count line's day word", () => {
     expect(tab).toBeTruthy();
     expect(tab).not.toMatch(/today|yesterday/i);
     expect(count()).toBe(`1 on ${tab}`);
+  });
+
+  // THE ZERO STATE TAKES THE SAME WORD (owner ruling (b), 2026-09-16). It stayed a
+  // literal "Nothing logged today." after ruling 5 moved the counted line, so a
+  // past-day sheet with no rows contradicted its own tab in the one place left.
+  describe("with nothing logged", () => {
+    const empty = () =>
+      loadStoolDay.mockResolvedValue({ readings: [], dayCount: 0 });
+
+    it("says today on today", async () => {
+      empty();
+      sheetOn(today, 0);
+      await waitFor(() => expect(count()).toBe("Nothing logged today."));
+    });
+
+    it("says yesterday on yesterday, never today", async () => {
+      empty();
+      sheetOn(shiftDateStr(today, -1), 0);
+      await waitFor(() => expect(count()).toBe("Nothing logged yesterday."));
+    });
+
+    it("names an earlier day with the label its own tab is showing", async () => {
+      empty();
+      sheetOn(shiftDateStr(today, -2), 0);
+      const tab = screen.getByTestId("day-context-2").textContent;
+      expect(tab).not.toMatch(/today|yesterday/i);
+      await waitFor(() => expect(count()).toBe(`Nothing logged on ${tab}.`));
+      expect(rows()).toHaveLength(0);
+    });
   });
 });
 

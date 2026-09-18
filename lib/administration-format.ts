@@ -129,6 +129,8 @@ export function administrationOutcomeText(
       return "Not logged — that time is out of range. Pick a time today.";
     case "inactive":
       return `Not logged — ${name} is paused. Resume it in the app.`;
+    case "needs-dose":
+      return `Not logged — ${name} has no dose set. Add the amount in the app.`;
     case "stale-item":
     default:
       return "Not logged — that med is out of date. Open the app.";

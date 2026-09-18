@@ -40,7 +40,7 @@ import {
 } from "./freshness";
 import { TREND_METRIC_SLUGS, type TrendMetricSlug } from "./trend-metrics";
 
-// The named floors, so 27 metrics declare a CADENCE rather than 27 unrelated integers.
+// The named floors, so 28 metrics declare a CADENCE rather than 28 unrelated integers.
 // A metric picks the shape of its own arrival; the numbers live here, once.
 
 // Only meaningful right now. A thermometer reading is taken because of a question being
@@ -88,6 +88,31 @@ export const TREND_METRIC_PRESENTATION_FLOORS: Record<
   // ── Streams: a wearable, a daily derivation, a daily check-in. ──
   hrv: STREAM,
   "skin-temp": STREAM,
+  // The sleeping breathing rate (#5409) takes STREAM, and the argument is its own
+  // rather than "the siblings have it".
+  //
+  // ITS ARRIVAL IS NOT DAILY, it is per SLEEP SESSION, which is a stricter condition
+  // than the rest of this block: steps and HR arrive from a band worn while awake, and
+  // this one needs the band worn THROUGH THE NIGHT. So the gap that must not be treated
+  // as a lapse is real and ordinary — a charging night, a night the band came off, a
+  // week away without it. That argues against ACUTE (7 days), which would stamp an
+  // as-of date on a value that is still your usual figure after one ordinary trip.
+  //
+  // IT IS STILL A STREAM, not an occasion, which is what rules out the longer floors.
+  // Nobody decides to take a breathing rate; it arrives or it does not. A fortnight
+  // with no reading therefore does not mean "you have not got round to it" the way a
+  // six-week-old tape measurement does — it means nothing has been worn to bed in two
+  // weeks and the series has stopped. SELF_MEASURED (45 days) would let a number from
+  // a wearable retired a month ago sit in the headline reading as current, which is the
+  // exact defect #2615 reported.
+  //
+  // SO IT LANDS ON THE SAME FOURTEEN DAYS AS `hrv` AND `skin-temp`, and that is a
+  // conclusion rather than a copy — those two are the right comparison because they are
+  // the same arrival: one value per sleep session from the same device, absent on the
+  // same nights, present on the same nights. Three readings off one night ageing out on
+  // three different days would be three registries disagreeing about one night, which
+  // is the drift this module's header refuses one card over.
+  "breathing-rate": STREAM,
   "peak-flow": STREAM,
   sun: STREAM,
   steps: STREAM,

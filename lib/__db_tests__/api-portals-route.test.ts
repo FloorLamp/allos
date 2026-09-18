@@ -226,7 +226,7 @@ describe("GET /api/documents/portals — the disclosure boundary", () => {
   it("carries no patient labels — mapped, ignored or pending", async () => {
     const raw = await (await GET(req(writerToken))).text();
     const body = JSON.parse(raw);
-    const strings = allStrings(body).join(" ");
+    const strings = allStrings(body).join("\u0000");
     expect(strings).not.toContain("TESTPATIENT");
     expect(strings).not.toContain("BOUND");
     expect(strings).not.toContain("IGNORED");
