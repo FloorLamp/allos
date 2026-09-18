@@ -3,6 +3,7 @@
 // knows nothing about supplements and channels know nothing about features.
 
 import type { MessageBody } from "./rich-text";
+import type { TypedReplyPromptMark } from "./typed-reply";
 import type { UnitPrefs } from "../settings";
 
 export type ChannelId = "telegram" | "push" | "home-assistant" | "email";
@@ -101,6 +102,11 @@ export interface NotificationMessage {
   // automation can route by kind and a per-kind toggle can gate delivery. Unset
   // reads as "other".
   kind?: NotificationKind;
+  // Present on a message that asks for a TYPED reply — the `/temp` and `/weight` prompts
+  // (#5955). Minted only by `typedReplyPrompt` (./typed-reply), which is what lets the
+  // Telegram send chokepoint record an answerable pointer for the message; the other
+  // channels ignore it. Absent, the message is not a question whatever its kind says.
+  prompt?: TypedReplyPromptMark;
 }
 
 // Per-send delivery routing a caller may need on TOP of the profile's own configured

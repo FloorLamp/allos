@@ -34,7 +34,7 @@ import { today, writeTx } from "../db";
 import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
-import { awaitsTypedReply } from "./typed-reply";
+import { pointerResolvedFamily } from "./typed-reply";
 import {
   PartialDeliveryError,
   type DispatchOptions,
@@ -281,34 +281,35 @@ function recordPointer(
   // number to the sender's single open prompt, and both need to be able to name the
   // prompt message afterwards. `/temp` and `/weight` carried neither a keyboard nor a
   // prose claim, so nothing could find or edit them once they were sent.
-  if (keyboard.length === 0 && !prose && !awaitsTypedReply(msg.kind)) return;
-  // WHAT THIS REFUSAL ENFORCES, EXACTLY (#5650): a pointer whose kind awaits a typed
-  // reply is addressed to ONE PROFILE. That is the whole of it. It does NOT enforce that
-  // such a pointer belongs to a prompt.
   //
-  // Why it is here. `typedPromptAt` resolves an explicit Reply for `temp` and `weight`
-  // from the kind on this row, because those families hold no server-side operation state
-  // — there is no offer row to key on the way refill's receipt is keyed on its own
-  // `promptId`. A chat-wide send is the shape that breaks the addressing: `resolveSubject`
-  // gives a CHAT_WIDE message the chat's LOWEST profile rather than nobody, so a notice
-  // that merely inherited its command's kind — the ordinary convention in
-  // `telegram-quick-log.ts`, which sibling commands follow — would record a `temp` pointer
-  // under a real profile and become answerable. Refusing the row is what stops that.
-  //
-  // WHAT IT DOES NOT COVER, named because the gap is inside the contract itself. A
-  // PER-PROFILE send carrying one of these kinds still records an answerable pointer, and
-  // two such sends live in the typed-reply arm: the acknowledgement fallback and the
-  // refusal message. Both are safe today because they carry no `kind` at all — the
-  // fallback because its parameter is narrowed to `Pick<NotificationMessage, "title" |
-  // "body">`, which is a TYPE and a spec assertion rather than anything enforced here.
-  // Adding a kind at either site, or at any other per-profile send, would make a
-  // non-prompt answerable and this guard would not see it. The structural version — a
-  // rule over which send sites may carry these kinds — is its own piece of work.
-  //
-  // Held by `telegram-quicklog.test.ts`'s "a chat-wide send never becomes an answerable
-  // prompt", which goes red if this refusal is removed.
-  if (chatWide && awaitsTypedReply(msg.kind)) {
-    log.info("pointer refused: chat-wide send carrying a typed-reply kind", {
+  // THE MESSAGE SAYS SO ITSELF, AND ITS KIND DOES NOT (#5955, ruling 36). A prompt
+  // carries the mark `typedReplyPrompt` (./typed-reply) mints, which the two prompt
+  // builders spread in; this function never reads a kind to decide that a message is a
+  // question. A pointer whose kind `pointerResolvedFamily` reads as a family IS an open
+  // prompt to the reply arm, so an unmarked message of such a kind — a notice inheriting
+  // its command's kind, a refusal, an acknowledgement fallback handed the whole prompt —
+  // gets no pointer at all, keyboard or not. Refusing the row, rather than recording it
+  // under another kind, is what keeps the reply arm's one reader of `kind` honest.
+  const prompt = msg.prompt != null;
+  if (!prompt && pointerResolvedFamily(msg.kind)) {
+    log.info(
+      "pointer refused: unmarked message carrying a prompt family's kind",
+      {
+        profile: profileId,
+        chat: String(chatId),
+        kind: msg.kind,
+      }
+    );
+    return;
+  }
+  if (keyboard.length === 0 && !prose && !prompt) return;
+  // A PROMPT IS ADDRESSED TO ONE PROFILE. `resolveSubject` gives a CHAT_WIDE message the
+  // chat's LOWEST profile rather than nobody, so a marked prompt sent chat-wide would
+  // record its pointer under a real profile and a number anyone typed would write that
+  // person's reading. Refusing the row is what stops that. Held by
+  // `telegram-quicklog.test.ts`'s "a chat-wide send never becomes an answerable prompt".
+  if (chatWide && prompt) {
+    log.info("pointer refused: chat-wide send carrying a typed-reply prompt", {
       profile: profileId,
       chat: String(chatId),
       kind: msg.kind,
@@ -822,10 +823,10 @@ export async function rebuildMessage(
 // saying which happened, in the vocabulary the sweep and the rotation already use.
 //
 // THE FALLBACK IS A SENTENCE, NOT A SECOND PROMPT: the message's OWN title and body,
-// and nothing else of it (`Pick`, so the words cannot drift from the edit's). Carrying the
-// prompt's own `kind` would record a new pointer (`recordPointer`'s `awaitsTypedReply`
-// arm above) and leave a fresh open prompt sitting in the chat — the same double-log
-// this path exists to close, one message further along.
+// and nothing else of it (`Pick`, so the words cannot drift from the edit's). It carries
+// no prompt mark, so whatever a caller hands it, `recordPointer` above writes no
+// answerable pointer for it — the mark, not this parameter's shape, is what keeps a
+// stated result from becoming a fresh open prompt one message further along (#5955).
 export async function acknowledgeInPlace(
   label: string,
   profileId: number,

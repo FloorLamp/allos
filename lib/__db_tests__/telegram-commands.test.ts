@@ -388,8 +388,9 @@ describe("/weight on demand (#1895)", () => {
     await say("/weight");
     expect(sendMock).toHaveBeenCalledTimes(1);
     const msg = sendMock.mock.calls[0][1] as { body: unknown; kind?: string };
-    // The KIND is what makes the send chokepoint record a pointer for this message
-    // (`awaitsTypedReply`), and that pointer is the whole of the prompt's identity now.
+    // The prompt MARK the builder spreads in (`typedReplyPrompt`, #5955) is what makes
+    // the send chokepoint record a pointer for this message, the kind is what the reply
+    // arm reads the pointer as, and that pointer is the whole of the prompt's identity.
     expect(msg.kind).toBe("weight");
     // NO MARKER. `(#weight:<pid>)` used to end this body and carry the attribution; it is
     // retired, because the body also renders a profile NAME a person types in-app and a

@@ -53,49 +53,58 @@
 // family, which is why refill carries one and the two quick-logs do not.
 export type TypedReplyFamily = "temp" | "weight" | "refill";
 
-// The notification kinds whose message is a prompt awaiting a typed reply, so the send
-// chokepoint records a pointer for it (`telegram.ts`'s `recordPointer`). THAT POINTER IS
-// THE ONLY THING THAT MAKES THE PROMPT ANSWERABLE: it is how the registry finds the
-// prompt an explicit Reply quoted, how a bare number finds the one open question, and
-// how the acknowledgement edits the prompt in place afterwards. Before #5650 `/temp` and
-// `/weight` carried neither a keyboard nor a prose claim, so nothing could name them
-// after the send. The refill prompt carries buttons and has always recorded one.
+// ---- The prompt mark ----------------------------------------------------------
 //
-// A KIND IS NOT A PROMPT, and nothing here treats it as one. Three different `refill`
-// messages record a pointer — the low-supply reminder, the receipt prompt and the
-// `Supply update` rebuild — and only one of them is a question. That is exactly why the
-// registry below is keyed on the OPERATION's own record of its prompt message rather
-// than on a pointer's `kind`: a reminder's message id is no offer's `promptId`, so a
-// reply to it resolves to nothing instead of settling a receipt nobody opened.
-export const TYPED_REPLY_PROMPT_KINDS: readonly string[] = [
-  "temp",
-  "weight",
-  "refill",
-];
+// WHAT MAKES A MESSAGE A PROMPT (#5955, ruling 36). A bot message takes a typed reply
+// exactly when the send chokepoint recorded a pointer for it whose kind is one of
+// `POINTER_RESOLVED_FAMILIES` below: that pointer is how the registry finds the prompt an
+// explicit Reply quoted, how a bare number finds the one open question, and how the
+// acknowledgement edits the prompt in place afterwards. `recordPointer` (./telegram)
+// writes such a pointer ONLY for a message carrying this mark. An unmarked message whose
+// kind names one of those families records no pointer at all, whatever else it carries,
+// and a marked message sent chat-wide is refused as before. Answerability is a property
+// of the MESSAGE, declared where the message is built, and never read off its kind.
+//
+// WHY A MARK AND NOT THE KIND. `temp` and `weight` are ordinary notification kinds: the
+// per-kind delivery toggle, the (chat, kind) re-issue rule and the reconcile registry all
+// key on them, so any send may carry one, and a command's notices conventionally inherit
+// its kind. #5898's falsifying passes reached the same defect through that door twice —
+// a notice, a refusal or an acknowledgement fallback carrying the prompt's kind recorded
+// a pointer, became a question nobody asked, and a number typed under it wrote a
+// reading. A census over send sites was declined (#5955): it is a hand-kept list over
+// the cases someone enumerated, and this mark is the structural answer instead.
+//
+// WHAT THE TYPE REFUSES, AND WHAT IT DOES NOT. The mark is a branded object, the
+// discipline `WriteAuthorizedProfileId` (lib/auth.ts) applies to a profile id, and
+// `typedReplyPrompt` is where it is minted, together with the kind it belongs to. A send
+// site cannot spell it: `prompt: {}`, `prompt: true` and `prompt: "temp"` do not
+// typecheck. The residual is a forge — a cast to `TypedReplyPromptMark`, or a value
+// passed through `any` — which the type cannot see. That is stated here, not banned.
+declare const TYPED_REPLY_PROMPT: unique symbol;
+export type TypedReplyPromptMark = { readonly [TYPED_REPLY_PROMPT]: true };
+const TYPED_REPLY_PROMPT_MARK = Object.freeze({}) as TypedReplyPromptMark;
 
-export function awaitsTypedReply(kind: string | null | undefined): boolean {
-  return kind != null && TYPED_REPLY_PROMPT_KINDS.includes(kind);
+// What a prompt builder spreads into its message: the family's kind and the mark, as
+// one pair, so a builder does not spell the kind and the mark separately.
+export function typedReplyPrompt(family: PointerResolvedFamily): {
+  kind: PointerResolvedFamily;
+  prompt: TypedReplyPromptMark;
+} {
+  return { kind: family, prompt: TYPED_REPLY_PROMPT_MARK };
 }
 
 // The families whose prompt IS its pointer, so the pointer's `kind` may name the family
-// for an explicit Reply. This is the ONE place a kind is read as a family, and it is a
-// strict subset of the list above rather than the same list.
+// for an explicit Reply. This is the ONE place a kind is read as a family.
 //
 // `temp` and `weight` hold no server-side operation state, so there is no operation row
 // to key admissibility on the way refill's receipt is keyed on its own `promptId`.
 //
-// WHAT IS ENFORCED, AND WHAT IS NOT. One thing is enforced: a pointer of these kinds is
-// addressed to ONE PROFILE, because the send chokepoint refuses to record a pointer for a
-// chat-wide message whose kind awaits a typed reply (`recordPointer`, ./telegram; held by
-// `telegram-quicklog.test.ts` — "a chat-wide send never becomes an answerable prompt").
-// PROMPTNESS IS NOT ENFORCED. Nothing stops a PER-PROFILE send from carrying one of these
-// kinds and so minting an answerable pointer for a message that asked nothing — including
-// two sends in the arm below, the acknowledgement fallback and the refusal, which are
-// safe only because they carry no `kind`, the fallback by a narrowed parameter type and a
-// spec assertion. So this list rests on a guard that covers one shape and on a convention
-// for the other, and a send site added tomorrow can break it. Reading it as stronger than
-// that is how the wrong sentence gets written here: the structural version — a rule over
-// which send sites may carry these kinds — is its own piece of work, not this comment.
+// WHAT MAKES THAT SOUND. A pointer of these kinds is written only for a message carrying
+// the prompt mark above and addressed to one profile: `recordPointer` (./telegram)
+// refuses an unmarked message of these kinds and a marked one sent chat-wide. So a row of
+// this kind is a question the bot asked, and reading its kind as the family reads the
+// bot's own record. Held by `telegram-quicklog.test.ts`: "a chat-wide send never becomes
+// an answerable prompt" and "an unmarked send never becomes an answerable prompt".
 //
 // Keying these two on promptness the way refill is keyed was considered and refused: it
 // would mean inventing an operation record for families that deliberately have none,
@@ -106,15 +115,10 @@ export function awaitsTypedReply(kind: string | null | undefined): boolean {
 // `Supply update` rebuild — and only one is a question. A receipt is found through its
 // offer row's `promptId` instead, so a number typed under a reminder settles nothing.
 //
-// THE SUBSET RELATION IS MACHINE-CAUGHT, but not here and not by the type. Dropping a
-// kind from `TYPED_REPLY_PROMPT_KINDS` while leaving it in this list typechecks, and this
-// module's own spec stays green; `telegram-commands.test.ts` goes red — six cases,
-// including "prompts with a kind that records the pointer the reply resolves against".
-// That is the file to look at when this pair disagrees — executed, not assumed.
-//
 // A fifth family (#5124) belongs here only if it can live under the same limits. If it
 // cannot, it owes a lookup of its own, the way refill does.
 export const POINTER_RESOLVED_FAMILIES = ["temp", "weight"] as const;
+export type PointerResolvedFamily = (typeof POINTER_RESOLVED_FAMILIES)[number];
 
 export function pointerResolvedFamily(
   kind: string | null | undefined
