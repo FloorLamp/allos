@@ -1,8 +1,8 @@
 // DB INTEGRATION TIER — Data → Trash (issue #2013).
 //
 // The pure suite (lib/__tests__/trash.test.ts) covers the derivation. This file opens
-// a real (temp) SQLite handle and proves the four things a Trash has to get right and
-// a 15-second toast never had to:
+// a real (temp) SQLite handle and proves what a Trash has to get right and a
+// 15-second toast never had to:
 //
 //   1. the retention sweep honours the CONFIGURED window rather than a hardcoded day;
 //   2. restoring from the Trash is the SAME core as the toast's undo (one restore
@@ -10,12 +10,17 @@
 //   3. "Delete permanently" removes exactly that capture — and Empty trash clears
 //      only the ACTING profile's, leaving a household member's captures standing;
 //   4. a bulk correction, which shares the table but is an inverted EDIT, is neither
-//      listed nor swept up by either by-hand purge.
+//      listed nor swept up by either by-hand purge;
+//   5. deleting the PROFILE reclaims the media its captures still hold (#5957) — it
+//      destroys them through a table sweep rather than a purge, so it is the path
+//      that can drop a holding row without reclaiming what the row pointed at.
 //
-// The clip-file half (a purge must unlink the captured video files) lives in
-// lib/__db_tests__/video-write.test.ts, where the video fixtures already are.
+// The rest of the clip-file half (a purge must unlink the captured video files) lives
+// in lib/__db_tests__/video-write.test.ts, where the video fixtures already are.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { db, today } from "@/lib/db";
 import {
   captureDelete,
@@ -31,6 +36,14 @@ import {
   MAX_TRASH_RETENTION_DAYS,
 } from "@/lib/retention";
 import { BULK_CORRECTION_KIND } from "@/lib/bulk-correction";
+import { storeVideoFiles } from "@/lib/video/store";
+import { deleteProfile } from "@/app/(app)/settings/family/actions";
+import {
+  actAs,
+  createLogin,
+  createProfile,
+  fd,
+} from "../__action_tests__/harness";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import type { WriteAuthorizedProfileId } from "@/lib/auth";
 
@@ -304,5 +317,81 @@ describe("a bulk correction shares the table but is not a deleted row", () => {
     backdate(correctionId, "-2 days");
     sweepDeletedRows(1);
     expect(holdingRows(correctionId)).toBe(0);
+  });
+});
+
+describe("deleting a profile reclaims the media its Trash still holds", () => {
+  // #5957: a row deleted through Trash is gone from symptom_videos / activity_videos,
+  // so deleteProfile's live-table path collection cannot see it — its clip and poster
+  // are named only inside the capture's payload, and the OWNED_TABLES sweep removes
+  // that capture without reading it. The files then sit under data/uploads with
+  // nothing in the database pointing at them: a right-to-delete residue, not a
+  // display defect. The reclaim itself is the Trash purges' own, so what is proved
+  // here is that the profile delete REACHES it.
+  const abs = (rel: string) => path.resolve(process.cwd(), rel);
+
+  // A profile with one activity whose clip + poster are on disk, captured into Trash.
+  // Returns the two absolute paths the capture now exclusively names.
+  function captureClipIntoTrash(
+    profileId: number,
+    tag: string
+  ): { clip: string; poster: string } {
+    const act = newActivity(profileId, `${tag} clip owner`);
+    const stored = storeVideoFiles("activity", profileId, {
+      contentHash: `hash-${tag}`,
+      mime: "video/mp4",
+      bytes: Buffer.from(`clip-${tag}`),
+      poster: Buffer.from(`poster-${tag}`),
+    });
+    expect(stored.posterPath).toBeTruthy();
+    db.prepare(
+      `INSERT INTO activity_videos
+         (profile_id, activity_id, stored_path, poster_path, content_hash, mime_type)
+       VALUES (?, ?, ?, ?, ?, 'video/mp4')`
+    ).run(profileId, act, stored.storedPath, stored.posterPath, `hash-${tag}`);
+    expect(captureDelete("activity", profileId, act)).toBeTruthy();
+    // The delete+undo window deliberately leaves the files standing, and the live
+    // table no longer names them — the state the profile delete has to handle.
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) c FROM activity_videos WHERE profile_id = ?`)
+        .get(profileId)
+    ).toEqual({ c: 0 });
+    return { clip: abs(stored.storedPath), poster: abs(stored.posterPath!) };
+  }
+
+  it("unlinks a captured clip and poster, and leaves another profile's alone", async () => {
+    const admin = createLogin({ role: "admin" });
+    const acting = createProfile("TRASH-DELPROF Admin");
+    const victim = createProfile("TRASH-DELPROF Victim");
+    const bystander = createProfile("TRASH-DELPROF Bystander");
+    actAs(admin, acting);
+
+    const victimFiles = captureClipIntoTrash(victim.id, "victim");
+    // POSITIVE CONTROL: an identical capture on a profile that is NOT deleted. Its
+    // files must still be on disk after the delete, so an assertion that can only
+    // ever report "missing" cannot pass this test.
+    const bystanderFiles = captureClipIntoTrash(bystander.id, "bystander");
+
+    expect(fs.existsSync(victimFiles.clip)).toBe(true);
+    expect(fs.existsSync(victimFiles.poster)).toBe(true);
+
+    const res = await deleteProfile(fd({ id: victim.id }));
+    expect(res.ok).toBe(true);
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) c FROM deleted_rows WHERE profile_id = ?`)
+        .get(victim.id)
+    ).toEqual({ c: 0 });
+
+    expect(fs.existsSync(victimFiles.clip)).toBe(false);
+    expect(fs.existsSync(victimFiles.poster)).toBe(false);
+    expect(fs.existsSync(bystanderFiles.clip)).toBe(true);
+    expect(fs.existsSync(bystanderFiles.poster)).toBe(true);
+
+    // The bystander's own Trash still reclaims them, unchanged by any of this.
+    emptyTrash(gated(bystander.id));
+    expect(fs.existsSync(bystanderFiles.clip)).toBe(false);
+    expect(fs.existsSync(bystanderFiles.poster)).toBe(false);
   });
 });

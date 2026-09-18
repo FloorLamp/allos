@@ -44,6 +44,7 @@ import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
 import { deleteApiTokensForLogin } from "@/lib/api-tokens";
 import { deleteProfileData } from "@/lib/profile-delete";
+import { capturedFilesOf, unlinkPurgedFiles } from "@/lib/undo-delete-db";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { photoDomainRoot, thumbSiblingPath } from "@/lib/photo/store";
 import { recordAudit } from "@/lib/audit";
@@ -293,6 +294,20 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   const symptomVideoPaths = collectVideoPaths("symptom_videos");
   const activityVideoPaths = collectVideoPaths("activity_videos");
 
+  // Media whose only remaining reference is a Trash capture (#5957). A row deleted
+  // through Trash is no longer in the live tables every collection above reads, so
+  // none of them can see its files: the paths survive only inside the capture's
+  // payload, and the OWNED_TABLES sweep below removes that capture without reading
+  // it — leaving the clip and its poster on disk with nothing pointing at them. Read
+  // the payloads here, while the captures still exist, and reclaim them after the
+  // transaction through the Trash purges' own helpers, which contain each path under
+  // its domain root and skip any file a live row still references.
+  const capturedTrashFiles = capturedFilesOf(
+    db
+      .prepare(`SELECT payload FROM deleted_rows WHERE profile_id = ?`)
+      .all(id) as { payload: string }[]
+  );
+
   // Disable foreign_keys for the whole subtree sweep (issue #729). The app
   // connection runs foreign_keys = ON, and OWNED_TABLES lists medical_documents
   // BEFORE its FK children (conditions/encounters/procedures/family_history/
@@ -353,6 +368,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   deleteFilesUnderRoot(TRAINING_PHOTO_UPLOAD_ROOT, trainingPhotoPaths);
   deleteFilesUnderRoot(SYMPTOM_VIDEO_UPLOAD_ROOT, symptomVideoPaths);
   deleteFilesUnderRoot(ACTIVITY_VIDEO_UPLOAD_ROOT, activityVideoPaths);
+  unlinkPurgedFiles(capturedTrashFiles);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);
 
   // Sweep the same files from the OFF-VOLUME uploads mirror (#625) so a deleted
