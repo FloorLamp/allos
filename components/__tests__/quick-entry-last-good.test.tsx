@@ -553,6 +553,63 @@ function renderVisitSheet(
   };
 }
 
+// THE DESKTOP PANEL'S HOST (#5902 slice 2). Above `md`, `SidebarLogButton` renders
+// `QuickLogMenu` inside an `AnchoredPanel` and reaches the forms through the
+// provider's DIRECT overlay — `useQuickEntry().open`, no visit to invalidate — which
+// is why slice 1's listener never reached it. This is that shape: the menu stays
+// mounted across logs (the panel does not close behind a row), so its open-time
+// gather keeps the food windows published while a form is up.
+function Panel({
+  slotBoundaries = SLOT_BOUNDARIES,
+}: {
+  slotBoundaries?: { midday: number; evening: number } | null;
+}) {
+  const { open, noteSlotBoundaries } = useQuickEntry();
+  useEffect(() => {
+    noteSlotBoundaries(slotBoundaries);
+  }, [noteSlotBoundaries, slotBoundaries]);
+  return (
+    <>
+      <button data-testid="panel-food" onClick={() => open("food")}>
+        Food
+      </button>
+      <button data-testid="panel-stool" onClick={() => open("stool")}>
+        Stool
+      </button>
+    </>
+  );
+}
+
+function renderPanel({
+  slotBoundaries,
+  timeZone = "UTC",
+}: {
+  slotBoundaries?: { midday: number; evening: number } | null;
+  timeZone?: string;
+} = {}) {
+  return render(
+    <ToastProvider>
+      <DirtyFormProvider>
+        <ProfileDaysBoundary
+          clocks={
+            new Map([
+              [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone }],
+            ])
+          }
+        >
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING]}
+            actingProfileId={ACTING.id}
+          >
+            <Panel slotBoundaries={slotBoundaries} />
+          </QuickEntryProvider>
+        </ProfileDaysBoundary>
+      </DirtyFormProvider>
+    </ToastProvider>
+  );
+}
+
 beforeEach(() => {
   loadQuickEntry.mockReset();
   loadQuickEntryIntakeContext.mockReset().mockResolvedValue({
@@ -1902,5 +1959,120 @@ describe("a resume across a slot or day boundary (#5902)", () => {
     vi.setSystemTime(new Date("2026-09-04T19:00:00Z"));
     resume();
     await waitFor(() => expect(onInvalidated).toHaveBeenCalled());
+  });
+
+  // THE DESKTOP PANEL, slice 2 of the same ruling (PM, 2026-09-16). Same behaviour,
+  // different host: these forms are the provider's DIRECT overlay, whose `open` state
+  // and draft subtree are the provider's own, so the visit's listener above cannot
+  // see them. The boundary reads, the two event-time snapshots and the draft guard are
+  // the SAME module (components/quick-entry/visit-resume.ts); only the host differs.
+  describe("the desktop panel", () => {
+    it("closes the panel in a later food window, and the next open names it", async () => {
+      loadQuickEntry
+        .mockResolvedValueOnce(food("2026-09-03", 5, "2026-09-03", "Morning"))
+        .mockResolvedValueOnce(food("2026-09-03", 5, "2026-09-03", "Evening"));
+      renderPanel();
+      fireEvent.click(screen.getByTestId("panel-food"));
+      expect(
+        (await screen.findByTestId("food-host-probe")).getAttribute("data-slot")
+      ).toBe("Morning");
+
+      background();
+      vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+      resume();
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("quick-entry-sheet")).toBeNull()
+      );
+
+      // The next row tap gathers fresh, and that gather is what the bar's
+      // "Add to <slot>" header seeds from.
+      fireEvent.click(screen.getByTestId("panel-food"));
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("food-host-probe").getAttribute("data-slot")
+        ).toBe("Evening")
+      );
+      expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+    });
+
+    it("closes the panel across local midnight inside one food window", async () => {
+      loadQuickEntry.mockResolvedValue(stool());
+      vi.setSystemTime(new Date("2026-09-03T23:50:00Z"));
+      renderPanel();
+      fireEvent.click(screen.getByTestId("panel-stool"));
+      await screen.findByTestId("quick-entry-stool");
+
+      background();
+      vi.setSystemTime(new Date("2026-09-04T00:10:00Z"));
+      resume();
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("quick-entry-sheet")).toBeNull()
+      );
+    });
+
+    it("leaves the panel and its typed input alone inside one window on one day", async () => {
+      loadQuickEntry.mockResolvedValue(stool());
+      renderPanel();
+      fireEvent.click(screen.getByTestId("panel-stool"));
+      await screen.findByTestId("quick-entry-stool");
+      fireEvent.click(await screen.findByTestId("stool-when-toggle"));
+      const time = await screen.findByTestId("stool-when-time");
+      fireEvent.change(time, { target: { value: "08:10" } });
+
+      background();
+      vi.setSystemTime(new Date("2026-09-03T08:20:00Z"));
+      resume();
+      await act(async () => {});
+
+      expect(screen.getByTestId("quick-entry-sheet")).toBeTruthy();
+      expect(
+        (screen.getByTestId("stool-when-time") as HTMLInputElement).value
+      ).toBe("08:10");
+      expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the panel open over unsaved input, boundary or not", async () => {
+      foodDraft.unsaved = true;
+      loadQuickEntry.mockResolvedValue(
+        food("2026-09-03", 5, "2026-09-03", "Morning")
+      );
+      renderPanel();
+      fireEvent.click(screen.getByTestId("panel-food"));
+      await screen.findByTestId("food-host-probe");
+
+      background();
+      vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+      resume();
+      await act(async () => {});
+
+      expect(screen.getByTestId("quick-entry-sheet")).toBeTruthy();
+      // The header still names the window it gathered in — the same accepted cost
+      // the phone sheet pays for not prompting on resume.
+      expect(
+        screen.getByTestId("food-host-probe").getAttribute("data-slot")
+      ).toBe("Morning");
+    });
+
+    it("dispatches nothing from a closed panel or while the document is hidden", async () => {
+      loadQuickEntry.mockResolvedValue(stool());
+      renderPanel();
+
+      background();
+      vi.setSystemTime(new Date("2026-09-03T19:00:00Z"));
+      resume();
+      await act(async () => {});
+      expect(screen.queryByTestId("quick-entry-sheet")).toBeNull();
+      expect(loadQuickEntry).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId("panel-stool"));
+      await screen.findByTestId("quick-entry-stool");
+
+      background();
+      vi.setSystemTime(new Date("2026-09-04T19:00:00Z"));
+      await act(async () => {});
+      expect(screen.getByTestId("quick-entry-sheet")).toBeTruthy();
+    });
   });
 });
