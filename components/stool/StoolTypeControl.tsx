@@ -619,16 +619,18 @@ export default function StoolTypeControl({
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"
       >
         {/* THE RULED COUNT LINE: `2 today` beneath the rows, in the day switcher's own
-            word for the day the sheet is standing on. The zero state keeps its own
-            sentence — with no rows above it, `0 <day>` would be the sheet printing the
-            absence of a fact beside a control that already says what a tap does
-            (#5431's argument for dropping a zero count); the PM ruled it as built on
-            2026-09-11 and ruling 5 does not reach it. */}
+            word for the day the sheet is standing on. The zero state is a sentence
+            rather than `0 <day>` — with no rows above it, a zero count would be the
+            sheet printing the absence of a fact beside a control that already says
+            what a tap does (#5431's argument for dropping a zero count) — but it takes
+            the SAME day word from the same helper (owner ruling (b), 2026-09-16): a
+            literal "today" on a past-day sheet contradicted the tab pressed above it
+            exactly as the counted line once did. */}
         <RollingNumber
           value={count}
           testId="quick-entry-stool-rolling-count"
           format={(value) =>
-            value === 0 ? "Nothing logged today." : `${value} ${dayWord}`
+            value === 0 ? `Nothing logged ${dayWord}.` : `${value} ${dayWord}`
           }
         />
       </p>
