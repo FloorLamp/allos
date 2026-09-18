@@ -78,8 +78,10 @@ export type TypedReplyFamily = "temp" | "weight" | "refill";
 // discipline `WriteAuthorizedProfileId` (lib/auth.ts) applies to a profile id, and
 // `typedReplyPrompt` is where it is minted, together with the kind it belongs to. A send
 // site cannot spell it: `prompt: {}`, `prompt: true` and `prompt: "temp"` do not
-// typecheck. The residual is a forge — a cast to `TypedReplyPromptMark`, or a value
-// passed through `any` — which the type cannot see. That is stated here, not banned.
+// typecheck. Two residuals remain and the type sees neither: a forge — a cast to
+// `TypedReplyPromptMark`, or a value passed through `any` — and a COPY, since spreading
+// a marked message into another one carries the mark with it, the way `...msg` at a send
+// site would. Both are stated here, not banned.
 declare const TYPED_REPLY_PROMPT: unique symbol;
 export type TypedReplyPromptMark = { readonly [TYPED_REPLY_PROMPT]: true };
 const TYPED_REPLY_PROMPT_MARK = Object.freeze({}) as TypedReplyPromptMark;
