@@ -461,7 +461,7 @@ function declOf(facts: FileFacts, name: string): Decl | undefined {
 
 // Every (mod, exportName) under which `sym` can be imported, following named
 // re-exports, `export *` barrels, and import-then-export.
-function visibleAs(sym: SymbolRef): Array<[string, string]> {
+export function visibleAs(sym: SymbolRef): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const seen = new Set<string>();
   const queue: Array<[string, string]> = [];
@@ -498,7 +498,10 @@ function visibleAs(sym: SymbolRef): Array<[string, string]> {
   return out;
 }
 
-function consumersOf(sym: SymbolRef): ReachEdge[] {
+/** Every top-level declaration that references `sym`: same-module siblings, and
+ * importers under any name `visibleAs` finds. Exported for the write-core census
+ * (scripts/write-core-census.mjs), whose tranche split is exactly this question. */
+export function consumersOf(sym: SymbolRef): ReachEdge[] {
   const edges: ReachEdge[] = [];
   const seen = new Set<string>();
   const add = (to: SymbolRef, line: number): void => {
