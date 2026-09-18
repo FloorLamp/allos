@@ -340,6 +340,14 @@ export async function logMedicationAdministration(
     // deletion that did not happen.
     case "needs-dose":
       return formError("Add the dose amount for this medication, then log it.");
+    // The amount posted with this tap borns a first dose row only for an as-needed
+    // medication (#5985) — the same items the gather offers a Give chip for. No
+    // surface posts this, so it is the hand-crafted post, answered with the rule it
+    // broke rather than with a deletion or a request for the amount it did send.
+    case "not-prn-medication":
+      return formError(
+        "This isn't an as-needed medication — add its dose on the item, then log it."
+      );
     case "stale-item":
     default:
       return formError("Couldn't log that — it may have been removed.");
