@@ -22,6 +22,8 @@ import {
   trackImagingFollowUpCore,
   trackLabFollowUpCore,
 } from "@/lib/followup-write";
+import { IMAGING_FOLLOWUP_KIND } from "@/lib/followup-imaging";
+import { LABS_FOLLOWUP_KIND } from "@/lib/followup-labs";
 import { seedActor, createProfile } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -393,6 +395,7 @@ describe("Delete all frees a tracked follow-up's link (#5966)", () => {
       key: "medical_records",
       what: "a flagged lab reading",
       sourceColumn: "source_medical_record_id",
+      kind: LABS_FOLLOWUP_KIND,
       seed: addLabReading,
       track: (profileId: number, rowId: number) =>
         trackLabFollowUpCore(profileId, rowId, 91, DAY),
@@ -401,6 +404,7 @@ describe("Delete all frees a tracked follow-up's link (#5966)", () => {
       key: "imaging_studies",
       what: "an imaging finding",
       sourceColumn: "source_imaging_study_id",
+      kind: IMAGING_FOLLOWUP_KIND,
       seed: addImagingStudy,
       track: (profileId: number, rowId: number) =>
         trackImagingFollowUpCore(profileId, rowId, 180, DAY),
@@ -492,6 +496,81 @@ describe("Delete all frees a tracked follow-up's link (#5966)", () => {
       ).toThrow(/FOREIGN KEY constraint failed/);
       // Rolled back — nothing was deleted, which is why the person was stuck.
       expect(rowCount(key, profile.id)).toBe(1);
+    }
+  );
+
+  it.each(CASES)(
+    "$key: a link naming ANOTHER profile's surviving row is left alone",
+    async ({ key, kind, seed, sourceColumn, track }) => {
+      // WHERE THE ID SET IS READ FROM, measured rather than argued. The seam frees by
+      // row id within the profile it is handed, so the only thing keeping it off a row
+      // the wipe is not removing is that the ids come off the acting profile's own rows
+      // in the table being deleted. Two other shapes — dropping the `t.profile_id`
+      // predicate, or reading the ids off `care_plan_items` instead — delete the same
+      // rows and free the same profile's own links, so a fixture where each profile
+      // links only to its own rows cannot tell them apart. What separates them is an id
+      // a wrong shape reaches that names a row OUTLIVING the delete, so the wrong free
+      // is still visible afterwards.
+      //
+      // Both wrong shapes need a way in, and it is not the same way. B's row enters a
+      // `t.profile_id`-free scan only through a follow-up of B's OWN, since the join
+      // still matches `c.profile_id = t.profile_id`; it enters a care_plan_items-anchored
+      // scan only through the planted link of A's. The fixture holds both, so neither
+      // wrong shape is hidden by the predicate the other one keeps.
+      const { login, profile: a } = seedActor();
+      const b = createProfile(`Cross ${key}`, login.id);
+
+      // A's own tracked follow-up, so the freeing half of the contract still runs.
+      const aRow = seed(a.id);
+      const aTracked = track(a.id, aRow);
+      expect(aTracked.kind).toBe("created");
+      if (aTracked.kind !== "created") return;
+
+      // B's row, which A's Delete all does not remove, and B's own follow-up on it.
+      const bRow = seed(b.id);
+      const bTracked = track(b.id, bRow);
+      expect(bTracked.kind).toBe("created");
+      if (bTracked.kind !== "created") return;
+
+      // A care-plan item of A's naming B's row. PLANTED BY HAND, because no write path
+      // will produce it: `trackLabFollowUpCore` and its siblings re-read the source
+      // under `profile_id` and answer "invalid" for another profile's row, which is the
+      // isolation that makes this state absent in practice. The FK carries no profile
+      // predicate, so the row is schema-legal — `foreign_key_check` below says so — and
+      // that is exactly why the query shape, not the schema, is what holds the line.
+      const crossId = Number(
+        db
+          .prepare(
+            `INSERT INTO care_plan_items
+               (description, category, planned_date, status, source, source_kind,
+                ${sourceColumn}, profile_id)
+             VALUES ('Planted cross-profile link', 'follow-up', ?, NULL, NULL, ?, ?, ?)`
+          )
+          .run(DAY, kind, bRow, a.id).lastInsertRowid
+      );
+      expect(rawDb.pragma("foreign_key_check")).toEqual([]);
+
+      const res = await deleteAllDatasetRows(key);
+      expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+
+      // A's own link is freed, both halves.
+      expect(followUpLinks(aTracked.carePlanItemId)).toMatchObject({
+        source_kind: null,
+        [sourceColumn]: null,
+      });
+      // A's link to B's row is NOT: the row is still there to be named, so freeing it
+      // would be this action reaching past the rows it removed.
+      expect(followUpLinks(crossId)).toMatchObject({
+        source_kind: kind,
+        [sourceColumn]: bRow,
+      });
+      // B's row and B's own link are untouched as well.
+      expect(rowCount(key, b.id)).toBe(1);
+      expect(followUpLinks(bTracked.carePlanItemId)).toMatchObject({
+        source_kind: kind,
+        [sourceColumn]: bRow,
+      });
+      expect(rawDb.pragma("foreign_key_check")).toEqual([]);
     }
   );
 
