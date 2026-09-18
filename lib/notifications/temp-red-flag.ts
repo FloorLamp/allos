@@ -179,11 +179,12 @@ export async function dispatchTempRedFlagForReading(
 // argument because the episode's own LATEST reading is the subject — the same one
 // `detectEpisodeTempRedFlag` would judge on any other path.
 //
-// IT CANNOT REACH BACK PAST THE EPISODE. `assembleIllnessEpisode` windows readings to
-// `[episode.start, …]`, and `syncOpenIllnessEpisode` opens a row starting on the
-// profile-local day of the toggle — so opening an episode today can only ever surface
-// a reading taken today. A fever from three days ago is outside the window, is not
-// `latestTemp`, and produces no finding: this door cannot resurrect a stale crossing.
+// THE WINDOW IS THE EPISODE'S, NOT TODAY'S. `assembleIllnessEpisode` windows readings to
+// `[episode.start, …]`; a reading logged before that start is not `latestTemp` and
+// produces no finding. Since #5969 the symptom bar's door can open the row on the day
+// the bar was showing, so the reading that walked the door is inside the window on
+// whichever day it was logged for. That door refuses a start day after the profile's
+// today (`activateIllnessForSymptoms`); this module compares no finding `date` to today.
 //
 // The per-finding marker and the suppression bus are unchanged, so this can no more
 // double-send than the reading path can — the two share one orchestrator and one key.

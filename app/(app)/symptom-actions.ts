@@ -15,6 +15,7 @@ import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 import {
   queueTempRedFlagDispatch,
   queueTempRedFlagForEpisodeOpen,
@@ -519,6 +520,13 @@ export async function suggestSymptomsFromText(
 // It answers with the OPEN EPISODE ID so a presentation can route to the cockpit or the
 // episode page without a second read. Where the offer that walks this door is DRAWN is
 // not decided here — a door, not a placement.
+//
+// THE EPISODE STARTS ON THE POSTED DAY (#5969). The bar can be showing Yesterday, and
+// the reading this door answers was logged for that day; an episode opened today would
+// start after it, and the reading that opened the episode would sit outside its
+// `[start_date, …]` window. So the door posts the bar's day and the row starts there.
+// The day is validated as every dated write is (`isPastWriteAccepted`: a real day no
+// later than the profile's today); absent means today, as every undated post here does.
 export type IllnessActivationResult = FormResult & {
   // The open episode covering the subject's day after activation. Null only if the
   // situation write did not produce one (nothing in this path should, but the reader
@@ -537,10 +545,14 @@ export async function activateIllnessForSymptoms(
   } else {
     profileId = (await requireWriteAccess()).profile.id;
   }
+  const todayStr = today(profileId);
+  const startDay = formData ? parseDate(formData, profileId) : todayStr;
+  if (!isPastWriteAccepted(todayStr, startDay))
+    return formError("Enter a valid date.");
   const active = new Set(getActiveSituations(profileId));
   if (!active.has(BUILTIN_ILLNESS_SITUATION)) {
     active.add(BUILTIN_ILLNESS_SITUATION);
-    setActiveSituations(profileId, [...active]);
+    setActiveSituations(profileId, [...active], startDay);
   }
   revalidateRoute("/");
   revalidateRoute("/nutrition");
@@ -553,8 +565,10 @@ export async function activateIllnessForSymptoms(
   // Fire-and-forget on the write path, like its reading-keyed sibling: a send failure
   // lands in the error log, never in this response.
   queueTempRedFlagForEpisodeOpen(profileId);
+  // Read for TODAY whatever day the row started on: `openEpisodeIdForDate` wants
+  // `start_date <= date`, so a start no later than today always covers it.
   return {
     ...formOk(),
-    episodeId: openEpisodeIdForDate(profileId, today(profileId)),
+    episodeId: openEpisodeIdForDate(profileId, todayStr),
   };
 }

@@ -1196,7 +1196,18 @@ export const getActiveSituations = snapshotCached(
 // upserted into the one NOCASE vocabulary and their `active` flag toggled; a name
 // not previously seen becomes a new row. The dated start/stop transitions are still
 // logged (Trends annotations) for chartability.
-export function setActiveSituations(profileId: number, situations: string[]) {
+//
+// `startDay` is the profile-local day a situation ACTIVATED by this call starts on:
+// the illness-episode row it opens and its `situation_events` start event both carry
+// it. Stops are today's transition regardless, and an illness row already open is
+// untouched (syncOpenIllnessEpisode is a no-op on one). Absent, starts are today too.
+// The symptom bar's episode door passes it (#5969): the bar can be showing yesterday,
+// and the reading the door answers was logged for that day.
+export function setActiveSituations(
+  profileId: number,
+  situations: string[],
+  startDay?: string
+) {
   const distinct = [
     ...new Map(
       situations
@@ -1219,7 +1230,11 @@ export function setActiveSituations(profileId: number, situations: string[]) {
       ),
       profileId
     ).map((r) => r.name);
-    const events = diffSituations(before, distinct, today(profileId));
+    const onDate = today(profileId);
+    const startOn = startDay ?? onDate;
+    const events = diffSituations(before, distinct, onDate).map((e) =>
+      e.change === "start" ? { ...e, date: startOn } : e
+    );
     const wanted = new Set<number>();
     for (const name of distinct) {
       const id = resolveSituationId(profileId, name);
@@ -1239,7 +1254,6 @@ export function setActiveSituations(profileId: number, situations: string[]) {
     // Keep the open illness-episode rows coherent with the active set (#856), in the
     // SAME writeTx — every illness-type situation opens a row while active, closes it
     // when deactivated. Single write path; the row and the active flag never disagree.
-    const onDate = today(profileId);
     const illness = db
       .prepare(
         `SELECT name, active FROM situations
@@ -1247,7 +1261,12 @@ export function setActiveSituations(profileId: number, situations: string[]) {
       )
       .all(profileId) as { name: string; active: number }[];
     for (const s of illness) {
-      syncOpenIllnessEpisode(profileId, s.name, !!s.active, onDate);
+      syncOpenIllnessEpisode(
+        profileId,
+        s.name,
+        !!s.active,
+        s.active ? startOn : onDate
+      );
     }
     if (events.length > 0) {
       setProfileSetting(
