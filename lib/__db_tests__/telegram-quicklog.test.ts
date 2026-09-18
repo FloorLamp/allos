@@ -25,7 +25,13 @@ import {
   liveMessagePointers,
   liveMessagePointersForKind,
 } from "@/lib/notifications/message-pointers";
-import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
+import {
+  acknowledgeInPlace,
+  CHAT_WIDE,
+  sendTelegramMessage,
+} from "@/lib/notifications/telegram";
+import { typedReplyPrompt } from "@/lib/notifications/typed-reply";
+import type { NotificationMessage } from "@/lib/notifications/types";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -136,6 +142,14 @@ function tempCount(profileId: number): number {
         `SELECT COUNT(*) AS c FROM medical_records
           WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
       )
+      .get(profileId) as { c: number }
+  ).c;
+}
+
+function weightCount(profileId: number): number {
+  return (
+    db
+      .prepare(`SELECT COUNT(*) AS c FROM body_metrics WHERE profile_id = ?`)
       .get(profileId) as { c: number }
   ).c;
 }
@@ -406,12 +420,26 @@ describe("temperature reply quick-log", () => {
     expect(tempCount(p.profileId)).toBe(before + 1);
     expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 831, "👍"]);
     expect(sendMock).toHaveBeenCalledTimes(1);
-    const sent = sendMock.mock.calls[0][1] as { title: string; kind?: string };
+    const sent = sendMock.mock.calls[0][1] as { title: string };
     expect(sent.title).toMatch(/Temperature logged/);
-    // A RESULT, NOT A SECOND QUESTION: no prompt `kind`, so the fallback records no
-    // pointer of its own — one that did would be the same double-log one message further
-    // along, with the chat now holding a prompt nobody was asked.
-    expect(sent.kind).toBeUndefined();
+    // A RESULT, NOT A SECOND QUESTION (#5955): the fallback carries no prompt mark, so
+    // it records no pointer of its own and a Reply to it is told it is not a prompt —
+    // one that did would be the same double-log one message further along, with the
+    // chat now holding a prompt nobody was asked.
+    const fallbackId = (await sendMock.mock.results[0].value) as number;
+    expect(
+      liveMessagePointers(p.profileId).some(
+        (ptr) => ptr.messageId === fallbackId
+      )
+    ).toBe(false);
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage(tempReply("38.6", fallbackId, 833));
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect((sendMock.mock.calls.at(-1)![1] as { title: string }).title).toMatch(
+      /isn't open/i
+    );
 
     // (b) The prompt is CLOSED even though its edit never landed. Its pointer is gone,
     //     so the retype the silence used to provoke finds nothing open and writes
@@ -617,15 +645,16 @@ describe("temperature reply quick-log", () => {
   //
   // `temp` and `weight` hold no operation state, so an explicit Reply to one is resolved
   // from the KIND on its pointer row. That is only sound while a pointer of those kinds
-  // means "a prompt, addressed to one profile" — and the one shape that can break it is a
-  // CHAT-WIDE send, because `resolveSubject` hands a chat-wide message the chat's lowest
-  // profile rather than nobody. A notice that merely inherited its command's kind — the
-  // ordinary convention in `telegram-quick-log.ts`, which two sibling commands follow —
-  // would record a `temp` pointer under a real profile and become answerable, and a
-  // number replied to it would log a reading against a message that never asked for one.
+  // means "a prompt, addressed to one profile" — and the shape that breaks the second
+  // half is a CHAT-WIDE send, because `resolveSubject` hands a chat-wide message the
+  // chat's lowest profile rather than nobody. A prompt sent chat-wide would record a
+  // `temp` pointer under a real profile, and a number anyone typed under it would log a
+  // reading against that person.
   //
   // `recordPointer` refuses that outright. This drives the refusal in a LINKED chat,
-  // which is the case that would actually mint the row; it fails if the guard is removed.
+  // which is the case that would actually mint the row, with a MARKED message — since
+  // #5955 an unmarked one records nothing for a different reason (the next block), so
+  // only a marked send can tell whether the chat-wide refusal still stands.
   it("a chat-wide send never becomes an answerable prompt", async () => {
     const CHAT4 = "5550155";
     const solo = seedProfile("TGchatwide");
@@ -636,8 +665,8 @@ describe("temperature reply quick-log", () => {
       CHAT4,
       {
         title: "Log a temperature",
-        body: "This chat isn't linked to a profile yet — enable Telegram in Settings.",
-        kind: "temp",
+        body: "Reply to this message with a temperature.",
+        ...typedReplyPrompt("temp"),
       },
       CHAT_WIDE
     );
@@ -680,6 +709,148 @@ describe("temperature reply quick-log", () => {
     expect(tempCount(solo.profileId)).toBe(before);
     expect(reactMock).not.toHaveBeenCalled();
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // #5955, ruling 36 — THE MARK, NOT THE KIND, IS WHAT MAKES A MESSAGE A PROMPT. These
+  // are #5898's second falsifying pass's counterexamples, which broke the kind-keyed guard
+  // by editing production source, re-executed here against the shipped chokepoint with no
+  // source edit: each sends a message carrying a prompt family's kind and no mark, and
+  // each must leave the chat with nothing a number can answer.
+  //
+  // THREE THINGS ARE CHECKED PER ROW, because each is a door of its own: no pointer for
+  // the message (the store), an explicit Reply to it refused with nothing written (the
+  // registry's `at`), and a bare number left alone with nothing written (the registry's
+  // `open`). A row that recorded a pointer of these kinds would pass a narrower check
+  // that only looked at the family chosen.
+  describe("an unmarked send never becomes an answerable prompt", () => {
+    const CHAT5 = "5550156";
+    let solo: SeededProfile;
+    beforeAll(() => {
+      solo = seedProfile("TGunmarked");
+      seedLoginTelegram(solo.profileId, CHAT5);
+    });
+
+    async function expectNotAnswerable(messageId: number, replyId: number) {
+      expect(messageId).toBeTruthy();
+      // (a) No pointer at all — not merely one the registry declines to read.
+      expect(
+        liveMessagePointers(solo.profileId).some(
+          (ptr) => ptr.messageId === messageId
+        )
+      ).toBe(false);
+      // (b) An explicit Reply writes nothing and is told the prompt is not open.
+      const temps = tempCount(solo.profileId);
+      const weights = weightCount(solo.profileId);
+      sendMock.mockClear();
+      reactMock.mockClear();
+      await handleIncomingMessage({
+        message_id: replyId,
+        chat: { id: CHAT5 },
+        from: { id: 71 },
+        text: "38.5",
+        reply_to_message: { message_id: messageId },
+      });
+      expect(tempCount(solo.profileId)).toBe(temps);
+      expect(weightCount(solo.profileId)).toBe(weights);
+      expect(reactMock).not.toHaveBeenCalled();
+      expect(
+        (sendMock.mock.calls.at(-1)![1] as { title: string }).title
+      ).toMatch(/isn't open/i);
+      // (c) No open prompt behind it either: a bare number is ordinary text.
+      sendMock.mockClear();
+      reactMock.mockClear();
+      await handleIncomingMessage({
+        message_id: replyId + 1,
+        chat: { id: CHAT5 },
+        from: { id: 71 },
+        text: "38.5",
+      });
+      expect(tempCount(solo.profileId)).toBe(temps);
+      expect(weightCount(solo.profileId)).toBe(weights);
+      expect(reactMock).not.toHaveBeenCalled();
+      expect(sendMock).not.toHaveBeenCalled();
+    }
+
+    it.each([
+      [
+        "a notice inheriting its command's kind, chat-wide, in a linked chat",
+        {
+          title: "Log a temperature",
+          body: "This chat isn't linked to a profile yet.",
+          kind: "temp",
+        },
+        CHAT_WIDE,
+        880,
+      ],
+      [
+        "a per-profile send with kind temp and no mark",
+        {
+          title: "Log a temperature",
+          body: "Nothing was asked here.",
+          kind: "temp",
+        },
+        "profile",
+        882,
+      ],
+      [
+        "a per-profile send with kind weight, no mark, and a keyboard",
+        {
+          title: "Weight",
+          body: "A keyboard records a pointer for its buttons; not an answerable one.",
+          kind: "weight",
+          actions: [{ label: "Later", data: "noop:0" }],
+        },
+        "profile",
+        884,
+      ],
+      [
+        "the refusal send given the family's kind",
+        {
+          title: "🌡 Temperature not logged",
+          body: "Couldn't read a temperature there — reply with a number like 38.5.",
+          kind: "temp",
+        },
+        "profile",
+        886,
+      ],
+    ] satisfies [
+      string,
+      NotificationMessage,
+      "profile" | typeof CHAT_WIDE,
+      number,
+    ][])("%s", async (_name, msg, subject, replyId) => {
+      sendMock.mockClear();
+      const messageId = await sendTelegramMessage(
+        CHAT5,
+        msg,
+        subject === "profile" ? solo.profileId : CHAT_WIDE
+      );
+      await expectNotAnswerable(messageId!, replyId);
+    });
+
+    // The acknowledgement fallback handed the WHOLE prompt rather than its title and
+    // body — the single most natural edit to that line, and the pass's fourth
+    // counterexample. The narrowed parameter refuses the literal, so this hands it a
+    // value of the wider type, which is what that edit would do.
+    it("the acknowledgement fallback passed the whole prompt", async () => {
+      const whole: NotificationMessage = {
+        title: "🌡 Temperature logged: 38.5 °C",
+        body: "38.5 °C recorded for today.",
+        kind: "temp",
+        actions: [{ label: "View episode", url: "https://example.test/e/1" }],
+      };
+      sendMock.mockClear();
+      await acknowledgeInPlace(
+        "temp reply",
+        solo.profileId,
+        CHAT5,
+        () => Promise.reject(new Error("message can't be edited")),
+        whole
+      );
+      expect(sendMock).toHaveBeenCalledTimes(1);
+      const fallbackId = (await sendMock.mock.results[0].value) as number;
+      await expectNotAnswerable(fallbackId, 888);
+    });
   });
 
   it("ignores a plain message with no open prompt and no marker", async () => {

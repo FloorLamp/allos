@@ -1308,7 +1308,7 @@ export function checkDocsContracts(index: RepoIndex): DocsFinding[] {
       // internal is not asserting that this checkout contains it.
       if (!isRootedCitation(citation.path, dirs)) continue;
       if (resolvePath(index, citation.path).kind !== "missing") continue;
-      const key = `${file} ${citation.path}`;
+      const key = `${file}\u0000${citation.path}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({

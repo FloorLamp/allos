@@ -131,6 +131,10 @@ export function administrationOutcomeText(
       return `Not logged — ${name} is paused. Resume it in the app.`;
     case "needs-dose":
       return `Not logged — ${name} has no dose set. Add the amount in the app.`;
+    // An amount was stated, so this cannot ask for one: it names the rule instead
+    // (#5985). Only an as-needed medication gets its first dose row from a tap.
+    case "not-prn-medication":
+      return `Not logged — ${name} isn't an as-needed medication. Add its dose in the app.`;
     case "stale-item":
     default:
       return "Not logged — that med is out of date. Open the app.";

@@ -7,7 +7,7 @@ import { requireIntakeFormKind } from "@/lib/intake-form-kind";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const INTAKE_FORM_MODULE = "@/components/IntakeItemForm";
-const QUICK_ENTRY_LAZY_OWNER = "components/QuickEntryProvider.tsx";
+const QUICK_ENTRY_LAZY_OWNER = "components/quick-entry/body-chunks.tsx";
 
 const EXPECTED_CALLERS = [
   ["app/(app)/medications/MedicationAddWorkspace.tsx", "medication"],

@@ -138,6 +138,9 @@ describe("administrationOutcomeText", () => {
     // The Telegram /dose tap on an item with no dose row names the MISSING DOSE.
     // Before #5981 it reached the sentence above and blamed a deletion.
     [{ kind: "needs-dose" }, "has no dose set"],
+    // An amount was posted for something that is not an as-needed medication
+    // (#5985): the tap names the rule rather than asking for the amount it has.
+    [{ kind: "not-prn-medication" }, "isn't an as-needed medication"],
   ];
   it.each(cases)(
     "names the med and states the honest outcome",
@@ -164,6 +167,7 @@ describe("administrationOutcomeText", () => {
     expect(administrationLogged({ kind: "inactive" })).toBe(false);
     expect(administrationLogged({ kind: "stale-item" })).toBe(false);
     expect(administrationLogged({ kind: "needs-dose" })).toBe(false);
+    expect(administrationLogged({ kind: "not-prn-medication" })).toBe(false);
   });
 });
 

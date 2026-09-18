@@ -16,7 +16,11 @@ import {
 } from "@/lib/queries";
 import { undoKindForTable } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
-import { unlinkFollowUpsForMetricSample } from "@/lib/followup-write";
+import {
+  unlinkFollowUpsForClinicalObservation,
+  unlinkFollowUpsForImagingStudy,
+  unlinkFollowUpsForMetricSample,
+} from "@/lib/followup-write";
 import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
@@ -56,6 +60,84 @@ function tombstoneAllPreImages(
   return db
     .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
     .all(profileId) as Record<string, unknown>[];
+}
+
+// ---- Freeing a care-plan follow-up's link before a raw delete ----------------
+
+// `care_plan_items` is polymorphic over several `source_*` / `resolved_by_*` column
+// pairs, one per domain. The seams in lib/followup-write.ts null BOTH halves of a
+// link — `source_kind` together with the source id, and the resolved-by id alone.
+// That asymmetry is the one migration 184 repairs: a discriminator left standing
+// over an all-null source is the dangling state, and a resolution keeps its outcome
+// text while losing the dead link.
+//
+// This map binds a deletable dataset's table to its pair and its seam. A table
+// absent from it runs no seam here, and what becomes of its links is then whatever
+// the schema declares ON DELETE (#5966 is what that costs when the declaration is
+// NO ACTION: the delete raises SQLITE_CONSTRAINT_FOREIGNKEY and rolls back, so the
+// person cannot delete their own data at all). The columns and the seam are
+// hardcoded constants, never client input, so interpolating the column names into
+// the SQL below is injection-safe — the same finite-preimage argument
+// RESOLVE_TARGET_BY_KIND makes in lib/followup-write.ts.
+interface FollowUpSourceLink {
+  readonly sourceColumn: string;
+  readonly resolvedByColumn: string;
+  readonly unlink: (profileId: number, rowId: number) => void;
+}
+
+const FOLLOWUP_SOURCE_LINKS: Partial<
+  Record<DeletableDatasetKey, FollowUpSourceLink>
+> = {
+  // Labs and intraocular pressure are both `medical_records` readings (#698), so the
+  // two adapters share this one pair and this one seam.
+  medical_records: {
+    sourceColumn: "source_medical_record_id",
+    resolvedByColumn: "resolved_by_medical_record_id",
+    unlink: unlinkFollowUpsForClinicalObservation,
+  },
+  imaging_studies: {
+    sourceColumn: "source_imaging_study_id",
+    resolvedByColumn: "resolved_by_imaging_study_id",
+    unlink: unlinkFollowUpsForImagingStudy,
+  },
+  metric_samples: {
+    sourceColumn: "source_metric_sample_id",
+    resolvedByColumn: "resolved_by_metric_sample_id",
+    unlink: unlinkFollowUpsForMetricSample,
+  },
+};
+
+// Run the domain's seam over the rows a delete is about to remove: `ids` for the
+// selected-rows delete, every one of this profile's rows when it is null.
+//
+// ANCHORED ON THE TABLE BEING DELETED, never on `care_plan_items` (#5880's shape).
+// Each seam frees by row id within the profile it is handed, so an id set read off
+// the follow-ups could carry the id of ANOTHER profile's row and free this profile's
+// link to a row the delete is not removing. Read off this profile's own rows, every
+// id the seam is handed is a row the delete removes.
+//
+// The seam is not in a transaction with the delete that follows it: a delete that
+// failed afterwards would leave these links already freed.
+function freeFollowUpLinks(
+  table: DeletableDatasetKey,
+  profileId: number,
+  ids: number[] | null
+): void {
+  const link = FOLLOWUP_SOURCE_LINKS[table];
+  if (!link) return;
+  const selected = ids ? ` AND t.id IN (${ids.map(() => "?").join(",")})` : "";
+  const linked = db
+    .prepare(
+      `SELECT DISTINCT t.id AS id
+         FROM ${table} t
+         JOIN care_plan_items c
+           ON c.profile_id = t.profile_id
+          AND (c.${link.sourceColumn} = t.id
+               OR c.${link.resolvedByColumn} = t.id)
+        WHERE t.profile_id = ?${selected}`
+    )
+    .all(profileId, ...(ids ?? [])) as { id: number }[];
+  for (const { id } of linked) link.unlink(profileId, id);
 }
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
@@ -203,6 +285,12 @@ export async function deleteDatasetRows(
   // Capture the natural-key pre-images of any tombstone-tracked rows BEFORE the
   // delete removes them, so the next rolling-window sync can't resurrect them (#653).
   const tombstoneRows = tombstonePreImages(resolved.table, clean, profile.id);
+  // A selected row can be named by a care-plan follow-up too. A dataset whose table
+  // has an undo kind returned above, through captureDelete; one that reaches this
+  // statement has nothing ahead of it, so the seam runs here. On a NO ACTION pair a
+  // missing one is the same rollback "Delete all" hit (#5966), over the checked rows
+  // instead of the whole table.
+  freeFollowUpLinks(resolved.table, profile.id, clean);
   // Scope the delete to this profile's rows — the whitelisted tables are all
   // profile-owned, so an id belonging to another profile must not be touched.
   const info = db
@@ -242,39 +330,17 @@ export async function deleteAllDatasetRows(
   // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
   // resurrect the whole set (#653). Captured before the delete.
   const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
-  // A `metric_samples` row can be named by a care-plan follow-up (#5409). The
-  // selected-rows path above takes the undo branch for this table (DATASET_UNDO_KIND
-  // maps it, and the type forces that decision), so its detach seam runs inside
-  // captureDelete; this wipe takes no capture, so nothing runs it here. The pair is
-  // ON DELETE SET NULL, so the wipe below would not throw — SQLite would null the id
-  // and leave `source_kind` standing over an all-null source, the dangling
-  // discriminator migration 184 exists to repair. So run the same shared seam first,
-  // for this profile's links to the rows this wipe removes.
+  // A row this wipe removes can be named by a care-plan follow-up (#5409, #5966), and
+  // this wipe takes no capture, so captureDelete's seam does not run for it. Run the
+  // domain's seam here instead, over this profile's linked rows.
   //
-  // Anchored on `metric_samples` rather than on `care_plan_items`. The seam frees by
-  // sample id within THIS profile (`unlinkFollowUpsForMetricSample` scopes both of its
-  // statements to the caller's profile), so an id set read off the follow-ups could
-  // carry the id of ANOTHER profile's sample and free this profile's link to a row
-  // the wipe below is not removing. Read off this profile's own samples, every id the
-  // seam is handed is a row the wipe removes.
-  //
-  // The seam is not in a transaction with the wipe: a wipe that failed after it would
-  // leave these links already freed.
-  if (resolved.table === "metric_samples") {
-    const linked = db
-      .prepare(
-        `SELECT DISTINCT s.id AS id
-           FROM metric_samples s
-           JOIN care_plan_items c
-             ON c.profile_id = s.profile_id
-            AND (c.source_metric_sample_id = s.id
-                 OR c.resolved_by_metric_sample_id = s.id)
-          WHERE s.profile_id = ?`
-      )
-      .all(profile.id) as { id: number }[];
-    for (const { id } of linked)
-      unlinkFollowUpsForMetricSample(profile.id, id);
-  }
+  // WHAT THE SCHEMA DOES INSTEAD DIFFERS BY PAIR, and only one of the two outcomes is
+  // survivable. `metric_samples` is ON DELETE SET NULL: the wipe would not throw, it
+  // would null the id and leave `source_kind` standing over an all-null source.
+  // `medical_records` and `imaging_studies` are NO ACTION, so with foreign keys on the
+  // wipe raises SQLITE_CONSTRAINT_FOREIGNKEY and rolls back — a person who tracked one
+  // follow-up could not bulk-delete the dataset at all (#5966).
+  freeFollowUpLinks(resolved.table, profile.id, null);
   // "Delete all" is still scoped to this profile — never wipe another profile's
   // rows from the shared table. It is intentionally NOT undoable (the confirm
   // says so): capturing an entire table into the holding store could be huge.

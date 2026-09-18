@@ -112,14 +112,14 @@ const SITES: Site[] = [
     sql: "DELETE FROM ${resolved.table} WHERE id IN (${placeholders}) AND profile_id = ?",
     reaches: true,
     frees: "seam",
-    why: "Data → Manage, selected rows. For this table `undoKindForTable` answers a kind (DATASET_UNDO_KIND, asserted below), so the capture branch above this statement returns first and the delete that runs is undo-delete-db's root delete, with the seam inside captureDelete.",
+    why: "Data → Manage, selected rows. For this table `undoKindForTable` answers a kind (DATASET_UNDO_KIND, asserted below), so the capture branch above this statement returns first and the delete that runs is undo-delete-db's root delete, with the seam inside captureDelete. Since #5966 `deleteDatasetRows` also calls `freeFollowUpLinks` directly above this statement, which frees the pair for a mapped table that reaches it; for THIS table the capture branch is what happens.",
   },
   {
     file: "app/(app)/data/manage-actions.ts",
     sql: "DELETE FROM ${resolved.table} WHERE profile_id = ?",
     reaches: true,
     frees: "seam",
-    why: "Data → Manage, Delete all. Takes no capture; `deleteAllDatasetRows` runs `unlinkFollowUpsForMetricSample` over this profile's linked samples before the wipe.",
+    why: "Data → Manage, Delete all. Takes no capture; `deleteAllDatasetRows` calls `freeFollowUpLinks` before the wipe, which reads this profile's linked samples off `metric_samples` and hands each id to `unlinkFollowUpsForMetricSample` (FOLLOWUP_SOURCE_LINKS names the seam per table — #5966 gave the two NO ACTION pairs the same treatment, where the missing seam was a rollback rather than a dangling discriminator).",
   },
   {
     file: "lib/undo-delete-db.ts",

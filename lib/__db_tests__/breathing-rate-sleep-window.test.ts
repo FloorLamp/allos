@@ -1239,9 +1239,11 @@ describe("deleting the carried sample frees the WHOLE link", () => {
     // routes through captureDelete and inherits the seam; "Delete all" is deliberately
     // never undoable, so it wipes the table directly and reaches the row with no seam
     // ahead of it -- landing on exactly the state the positive control below shows.
-    // Four `source_*` pairs older than this one are NO ACTION, so the same button on
-    // their tables THROWS instead; closing it here is what the SET NULL pair buys, and
-    // only once the action runs the seam itself.
+    // Four `source_*` pairs older than this one are NO ACTION. Until #5966 the same
+    // button THREW on the two of them a deletable dataset reaches; it now runs the
+    // domain seam here too, so what the SET NULL pair buys this one is narrower than
+    // it was: not that the wipe completes, but that a path with no seam at all leaves
+    // a dangling discriminator instead of a rollback.
     const { profileId, carePlanItemId } = carriedFollowUp("Delete all, seam");
     const login = createLogin();
     db.prepare(

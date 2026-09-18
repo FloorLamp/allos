@@ -8,6 +8,13 @@
 //   node scripts/orchestration/host.mjs node-check  # silent when THIS interpreter
 //       is the pinned major; otherwise names both versions, the binary it
 //       resolved and the PATH to export, and exits 3 (#5940).
+//       CALLED BY run-gates-recorded.sh AND by the seven tier scripts a person
+//       types by hand — `dev`, `build`, `lint`, `typecheck`, `test`, `test:db`,
+//       `test:e2e` — which prefix it in package.json (#5961). `engine-strict`
+//       covers `npm install`/`npm ci` only; npm's run-script path never consults
+//       `engines`, so a hand-run tier needed its own refusal. Seven entries, not
+//       all ~100: every other script reaches a tier through the gate runner,
+//       which already refuses here.
 //
 // The work bootstrap grew up on one Linux container and hard-coded
 // its shape: state in /home/user/scratch, node under /opt/nvm, a token always
