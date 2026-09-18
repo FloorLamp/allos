@@ -592,7 +592,9 @@ function renderPanel({
       <DirtyFormProvider>
         <ProfileDaysBoundary
           clocks={
-            new Map([[ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone }]])
+            new Map([
+              [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone }],
+            ])
           }
         >
           <QuickEntryProvider
