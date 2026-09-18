@@ -3,6 +3,7 @@ import {
   AVERAGED_METRICS,
   CATEGORICAL_METRICS,
   metricAggregation,
+  pointSourceRank,
 } from "../metric-buckets";
 
 // Locks the bucket membership that getMetricDailyTotals keys its AVG/SUM/NONE
@@ -23,6 +24,7 @@ describe("metric bucket membership", () => {
       "height_cm",
       "head_circumference_cm",
       "skin_temp_delta_c",
+      "respiratory_rate_bpm",
     ];
     for (const m of averaged) {
       expect(AVERAGED_METRICS.has(m)).toBe(true);
@@ -51,6 +53,12 @@ describe("metric bucket membership", () => {
         // Waist circumference (#2322) — a point measure like height: a tape reading
         // and a same-date imported one must AGREE, never sum.
         "waist_circumference_cm",
+        // The sleeping breathing rate (#5409) — one reading per SLEEP SESSION, and a
+        // wake day that holds a nap and a night holds two of one source's own rows.
+        // Summed they would chart a 27 br/min night no sleeping adult has ever had.
+        // (Two SOURCES on one night do not sum and never did: the additive path elects
+        // one source per day. They ELECT here too — see `pointSourceRank`.)
+        "respiratory_rate_bpm",
       ].sort()
     );
   });
@@ -85,5 +93,35 @@ describe("metric bucket membership", () => {
       expect(AVERAGED_METRICS.has(m)).toBe(false);
       expect(metricAggregation(m)).toBe("NONE");
     }
+  });
+});
+
+// #5409, and the correction round on PR #5880. AVERAGING AND ELECTING ARE TWO
+// DIFFERENT RULES, and conflating them is how the body-census chart came to state
+// 14.8 br/min for a night whose sleep row read 13.6 · Google Health Connect. Which of
+// two SOURCES a day states is a rank; how a day's several readings OF one source
+// combine is the bucket above. Only a metric whose sources are two spellings of one
+// vendor number declares a rank — a tape measure and an imported waist reading are
+// two measurements that must agree, so they still average.
+describe("a point metric may elect between sources instead of averaging them", () => {
+  it("declares the rank for the sleeping breathing rate and for nothing else", () => {
+    const rank = pointSourceRank("respiratory_rate_bpm");
+    expect(rank).not.toBeNull();
+    // A real sleep window beats a day label, the same order the sleep row uses.
+    expect(rank!("health-connect")).toBeLessThan(rank!("fitbit-takeout"));
+    // An unknown source ranks last rather than throwing.
+    expect(rank!("some-future-tracker")).toBeGreaterThan(
+      rank!("fitbit-takeout")
+    );
+    expect(rank!(null)).toBeGreaterThan(rank!("fitbit-takeout"));
+
+    for (const m of AVERAGED_METRICS) {
+      if (m === "respiratory_rate_bpm") continue;
+      expect(
+        pointSourceRank(m),
+        `${m} must not declare a source rank`
+      ).toBeNull();
+    }
+    expect(pointSourceRank("steps")).toBeNull();
   });
 });

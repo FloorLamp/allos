@@ -5,6 +5,7 @@
 // profile-scoped.
 
 import { db } from "../../db";
+import { BREATHING_RATE_METRIC } from "../../breathing-rate";
 import { ALL_ROWS } from "../../trends";
 import { snapshotCached } from "../../read-snapshot";
 import {
@@ -14,7 +15,7 @@ import {
 } from "../../metric-sources";
 import { resolveMetricSources } from "../../metric-source-priority";
 import { getMetricSourcePriority } from "../../settings";
-import { metricAggregation } from "../../metric-buckets";
+import { metricAggregation, pointSourceRank } from "../../metric-buckets";
 import { getBodyMetricDailySeries } from "./body";
 import { choiceFor, markPartialToday, sourceMatchSql } from "./common";
 
@@ -31,7 +32,11 @@ import { choiceFor, markPartialToday, sourceMatchSql } from "./common";
 // A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
-// an explicit primary source narrows it to that source's readings.
+// an explicit primary source narrows it to that source's readings. The one
+// exception is a point metric that declares a source ELECTION (pointSourceRank,
+// lib/metric-buckets.ts): where two sources are two spellings of one vendor
+// number, their average is a value neither published, so the day states the
+// better-ranked source's reading and averages only within it (#5409).
 //
 // Strict mode (#1642) removes both fallbacks: only the chosen source's rows are
 // read, and an empty result stays empty rather than reverting to all sources.
@@ -61,6 +66,44 @@ function getMetricDailyTotalsUncached(
         // at all, so a stale pick can't blank the chart — unless the pick is
         // STRICT, where an empty chart is the honest answer.
         if (rows.length > 0 || chosen.strict) return rows.reverse();
+      }
+      // A POINT METRIC THAT ELECTS BETWEEN ITS SOURCES rather than averaging across
+      // them (#5409, and the correction round on PR #5880). See `pointSourceRank`: for
+      // a wearable's nightly breathing rate the two sources are two SPELLINGS of one
+      // vendor number, so their mean is a third value neither device published — 14.8
+      // br/min on a chart whose sleep row said 13.6 · Google Health Connect. The day
+      // still AVERAGES within the elected source, so one source's nap and night are
+      // one day's two readings and not a sum.
+      const rank = pointSourceRank(metric);
+      if (rank) {
+        const rows = db
+          .prepare(
+            `SELECT date, source, AVG(value) AS value
+               FROM metric_samples WHERE profile_id = ? AND metric = ?
+              GROUP BY date, source ORDER BY date DESC`
+          )
+          .all(profileId, metric) as {
+          date: string;
+          source: string | null;
+          value: number;
+        }[];
+        // `rows` is already newest-first and one entry per (date, source); the map
+        // keeps the best-ranked source per date in that order, so its keys come out
+        // newest-first too and the LIMIT is a slice over DATES, exactly as the SQL
+        // `LIMIT` below is.
+        const elected = new Map<
+          string,
+          { source: string | null; value: number }
+        >();
+        for (const row of rows) {
+          const held = elected.get(row.date);
+          if (!held || rank(row.source) < rank(held.source))
+            elected.set(row.date, { source: row.source, value: row.value });
+        }
+        const dates = [...elected.keys()];
+        return (limitDays < 0 ? dates : dates.slice(0, limitDays))
+          .map((date) => ({ date, value: elected.get(date)!.value }))
+          .reverse();
       }
       const rows = db
         .prepare(
@@ -240,6 +283,31 @@ export function getLatestMetricSample(
     )
     .get(profileId, metric) as { value: number; date: string } | undefined;
   return row ?? null;
+}
+
+// The nightly breathing-rate samples a carried follow-up hangs off (#5409): the
+// source reading of a `breathing-rate` follow-up and every candidate that could
+// resolve it, in one profile-scoped read, newest first.
+//
+// EVERY ROW, no source election. The election in this module answers "what does the
+// day read"; this answers "which stored night is this follow-up ABOUT", and the row
+// the follow-up names is a specific one — eliding it because another source also
+// stated that night would make the follow-up vanish rather than render.
+export function getBreathingRateFollowUpNights(
+  profileId: number
+): { id: number; date: string; metric: string; value: number | null }[] {
+  return db
+    .prepare(
+      `SELECT id, date, metric, value FROM metric_samples
+        WHERE profile_id = ? AND metric = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, BREATHING_RATE_METRIC) as {
+    id: number;
+    date: string;
+    metric: string;
+    value: number | null;
+  }[];
 }
 
 export function getLatestMetricValue(

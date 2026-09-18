@@ -58,6 +58,7 @@ import { thumbSiblingPath, unlinkPhotoFiles } from "./photo/store";
 import {
   unlinkFollowUpsForSkinLesion,
   unlinkFollowUpsForClinicalObservation,
+  unlinkFollowUpsForMetricSample,
 } from "./followup-write";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
@@ -387,6 +388,20 @@ export function captureDelete(
       // treatment one domain over: the follow-up degrades to a generic care-plan item
       // and keeps its planned care.
       unlinkFollowUpsForSkinLesion(profileId, rootId);
+    }
+    if (spec.ownedTable === "metric_samples") {
+      // A breathing-rate follow-up carried onto the night's sample (#5409) may link
+      // this row as its SOURCE reading, or a later night's resolution may cite it. The
+      // pair is `ON DELETE SET NULL`, so the DELETE below cannot throw — but SQLite
+      // nulls only the column the action is declared on, leaving `source_kind` standing
+      // over an all-null source. This is the seam that frees BOTH, the way every other
+      // source kind's is freed; centralized here so the readings table's Delete and
+      // Data → Manage's SELECTED-ROWS delete inherit it from the one capture they
+      // share. Data → Manage's "Delete all" takes no capture, so it calls this same
+      // seam itself before its wipe (app/(app)/data/manage-actions.ts). A delete that
+      // reaches neither is left to the action, which keeps it from throwing but cannot
+      // finish the de-link.
+      unlinkFollowUpsForMetricSample(profileId, rootId);
     }
 
     // A wellness practice target can be adopted by protocols. The accepted

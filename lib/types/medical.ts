@@ -1029,12 +1029,14 @@ export interface CarePlanItem {
   source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
   source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 066)
   source_skin_lesion_id: number | null; // the skin-lesion source finding (#715 skin adapter, migration 070)
+  source_metric_sample_id: number | null; // the nightly sample source finding (#5409 breathing-rate adapter)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against
   resolved_by_medical_record_id: number | null; // the later lab reading it was resolved against (labs adapter)
   resolved_by_dental_procedure_id: number | null; // the later dental record it was resolved against (dental adapter)
   resolved_by_skin_lesion_id: number | null; // the later lesion record it was resolved against (skin adapter)
+  resolved_by_metric_sample_id: number | null; // the later night it was resolved against (breathing-rate adapter)
   resolved_at: string | null;
   // The follow-up TERMINATOR (issue #1866, migration 141): the user's own statement
   // that closed the chain — 'done' ("it happened on settled_on, outside our records")
