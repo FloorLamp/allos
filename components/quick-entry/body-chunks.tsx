@@ -20,9 +20,9 @@ import dynamic from "next/dynamic";
 
 export const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
 
-// The sheet's cold-open paragraph, in ONE place: the Suspense fallback below and the
-// body's own loading branch are the same wait, and they must not be able to differ —
-// `quick-entry-loading` is the testid every spec waits on.
+// The sheet's cold-open paragraph, in ONE place: the Suspense fallback in the
+// provider and the body's own loading branch are the same wait, and they must not be
+// able to differ — `quick-entry-loading` is the testid every spec waits on.
 export const QUICK_ENTRY_LOADING = (
   <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
     Loading…
