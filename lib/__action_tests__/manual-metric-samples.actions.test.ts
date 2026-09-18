@@ -8,7 +8,7 @@
 // (sleep / HRV) sample paths run through addMeasurements.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { getSleepMoodData } from "@/lib/queries";
 import { actAs, createLogin, createProfile, fd } from "./harness";
@@ -61,33 +61,35 @@ describe("manual metric samples", () => {
     const profile = createProfile("Vitals reader", login.id);
     actAs(login, profile);
 
-    await addMeasurements(
-      fd({ date: "2026-07-20", sleep_hours: "7", hrv: "42" })
-    );
-    await addMeasurements(
-      fd({ date: "2026-07-20", sleep_hours: "7.5", hrv: "45" })
-    );
+    // The profile's own today, not a literal day: getSleepMoodData windows its
+    // history to SLEEP_MOOD_HISTORY_DAYS ending at today(profileId), so a fixed
+    // day rolls out of the window as the calendar advances (#5973). The samples
+    // are filed at that local day's midnight, so the expected instants derive
+    // from the same string.
+    const day = today(profile.id);
+    const dayStart = `${day}T00:00:00`;
+
+    await addMeasurements(fd({ date: day, sleep_hours: "7", hrv: "42" }));
+    await addMeasurements(fd({ date: day, sleep_hours: "7.5", hrv: "45" }));
 
     expect(sampleRows(profile.id)).toEqual([
       {
         metric: "hrv_ms",
         origin: null,
-        started_at: "2026-07-20T00:00:00",
-        ended_at: "2026-07-20T00:00:00",
+        started_at: dayStart,
+        ended_at: dayStart,
         value: 45,
       },
       {
         metric: "sleep_min",
         origin: null,
-        started_at: "2026-07-20T00:00:00",
-        ended_at: "2026-07-20T00:00:00",
+        started_at: dayStart,
+        ended_at: dayStart,
         value: 450,
       },
     ]);
     expect(
-      getSleepMoodData(profile.id).history.find(
-        (row) => row.date === "2026-07-20"
-      )
+      getSleepMoodData(profile.id).history.find((row) => row.date === day)
     ).toMatchObject({
       sleepHours: 7.5,
       sleepEditable: true,
