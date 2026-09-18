@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Component,
   Activity,
   Suspense,
   createContext,
@@ -14,7 +13,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import { LoggedViaSurface } from "./LoggedViaSurface";
 import { useToast } from "./Toast";
@@ -44,6 +42,14 @@ import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
 import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import {
+  BodyBoundary,
+  loadBodies,
+  QuickEntryError,
+  QUICK_ENTRY_LOADING,
+  QUIET_STATE_CLASS,
+  type Bodies,
+} from "./quick-entry/body-chunks";
+import {
   useVisitResumeBoundary,
   useVisitResumeWatch,
   type VisitResumeWatch,
@@ -72,59 +78,6 @@ import { wipeDeviceForSignOut } from "./device-wipe";
 import { ActiveProfileProvider } from "./ActiveProfileProvider";
 import type { IntakeItemKind } from "@/lib/types";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
-
-// The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
-// route, and its promise is that it COSTS NOTHING until opened — a promise about
-// JavaScript as much as about queries. The forms it already carried are small and
-// shared with pages the shell links to anyway; the upload form and the practice list
-// each drag in machinery (the file/camera inputs and the toast lifecycle, the
-// practice button's modal and date field) that no page-load should pay for. Both are
-// only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
-// trip that was already happening and costs nothing perceptible.
-function loadBodies(attempt: number) {
-  return {
-    attempt,
-    UploadForm: dynamic(() => import("./UploadForm")),
-    QuickPracticeList: dynamic(() => import("./quick-entry/QuickPracticeList")),
-    QuickCyclePanel: dynamic(() => import("./quick-entry/QuickCyclePanel")),
-    MoodForm: dynamic(() => import("./mood/MoodForm")),
-    StoolTypeControl: dynamic(() => import("./stool/StoolTypeControl")),
-    QuickSubstanceList: dynamic(
-      () => import("./quick-entry/QuickSubstanceList")
-    ),
-    QuickSymptomPanel: dynamic(() => import("./quick-entry/QuickSymptomPanel")),
-    IntakeItemForm: dynamic(async () => {
-      const [{ default: IntakeItemForm }, { addIntakeItem }] =
-        await Promise.all([
-          import("./IntakeItemForm"),
-          import("@/app/(app)/nutrition/intake-actions"),
-        ]);
-      return function QuickEntryIntakeItemForm(
-        props: Omit<React.ComponentProps<typeof IntakeItemForm>, "action">
-      ) {
-        return <IntakeItemForm {...props} action={addIntakeItem} />;
-      };
-    }),
-  };
-}
-
-type Bodies = ReturnType<typeof loadBodies>;
-
-class BodyBoundary extends Component<
-  { children: ReactNode; onRetry: () => void },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    if (!this.state.failed) return this.props.children;
-    return <QuickEntryError onRetry={this.props.onRetry} />;
-  }
-}
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -489,24 +442,6 @@ function asOfCopy(fetchedAt: string | Date, why: string): string {
   )} — ${why}`;
 }
 
-function QuickEntryError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div data-testid="quick-entry-error">
-      <p role="alert" className={QUIET_STATE_CLASS}>
-        Couldn&apos;t open that form.
-      </p>
-      <button
-        type="button"
-        data-testid="quick-entry-retry"
-        onClick={onRetry}
-        className="btn-ghost mt-2"
-      >
-        Retry
-      </button>
-    </div>
-  );
-}
-
 function quickEntryToday(data: QuickEntryBody): string | null {
   if (data.form === "measurements") return data.defaultDate;
   if (data.form === "cycle" || data.form === "document") return null;
@@ -550,16 +485,6 @@ function withLiveDayLabels(
 // connection still finishes first, short enough that a dead one does not leave the
 // sheet looking merely quiet.
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
-const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
-
-// The sheet's cold-open paragraph, in ONE place: the Suspense fallback below and the
-// body's own loading branch are the same wait, and they must not be able to differ —
-// `quick-entry-loading` is the testid every spec waits on.
-const QUICK_ENTRY_LOADING = (
-  <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
-    Loading…
-  </p>
-);
 
 export default function QuickEntryProvider({
   children,
