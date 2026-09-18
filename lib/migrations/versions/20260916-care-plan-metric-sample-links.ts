@@ -35,11 +35,15 @@ import type { Migration } from "../runner";
 // follow-ups in mind, and it keeps growing them, which is the point rather than any
 // list of them. A new NO ACTION link into it would make each such path a potential
 // throw, guarded by a hand survey of exactly the kind that just failed. `SET NULL`
-// binds without one: SQLite applies it to every runtime delete, and inside a migration
-// `inboundDeleteLinks` reads it for a delete run through `deleteRowsWithCascade`. The
-// whole-table delete a person reaches from Data → Manage runs the hand seam itself
-// before its wipe (app/(app)/data/manage-actions.ts); the action stands behind a path
-// that does not.
+// binds without one: SQLite applies it to a runtime delete that runs with
+// `foreign_keys` ON, and inside a migration `inboundDeleteLinks` reads it for a delete
+// run through `deleteRowsWithCascade`. The profile delete is the keys-off exception —
+// `deleteProfile` (app/(app)/settings/family/actions.ts) toggles `foreign_keys = OFF`
+// around the sweep it hands to `deleteProfileData` (#729), so the action does not fire
+// there; `care_plan_items` is profile-owned, so the profile's own follow-up rows go in
+// that same sweep. The whole-table delete a person reaches from Data → Manage runs the
+// hand seam itself before its wipe (app/(app)/data/manage-actions.ts); the action
+// stands behind a path that does not.
 //
 // IT IS A BACKSTOP, NOT THE DE-LINK ITSELF, and the difference is exactly one column.
 // SQLite can only null the column the action is declared ON; every hand seam in

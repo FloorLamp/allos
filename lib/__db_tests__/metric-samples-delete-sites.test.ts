@@ -14,10 +14,11 @@
 //             (the dangling discriminator migration 184 repairs): it keeps the delete
 //             from throwing, and it cannot finish the de-link. Where it runs with
 //             `foreign_keys = OFF` — the profile delete — the action does not run at
-//             all. There the profile's own follow-up rows are removed with the
-//             profile (`care_plan_items` is profile-owned and swept in the same
-//             sweep); a link written from another profile would be left naming a
-//             removed row, and no application path writes one.
+//             all. There `care_plan_items` is profile-owned, so the profile's own
+//             follow-up rows go in the same sweep; a link reaching in from another
+//             profile would be left naming a removed row, and profile isolation is the
+//             invariant that says none is written (lib/profile-delete.ts,
+//             lib/__tests__/profile-scoping.test.ts).
 //
 // THE LIST BELOW IS RECOMPUTED, NOT SURVEYED. A hand survey of what deletes this
 // table is what the #5880 review found wanting, so the sites are read out of the
@@ -145,7 +146,7 @@ const SITES: Site[] = [
     sql: "DELETE FROM ${child.table} WHERE ${cond.sql}",
     reaches: true,
     frees: "backstop",
-    why: "A person deleting a whole profile: the profile-owned tables are erased, this one among them, through its parents. No seam precedes it, and `deleteProfile` (app/(app)/settings/family/actions.ts) toggles `foreign_keys = OFF` around the sweep, so the declared action does not run here. The profile's own follow-up rows go with the profile — `care_plan_items` is profile-owned and swept alongside; a link written from another profile would be left naming a removed row, and no application path writes one.",
+    why: "A person deleting a whole profile: the profile-owned tables are erased, this one among them, through its parents. No seam precedes it, and `deleteProfile` (app/(app)/settings/family/actions.ts) toggles `foreign_keys = OFF` around the sweep, so the declared action does not run here. `care_plan_items` is profile-owned, so the profile's own follow-up rows go in the same sweep; a link reaching in from another profile would be left naming a removed row, and profile isolation is the invariant that says none is written (lib/profile-delete.ts).",
   },
   {
     file: "lib/profile-delete.ts",
