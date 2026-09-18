@@ -551,13 +551,20 @@ export default function SymptomLogBar({
   //
   // Idempotent, unchanged: if one was already open by the time this lands,
   // activating again changes nothing and the id comes back all the same.
+  //
+  // THE EPISODE STARTS ON THE DAY THIS BAR SHOWS (#5969). The reading the offer
+  // answers was posted for `activeDate` (`logTemp`, above), so the open posts the same
+  // day; under Yesterday that puts the reading inside the episode's window instead of
+  // a day before it.
   async function openIllnessEpisode(
     where: "offer" | "bridge"
   ): Promise<boolean> {
     setActivationError(null);
     let res: IllnessActivationResult;
     try {
-      res = await activateIllnessForSymptoms(withTarget(new FormData()));
+      const fd = new FormData();
+      fd.set("date", activeDate);
+      res = await activateIllnessForSymptoms(withTarget(fd));
     } catch {
       setActivationError({ where, message: ILLNESS_ACTIVATION_FAILED });
       return false;

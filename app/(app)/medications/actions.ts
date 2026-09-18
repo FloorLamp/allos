@@ -39,6 +39,7 @@ import {
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
+import { readDoseQuantity, unreadableDoseAmountMessage } from "@/lib/dri";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
@@ -297,6 +298,17 @@ export async function logMedicationAdministration(
   if (given === "needs-time")
     return formError("Add the time this dose was given.");
   if (given === "invalid") return formError("Enter a valid time.");
+  // THE AMOUNT THE PANEL ASKED FOR (#5981), posted only by a row that had no dose
+  // to log against. It is judged by the ITEM FORM'S rule, called rather than
+  // restated: a number the upper-limit math cannot read stops this save exactly as
+  // it stops an add, because this is the write that puts it on the schedule.
+  const firstDoseAmount = strOrNull(formData.get("amount"));
+  if (
+    firstDoseAmount != null &&
+    readDoseQuantity(firstDoseAmount).kind === "unreadable"
+  ) {
+    return formError(unreadableDoseAmountMessage(firstDoseAmount));
+  }
   const outcome = logAdministration(
     profileId,
     id,
@@ -306,7 +318,9 @@ export async function logMedicationAdministration(
     // in the illness cockpit. `page` is this action's home, not the whole answer, so
     // the surface rides the post like every other shared web write.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-    given
+    given,
+    null,
+    firstDoseAmount
   );
   revalidateRoute("/medications");
   revalidateRoute("/nutrition");
@@ -321,6 +335,11 @@ export async function logMedicationAdministration(
       );
     case "inactive":
       return formError("This medication is paused — resume it to log a dose.");
+    // The panel disables Give until an amount is typed, so this is the stale tab and
+    // the surface that never asked — answered with what is missing, not with a
+    // deletion that did not happen.
+    case "needs-dose":
+      return formError("Add the dose amount for this medication, then log it.");
     case "stale-item":
     default:
       return formError("Couldn't log that — it may have been removed.");

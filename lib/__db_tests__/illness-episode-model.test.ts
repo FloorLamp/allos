@@ -11,7 +11,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { backfillIllnessEpisodes } from "@/lib/migrations/versions/046-illness-episodes";
 import { stabilizeEpisodeConditions } from "@/lib/migrations/versions/062-stable-episode-conditions";
 import { up as up169 } from "@/lib/migrations/versions/169-illness-episode-day-window";
@@ -33,6 +33,7 @@ import {
   resolveSituationId,
   setProfileSetting,
   setActiveSituations,
+  getSituationEvents,
 } from "@/lib/settings";
 import {
   serializeSituationEvents,
@@ -273,6 +274,36 @@ describe("toggle opens/closes rows in one write path (#856 item 0)", () => {
     const p = newProfile("non-illness");
     setActiveSituations(p, ["Travel"]);
     expect(listEpisodeRows(p).length).toBe(0);
+  });
+
+  it("a start day opens the row and its start event on that day; closing is still today's transition (#5969)", () => {
+    const p = newProfile("dated-toggle");
+    resolveSituationId(p, "Illness");
+    const yesterday = shiftDateStr(today(p), -1);
+
+    setActiveSituations(p, ["Illness"], yesterday);
+    expect(getOpenEpisodeRow(p, "Illness")).toMatchObject({
+      start_date: yesterday,
+      end_date: null,
+    });
+    expect(getSituationEvents(p)).toEqual([
+      { date: yesterday, situation: "Illness", change: "start" },
+    ]);
+
+    // Re-activating with a start day changes nothing: the open row keeps its start.
+    setActiveSituations(p, ["Illness"], shiftDateStr(today(p), -3));
+    expect(listEpisodeRows(p).length).toBe(1);
+    expect(getOpenEpisodeRow(p, "Illness")?.start_date).toBe(yesterday);
+
+    // The stop is today's transition whatever day the row started on, so the
+    // inclusive end is the day before it (#2232).
+    setActiveSituations(p, []);
+    expect(listEpisodeRows(p)[0].end_date).toBe(shiftDateStr(today(p), -1));
+    expect(getSituationEvents(p)).toContainEqual({
+      date: today(p),
+      situation: "Illness",
+      change: "stop",
+    });
   });
 });
 
