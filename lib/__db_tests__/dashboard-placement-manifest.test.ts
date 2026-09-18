@@ -660,7 +660,24 @@ describe("Home's one list, rendered", () => {
     household: 262,
     pregnant: 197,
     "diabetic-cgm": 204,
-    biohacker: 209,
+    // +1 for #5409's nightly breathing-rate card. `biohacker` is the only persona
+    // whose seeded wearable data produces `respiratory_rate_bpm` samples, and the
+    // card is present-gated, so the read fires there and nowhere else. The PRESENCE
+    // pass costs nothing — METRIC_SAMPLE_CARDS is answered by one grouped query, so
+    // adding a card to it is free; this line is the series read for a card that has
+    // something to draw.
+    //
+    // +1 AGAIN for #5409's Sleep-hero cell, and it is a SECOND read, not the same
+    // one twice: `getLastNightSummary` now resolves the night's breathing rate onto
+    // the shared last-night model, and Home calls that gather for its own sleep
+    // tile. It fires on `biohacker` alone for a DIFFERENT reason than the card does
+    // — `ouraNight` is the only writer of a `sleep_min` row in the persona seed and
+    // only this persona calls it, so every other persona has no session, and the
+    // read is gated on having one. Home does not RENDER the fact; it pays the read
+    // because the model is shared, which is the #221 trade this repo keeps making
+    // deliberately — one number for the Sleep page hero and the record's Sleep row
+    // rather than a second source of it beside the shared model.
+    biohacker: 211,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound on
@@ -758,7 +775,10 @@ describe("Home's one list, rendered", () => {
     household: 239,
     pregnant: 178,
     "diabetic-cgm": 185,
-    biohacker: 189,
+    // +2, the warm half of the same two #5409 reads — see QUERY_BASELINE above.
+    // Neither is memoized away: the card's series read and the hero's night read
+    // are both statements a second load still issues.
+    biohacker: 191,
   };
 
   it("home query budget: a second load with no write in between matches its warm baseline (#5073)", () => {

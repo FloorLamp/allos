@@ -1660,3 +1660,102 @@ describe("the quick sheet's fold writes through the dated core (#5808)", () => {
     });
   });
 });
+
+// THE ROW WITH NO DOSE ROW BEHIND IT (#5981). The "Also for" copy lands an active PRN
+// medication with zero `intake_item_doses` rows when the label chart derives no amount,
+// and the gather goes on offering it — so the chip that drew here had exactly one
+// possible outcome, "it may have been removed", printed under the panel's own sentence
+// explaining why there is no amount. The ruling: ask for the amount in place.
+//
+// THE STATE IS THE ITEM'S, and that is what `doseAmount` ABSENT means here. A host that
+// forwards the gather's answer forwards this one too; `null` is still a row that states
+// no amount and still draws an ordinary chip, which is the distinction the old
+// `?? null` spellings could not make.
+describe("a PRN row whose item has no dose row asks for the amount (#5981)", () => {
+  function row(
+    over: Partial<Parameters<typeof QuickLogPrnControl>[0]> = {}
+  ): void {
+    render(
+      <QuickLogPrnControl
+        identity={{ name: "Acetaminophen", rxcui: null }}
+        itemId={31}
+        name="Acetaminophen - Kids"
+        dayLabel="None today"
+        tz="UTC"
+        {...over}
+      />
+    );
+  }
+
+  const give = () => screen.getByTestId("prn-log-now") as HTMLButtonElement;
+  const field = () =>
+    screen.getByTestId("prn-first-dose-amount") as HTMLInputElement;
+
+  it.each([
+    { arm: "the labeled chip", compactActions: false },
+    { arm: "the icon-only arm", compactActions: true },
+  ])(
+    "$arm holds Give shut until an amount is typed",
+    async ({ compactActions }) => {
+      row({ compactActions });
+      expect(give().disabled).toBe(true);
+      await act(async () =>
+        fireEvent.change(field(), { target: { value: "  " } })
+      );
+      // Whitespace is not a stated amount.
+      expect(give().disabled).toBe(true);
+      await act(async () =>
+        fireEvent.change(field(), { target: { value: "160 mg" } })
+      );
+      expect(give().disabled).toBe(false);
+    }
+  );
+
+  it("posts the typed amount with the dose, and states it on the chip", async () => {
+    row({ profileId: 9 });
+    await act(async () =>
+      fireEvent.change(field(), { target: { value: " 160 mg " } })
+    );
+    // The chip's label is the payload this tap writes — the amount as typed.
+    expect(give().getAttribute("aria-label")).toBe(
+      "Give Acetaminophen - Kids · 160 mg"
+    );
+    await act(async () => fireEvent.click(give()));
+    expect(fields()).toMatchObject({
+      id: "31",
+      offset: "now",
+      amount: "160 mg",
+      profileId: "9",
+    });
+  });
+
+  it.each([
+    { state: "a row that states an amount", doseAmount: "200 mg" },
+    { state: "a row that states none", doseAmount: null },
+  ])("renders no field for $state", ({ doseAmount }) => {
+    row({ doseAmount });
+    expect(screen.queryByTestId("prn-first-dose-amount")).toBeNull();
+    expect(give().disabled).toBe(false);
+  });
+
+  // The band statement is the reason there is no amount on file; asking for one beside
+  // it must not move a word of it. Asserted as an EQUALITY against the row that has a
+  // dose row with no amount, so it cannot pass by pinning today's wording.
+  it("leaves the label's refusal exactly as it reads without the field", () => {
+    const child: PediatricFormContext = {
+      ageMonths: 20,
+      weightKg: 10,
+      weightDate: "2026-09-01",
+      weightUnit: "lb",
+      today: "2026-09-02",
+      declinedDoseUpdates: [],
+    };
+    const identity = { name: "Children's Tylenol", rxcui: "161" };
+    row({ identity, pediatric: child });
+    const withField = screen.getByTestId("prn-band-refusal").textContent;
+    expect(screen.getByTestId("prn-first-dose-amount")).toBeTruthy();
+    cleanup();
+    row({ identity, pediatric: child, doseAmount: null });
+    expect(screen.getByTestId("prn-band-refusal").textContent).toBe(withField);
+  });
+});

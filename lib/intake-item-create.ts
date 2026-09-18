@@ -51,8 +51,13 @@
 import { db, today } from "./db";
 import { sqlNow } from "./clock";
 import { intakeKindAffordances } from "./intake-kind-affordances";
-import { ensureMedicationCourse, recordScheduleVersion } from "./queries";
-import type { CourseAttribution } from "./queries";
+// The two satellite writers by their OWNERS rather than through the `./queries`
+// barrel: the administration write path now borns an item's first dose row through
+// `insertIntakeDose` below (#5981), and a barrel edge from here back into the module
+// that imports it leaves the re-export surface half-built at load time.
+import { ensureMedicationCourse } from "./queries/intake/medications";
+import { recordScheduleVersion } from "./queries/intake/dose-lifecycle";
+import type { CourseAttribution } from "./queries/intake/medications";
 import type { FoodTiming, IntakeCondition, IntakeObligation } from "./types";
 import type { CadenceKind } from "./intake-cadence";
 

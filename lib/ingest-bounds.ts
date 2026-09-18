@@ -112,6 +112,14 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // report roughly ±2 °C; ±15 rejects only sensor-fault garbage (the classic 900),
   // per the conservative-envelope rule.
   skin_temp_delta_c: { min: -15, max: 15 },
+  // The wearable's NIGHTLY breathing rate (#5409), breaths/min. The same 3–80
+  // envelope the clinical `Respiratory Rate` observation carries below — the owner's
+  // ruling is that the bounds apply to BOTH identities; what differs between them is
+  // the judgement band, not the plausibility envelope. Keyed twice, once per store:
+  // `respiratory_rate_bpm` is the stream key the parsers bound a sample against, and
+  // the canonical name is the answer for anything that asks by identity.
+  respiratory_rate_bpm: { min: 3, max: 80 },
+  "Breathing Rate (sleep)": { min: 3, max: 80 },
 
   // ---- metric_samples: sleep (minutes) ----
   // No sleep SESSION exceeds 24 h; every stage is bounded by the same 0–1440.
@@ -220,6 +228,10 @@ export const METRIC_ROUND_DP: Record<string, number> = {
   // skin temperature variation (°C from personal baseline) → 2dp. Trackers report
   // 1dp (+0.6, −0.1); 2dp keeps headroom without leaking a float.
   skin_temp_delta_c: 2,
+  // The nightly breathing rate (#5409) → 1dp. Fitbit reports one decimal (13.6) and
+  // the Takeout parser already rounded to one; declaring it here is what keeps a
+  // re-published reading byte-identical so the upsert still counts it `unchanged`.
+  respiratory_rate_bpm: 1,
 };
 
 // Round a canonical value to its metric's registered storage precision. An

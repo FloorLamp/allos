@@ -458,6 +458,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/migrations/cascade-delete.ts",
+    includes: "SELECT DISTINCT ${q(link.columns[0])} AS ref",
+    why: "parentIdsNamedBy (#5409): the blocking-link probe. It reads ONE column — the child's own foreign-key value — and returns only ids the CALLER already handed it, so it can disclose nothing a profile-scoped caller did not already hold. A profile predicate would also make it WRONG: the question is whether any row anywhere still names a doomed parent, and a cross-profile reference is precisely the anomaly that must still block the delete. Same schema-derived, apply-time, every-profile walk as the arms above, and the table is read from PRAGMA foreign_key_list rather than chosen here",
+  },
+  {
+    file: "lib/migrations/cascade-delete.ts",
     includes: "DELETE FROM ${q(table)} WHERE ${notNull} AND NOT EXISTS",
     why: "sweepOrphanedCascadeRows: removes rows whose CASCADE parent no longer exists — rows the schema says cannot exist, left behind by a foreign_keys=OFF migration (#2703). Global by construction; the NOT EXISTS against the parent (in the second literal) is the whole predicate",
   },

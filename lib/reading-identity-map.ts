@@ -87,6 +87,19 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
     stream: null,
   },
   { canonical: "Oxygen Saturation", surface: "spo2", stream: null },
+  // `Respiratory Rate` is an observation-only identity: no stream half, a spot count
+  // taken while awake, judged at 12-20 with LOINC 9279-1. #5409 moved the wearable's
+  // NIGHTLY rate — which was being written under this name as a `medical_records` vital
+  // — out to its own identity (below), so the name no longer covers two quantities.
+  //
+  // IT IS NOT YET TRUE THAT ONLY A DOCUMENT OR A HAND CAN WRITE ONE, and saying so
+  // would be a barrier wider than the code (PR #5880's falsifying pass). A wearable
+  // SPOT reading — a stamped respiratory record with no sleep session around it, which
+  // the Health Connect parser deliberately leaves an observation and the #5409 adoption
+  // deliberately declines to move — still lands here with `source = 'health-connect'`
+  // and is judged against the awake 12-20 band. That is pre-existing behaviour this
+  // issue declined to change, not something the move introduced; what would close it is
+  // a separate decision about where an unplaceable wearable reading belongs.
   { canonical: "Respiratory Rate", surface: "respiratory-rate", stream: null },
   { canonical: "Body Temperature", surface: "temperature", stream: null },
 
@@ -140,6 +153,39 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
       store: "metric_samples",
       key: "peak_flow_lmin",
       unit: "L/min",
+    },
+  },
+  // ── The sleeping breathing rate (#5409) — both halves, and a SEPARATE quantity ──
+  //
+  // A wrist tracker computes one breathing rate per sleep log and re-publishes it with
+  // a new stamp whenever it extends the log. Filed as a stamp-keyed `medical_records`
+  // vital it was three lab results for one night; it is a sleep-window sample now,
+  // keyed on the session start as sleep's own rows are.
+  //
+  // ITS OWN CANONICAL NAME IS THE LOAD-BEARING PART (owner ruling, 2026-09-05). This
+  // map's discipline is that a stream may join a canonical name only when it measures
+  // the SAME quantity, and a sleeping average is not the clinical spot count `Respiratory
+  // Rate` curates at 12-20 — the way Resting Heart Rate is a daily aggregate distinct
+  // from Heart Rate, which this map already keeps apart. Registering the nightly stream
+  // under `Respiratory Rate` would have granted a sleeping average the awake band.
+  //
+  // IT CARRIES BOTH HALVES. The stream is `metric_samples` `respiratory_rate_bpm`; the
+  // surface is the `breathing-rate` metric page, which charts exactly those rows. That
+  // pairing is what makes the quantity CONTINUOUS (`CONTINUOUS_READING_METRIC` is derived
+  // from this field), so a reading of it renders as a trend rather than on the reading
+  // detail page against a band it does not have.
+  //
+  // WHAT THE SURFACE DOES NOT BRING WITH IT is a judgement. `breathing-rate` declares
+  // `source: "none"` in `METRIC_KNOWLEDGE`, so the page charts the nights and states no
+  // range; the 12-20 band stays on `Respiratory Rate` above, one identity over, and is
+  // unreachable from here because this quantity names no canonical entry to reach it by.
+  {
+    canonical: "Breathing Rate (sleep)",
+    surface: "breathing-rate",
+    stream: {
+      store: "metric_samples",
+      key: "respiratory_rate_bpm",
+      unit: "breaths/min",
     },
   },
 ];

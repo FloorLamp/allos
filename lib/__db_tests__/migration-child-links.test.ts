@@ -45,15 +45,18 @@ import ts from "typescript-api";
 import { describe, expect, it, vi } from "vitest";
 import { rawDb as db } from "@/lib/db";
 import {
+  blockingInboundLinks,
   deleteRowsWithCascade,
   foreignKeyViolationTally,
   inboundDeleteLinks,
   introducedViolations,
+  parentIdsNamedBy,
   sweepOrphanedCascadeRows,
 } from "@/lib/migrations/cascade-delete";
 import { runMigrations } from "@/lib/migrations/runner";
 import { linkLiterals } from "./migration-link-scan";
 import { up as up184 } from "@/lib/migrations/versions/184-care-plan-dangling-record-links";
+import { up as breathingRateUp } from "@/lib/migrations/versions/20260911-breathing-rate-sleep-samples";
 import { up as upSweep } from "@/lib/migrations/versions/20260813-cascade-orphan-sweep";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -469,7 +472,14 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     ).toEqual([{ id: 1, activity_id: null, label: "Sit and reach" }]);
   });
 
-  it("leaves the NON-cascading half alone — blocking is still CHILD_LINKS' job", () => {
+  it("REFUSES a row a NO ACTION parent still names (#5409)", () => {
+    // IT USED TO DELETE IT. The helper was the cascading half only, and the blocking
+    // half was the migration's own hand-written `CHILD_LINKS` — which a shipped
+    // migration that needed it could omit. So this delete removed the row, the
+    // reference dangled (keys are OFF in a migration), `foreign_key_check` reported it
+    // from then on and the orphan sweep could not clear it. The unresolved case is now
+    // unreachable: the helper asks the same pragma the cascading half reads and throws
+    // naming the link.
     const mem = cascadeDb();
     mem.pragma("foreign_keys = OFF");
     mem
@@ -477,12 +487,31 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
         "INSERT INTO care_plan_items (id, profile_id, source_medical_record_id) VALUES (1, 1, 4)"
       )
       .run();
-    // The helper deletes what it was told to; it does not notice that a NO ACTION
-    // parent still points at the row. That check belongs to the migration.
-    deleteRowsWithCascade(mem, "medical_records", [4]);
+    expect(() => deleteRowsWithCascade(mem, "medical_records", [4])).toThrow(
+      /care_plan_items\.source_medical_record_id \(ON DELETE NO ACTION\)/
+    );
+    // Nothing happened: the row, its cascading child and the reference all stand.
     expect(
-      inboundDeleteLinks(mem, "medical_records").map((l) => l.table)
-    ).toEqual(["medical_record_revisions"]);
+      (
+        mem
+          .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE id = 4")
+          .get() as { n: number }
+      ).n
+    ).toBe(1);
+    expect(mem.pragma("foreign_key_check")).toEqual([]);
+
+    // RESOLVED — here by freeing it, as the record-delete path does; the #5409
+    // adoption carries it instead. Either way the delete then proceeds.
+    mem
+      .prepare(
+        "UPDATE care_plan_items SET source_medical_record_id = NULL WHERE id = 1"
+      )
+      .run();
+    expect(deleteRowsWithCascade(mem, "medical_records", [4])).toContainEqual({
+      table: "medical_records",
+      action: "parent",
+      rows: 1,
+    });
     expect(
       (
         mem.prepare("SELECT COUNT(*) AS n FROM care_plan_items").get() as {
@@ -592,16 +621,19 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     }
     expect(
       offenders,
-      "lib/migrations/cascade-delete.ts skips every action but CASCADE and SET " +
-        "NULL. ON DELETE SET DEFAULT / RESTRICT would be skipped SILENTLY, so the " +
-        "helper would delete the parent and leave the child dangling where the " +
-        "runtime delete aborts. Implement the branch before adding the link."
+      "lib/migrations/cascade-delete.ts acts on CASCADE and SET NULL and REFUSES " +
+        "everything else, so ON DELETE SET DEFAULT / RESTRICT would block every " +
+        "delete of this parent through the helper rather than being cleaned up. " +
+        "Implement the branch before adding the link."
     ).toEqual([]);
   });
 
   it("SET DEFAULT really is the failure this pin prevents", () => {
-    // Not a hypothetical: the helper's skip is demonstrated, beside SQLite's own
-    // answer to the same delete.
+    // Not a hypothetical: the helper's answer is demonstrated beside SQLite's own
+    // answer to the same delete. They now AGREE — a SET DEFAULT link is in the
+    // blocking half, so the helper refuses where the runtime aborts. Before #5409 it
+    // deleted the parent and left the child pointing at a row that was gone, which
+    // this module's header already called worse than the cycle it refuses loudly.
     const mem = new Database(":memory:");
     mem.pragma("foreign_keys = OFF");
     const schema = `
@@ -615,11 +647,11 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
     `;
     mem.exec(schema);
     expect(inboundDeleteLinks(mem, "parents")).toEqual([]);
-    expect(deleteRowsWithCascade(mem, "parents", [1])).toEqual([
-      { table: "parents", action: "parent", rows: 1 },
-    ]);
+    expect(() => deleteRowsWithCascade(mem, "parents", [1])).toThrow(
+      /kids\.p \(ON DELETE SET DEFAULT\)/
+    );
     expect(mem.prepare("SELECT p FROM kids").all()).toEqual([{ p: 1 }]);
-    expect(mem.pragma("foreign_key_check")).not.toEqual([]);
+    expect(mem.pragma("foreign_key_check")).toEqual([]);
 
     const runtime = new Database(":memory:");
     runtime.pragma("foreign_keys = OFF");
@@ -937,6 +969,11 @@ const FROZEN_UNGUARDED_DELETES: readonly {
     file: "180-waist-circumference-metric.ts",
     table: "medical_records",
     why: "#2680: a real orphaning. Runs after both cascading children exist (066, 120) and clears neither — its CHILD_LINKS registry covers only the non-cascading half. 20260813-cascade-orphan-sweep repairs it.",
+  },
+  {
+    file: "20260911-stool-events.ts",
+    table: "metric_samples",
+    why: "#2680: the migration-131 shape — a link introduced LATER landing on an earlier file. 20260911-stool-events deletes the `bristol_stool_type` samples it has just moved to their own table, and at that position `metric_samples` has NO inbound delete link at all: the first one is care_plan_items.source_metric_sample_id (ON DELETE SET NULL), added for #5409's carried follow-up three migrations after it (20260912-food-sensitivities and 20260916-shared-supply-last-fill land between them). There is no child to clear when it runs, and nothing it deletes could ever be named by a breathing-rate follow-up. Runtime deletes of a sample are unaffected — foreign_keys is ON outside the runner, so the link's own SET NULL fires, which is exactly why that pair is spelled SET NULL.",
   },
   {
     file: "20260813-bmi-derived-rows.ts",
@@ -1627,5 +1664,283 @@ describe("the orphan probe's own arithmetic (#2703)", () => {
     expect(tally?.size).toBe(1);
     expect(introducedViolations(null, tally)).toEqual([]);
     expect(introducedViolations(new Map(), null)).toEqual([]);
+  });
+});
+
+// ---- the OTHER shape the scan cannot see: a delete factored into a lib helper ----
+//
+// #5409 / PR #5880's falsifying pass. `migrationDeletes()` reads the source of the
+// files in `lib/migrations/versions` and nothing else, so a migration whose body is one
+// call into a shared module is invisible to it however that module deletes. Nobody
+// evaded anything: `20260911-breathing-rate-sleep-samples.ts` is
+// `adoptWearableBreathingRates(db, …)` and the row removal is in
+// lib/breathing-rate-db.ts, one import away. A ratchet that scans one directory is
+// defeated by ordinary good factoring.
+//
+// The answer taken here is the one the ratchet's own wording asks for — "a compliant
+// migration does not WRITE `DELETE FROM <cascading parent>`, it calls
+// `deleteRowsWithCascade`" — so the migration passes the store half a remover built
+// from the helper, and its removal is guarded rather than merely unseen. That is a
+// property of BEHAVIOUR, not of the file's text, so it is pinned behaviourally below,
+// through the real `up` and the real runner. Widening the scan to follow a migration's
+// local value-imports is the repo-wide alternative and is deliberately not done here;
+// a measurement of what it would cost is in the PR discussion.
+//
+// SYNTHETIC ONLY: fictional profiles, invented readings, a fictional child table.
+
+/**
+ * The adoption's own minimal shape: the two tables it reads plus the revision child
+ * it must never orphan, and `wearable_record_tags` — a CASCADE child standing in for
+ * any inbound link that is NOT a revision, so the helper has something to clean up.
+ */
+function adoptionDb(): Database.Database {
+  const mem = new Database(":memory:");
+  mem.pragma("foreign_keys = ON");
+  mem.exec(`
+    CREATE TABLE medical_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      occurred_at TEXT,
+      category TEXT,
+      name TEXT,
+      canonical_name TEXT,
+      value TEXT,
+      value_num REAL,
+      unit TEXT,
+      source TEXT,
+      external_id TEXT,
+      edited INTEGER
+    );
+    CREATE TABLE medical_record_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES medical_records(id) ON DELETE CASCADE,
+      value TEXT
+    );
+    CREATE TABLE wearable_record_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES medical_records(id) ON DELETE CASCADE,
+      tag TEXT
+    );
+    CREATE TABLE metric_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      origin TEXT,
+      metric TEXT NOT NULL,
+      date TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      value REAL NOT NULL,
+      edited INTEGER
+    );
+  `);
+  mem.exec(`
+    INSERT INTO metric_samples
+      (profile_id, source, origin, metric, date, started_at, ended_at, value)
+    VALUES (1, 'health-connect', 'com.fitbit.FitbitMobile', 'sleep_min',
+            '2016-02-11', '2016-02-11T02:52:00Z', '2016-02-11T08:53:00Z', 361);
+    INSERT INTO medical_records
+      (id, profile_id, date, occurred_at, category, name, canonical_name,
+       value, value_num, unit, source, external_id)
+    VALUES (4, 1, '2016-02-11', '2016-02-11T08:53:00Z', 'vitals',
+            'Respiratory Rate', 'Respiratory Rate', '13.6', 13.6, 'breaths/min',
+            'health-connect', 'health-connect:Respiratory Rate:2016-02-11T08:53:00Z');
+    INSERT INTO wearable_record_tags (id, record_id, tag) VALUES (1, 4, 'nightly');
+  `);
+  return mem;
+}
+
+describe("a migration whose delete lives in a lib helper is still guarded (#5409)", () => {
+  it("the source scan sees no delete for it at all — which is why the pin below is behavioural", () => {
+    // The blind spot, asserted rather than described. If a raw `DELETE FROM
+    // medical_records` ever appears in this migration's own file the main ratchet
+    // above judges it; what this pins is that the scan's silence here is the
+    // compliant shape and not an unguarded delete hiding one import away.
+    expect(
+      migrationDeletes().filter(
+        (d) => d.file === "20260911-breathing-rate-sleep-samples.ts"
+      )
+    ).toEqual([]);
+    expect(
+      fs.readFileSync(
+        path.join(VERSIONS, "20260911-breathing-rate-sleep-samples.ts"),
+        "utf8"
+      )
+    ).toContain("deleteRowsWithCascade");
+  });
+
+  it("clears a cascading child the runner's foreign_keys = OFF would have orphaned", () => {
+    const mem = adoptionDb();
+    runMigrations(mem, [
+      { name: "20260911-breathing-rate-sleep-samples", up: breathingRateUp },
+    ]);
+
+    // The reading moved: one nightly sample on the session's own start.
+    expect(
+      mem
+        .prepare(
+          `SELECT source, started_at, value FROM metric_samples
+            WHERE metric = 'respiratory_rate_bpm'`
+        )
+        .all()
+    ).toEqual([
+      {
+        source: "health-connect",
+        started_at: "2016-02-11T02:52:00Z",
+        value: 13.6,
+      },
+    ]);
+    expect(
+      mem.prepare("SELECT COUNT(*) AS n FROM medical_records").get()
+    ).toEqual({ n: 0 });
+    // And the child went with it, exactly as the runtime delete would have taken it.
+    expect(
+      mem.prepare("SELECT COUNT(*) AS n FROM wearable_record_tags").get()
+    ).toEqual({ n: 0 });
+    expect(fkViolations(mem)).toEqual([]);
+  });
+
+  it("declines the reading entirely when the child is a #1404 correction lineage", () => {
+    // The other half of the same obligation: a revision cannot follow its reading into
+    // `metric_samples`, so the reading is not moved and not deleted — kept, rather than
+    // orphaned here or cascaded away at runtime.
+    const mem = adoptionDb();
+    mem
+      .prepare(
+        "INSERT INTO medical_record_revisions (record_id, value) VALUES (4, '13.9')"
+      )
+      .run();
+    runMigrations(mem, [
+      { name: "20260911-breathing-rate-sleep-samples", up: breathingRateUp },
+    ]);
+
+    expect(
+      mem
+        .prepare(
+          `SELECT COUNT(*) AS n FROM metric_samples
+            WHERE metric = 'respiratory_rate_bpm'`
+        )
+        .get()
+    ).toEqual({ n: 0 });
+    expect(mem.prepare("SELECT id FROM medical_records").all()).toEqual([
+      { id: 4 },
+    ]);
+    expect(
+      mem.prepare("SELECT record_id, value FROM medical_record_revisions").all()
+    ).toEqual([{ record_id: 4, value: "13.9" }]);
+    expect(fkViolations(mem)).toEqual([]);
+  });
+});
+
+// ---- THE BLOCKING HALF IS ENUMERATED, NOT SURVEYED (#5409) -------------------
+//
+// `CHILD_LINKS` is a hand survey of exactly these links, and a hand survey is what
+// failed twice on the #5409 branch — including a header that named unguarded links
+// as covered. `blockingInboundLinks` is the complement of
+// `inboundDeleteLinks` out of the same pragma walk, so the two together are every
+// inbound key and nothing falls between them.
+//
+// DERIVED THROUGH THE PRAGMA THE MECHANISM READS, with the foreign keys actually
+// declared: this suite runs against the DB tier's real migrated schema. A fixture that
+// builds child tables by hand the way `childTablesDdl` does — bare `INTEGER` columns,
+// no `REFERENCES` — reads zero links and would pass every assertion below vacuously.
+describe("blocking inbound links (#5409)", () => {
+  it("is exactly the complement of the cascading half, over the same keys", () => {
+    for (const parent of ["medical_records", "metric_samples", "activities"]) {
+      const acted = inboundDeleteLinks(db, parent).map(
+        (l) => `${l.table}.${l.columns.join("+")}`
+      );
+      const blocked = blockingInboundLinks(db, parent).map(
+        (l) => `${l.table}.${l.columns.join("+")}`
+      );
+      expect(acted.filter((k) => blocked.includes(k))).toEqual([]);
+      // Every inbound key of this parent, read straight from the pragma, is in one
+      // half or the other — the `action === null` skip is no longer a silent discard.
+      const all: string[] = [];
+      for (const table of (
+        db
+          .prepare(
+            `SELECT name FROM sqlite_master WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%' ORDER BY name`
+          )
+          .all() as { name: string }[]
+      ).map((r) => r.name)) {
+        const byKey = new Map<number, string[]>();
+        for (const fk of db
+          .prepare(`PRAGMA foreign_key_list("${table}")`)
+          .all() as { id: number; table: string; from: string }[])
+          if (fk.table.toLowerCase() === parent)
+            byKey.set(fk.id, [...(byKey.get(fk.id) ?? []), fk.from]);
+        for (const cols of byKey.values())
+          all.push(`${table}.${cols.join("+")}`);
+      }
+      expect([...acted, ...blocked].sort()).toEqual(all.sort());
+    }
+  });
+
+  it("names the three NO ACTION references to medical_records", () => {
+    expect(
+      blockingInboundLinks(db, "medical_records")
+        .map((l) => `${l.table}.${l.columns.join("+")} ${l.onDelete}`)
+        .sort()
+    ).toEqual([
+      "care_plan_items.resolved_by_medical_record_id NO ACTION",
+      "care_plan_items.source_medical_record_id NO ACTION",
+      "intake_items.source_record_id NO ACTION",
+    ]);
+  });
+
+  it("probes the whole delete-set in one query, and refuses what it cannot express", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Link probe")
+        .lastInsertRowid
+    );
+    const record = (value: number): number =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, value_num, source)
+             VALUES (?, '2026-09-05', 'vitals', 'Fictional analyte', ?, ?, 'manual')`
+          )
+          .run(profileId, String(value), value).lastInsertRowid
+      );
+    const named = record(1);
+    const unnamed = record(2);
+    db.prepare(
+      `INSERT INTO care_plan_items (profile_id, description, source_kind,
+                                    source_medical_record_id)
+       VALUES (?, 'Recheck fictional analyte', 'labs', ?)`
+    ).run(profileId, named);
+
+    const link = blockingInboundLinks(db, "medical_records").find(
+      (l) => l.columns[0] === "source_medical_record_id"
+    );
+    if (!link) throw new Error("the source link is no longer in the schema");
+    const hits = parentIdsNamedBy(db, link, [named, unnamed]);
+    expect(hits && [...hits]).toEqual([named]);
+    // An empty delete-set asks nothing and finds nothing — not a null refusal.
+    expect(parentIdsNamedBy(db, link, [])?.size).toBe(0);
+    // PAST THE BOUND-PARAMETER CEILING. A delete-set is as big as the migration's
+    // candidate set, and `IN (?,?,…)` over one throws "too many SQL variables" —
+    // which is what a whole-set probe written the obvious way does at the size it
+    // exists for. One JSON parameter has no such ceiling.
+    const huge = [
+      named,
+      ...Array.from({ length: 40_000 }, (_, i) => 10_000_000 + i),
+    ];
+    const hugeHits = parentIdsNamedBy(db, link, huge);
+    expect(hugeHits && [...hugeHits]).toEqual([named]);
+
+    // A COMPOSITE key names its parent rows by a tuple an id list cannot express, so
+    // the answer is a refusal the caller must handle, never a silent empty set.
+    expect(
+      parentIdsNamedBy(
+        db,
+        { ...link, columns: [...link.columns, "profile_id"] },
+        [named]
+      )
+    ).toBeNull();
   });
 });
