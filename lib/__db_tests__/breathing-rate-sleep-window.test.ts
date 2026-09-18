@@ -24,8 +24,8 @@
 //   4. a clinical row on the same night  — the discrimination, from the other side
 //   5. the migration over a fixture      — three stamps, one stamp, two Takeout days, a
 //                                          spot reading and two clinical rows
-//   6. the correction round              — the four reachable defects PR #5880's
-//                                          falsifying pass found, each constructed:
+//   6. the correction round              — the reachable defects PR #5880's
+//                                          falsifying passes found, each constructed:
 //                                          the #1404 lineage under BOTH foreign-key
 //                                          postures, the #133 lock on both branches,
 //                                          the origin-aware natural key, and the chart
@@ -665,7 +665,7 @@ describe("the migration is the adoption run over history", () => {
 
 // ── THE CORRECTION ROUND (PR #5880's falsifying pass, owner ruling 2026-09-11) ──────
 //
-// Four reachable defects, each constructed here rather than argued. The move stays; the
+// Reachable defects, each constructed here rather than argued. The move stays; the
 // DELETE is what these cases are about.
 //
 //   1. `medical_record_revisions` — the #1404 correction lineage the ingest itself
@@ -1233,7 +1233,7 @@ describe("deleting the carried sample frees the WHOLE link", () => {
   });
 
   it("frees it on Data \u2192 Manage's Delete all, which takes no capture", async () => {
-    // THE ONLY PERSON-REACHABLE DELETE OF A SAMPLE THAT IS NOT A CAPTURE. Metric
+    // A PERSON-REACHABLE DELETE OF A SAMPLE THAT IS NOT A CAPTURE. Metric
     // samples are a deletable dataset (DELETE_POLICY in lib/export.ts), so Data \u2192
     // Manage offers "Delete all" beside the row checkboxes. The selected-rows delete
     // routes through captureDelete and inherits the seam; "Delete all" is deliberately
@@ -1305,8 +1305,8 @@ describe("deleting the carried sample frees the WHOLE link", () => {
 
 describe("a link it cannot carry declines the night, and names it", () => {
   it("leaves the night alone and reports which link held it", () => {
-    // `intake_items.source_record_id` is the third NO ACTION link into
-    // `medical_records` and there is nowhere on a sample to carry it to. The rule is
+    // `intake_items.source_record_id` is a NO ACTION link into `medical_records`
+    // with nowhere on a sample to carry it to. The rule is
     // not a list — `blockingInboundLinks` reads it out of the schema — so a link nobody
     // remembered holds its night just as loudly as one that was thought about.
     const profileId = newProfile("Decline, intake link");

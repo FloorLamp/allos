@@ -28,10 +28,10 @@ import type { SqlPrepare } from "../write-revision";
 // delete instead of approximating it.
 //
 // BOTH HALVES ARE NOW ENUMERATED HERE, from the one pragma walk (#5409). A hand
-// survey of half 1 failed twice on the same mechanism, and the census says why it
-// is not carelessness: of the six shipped migrations whose delete target had a
-// blocking inbound parent, two declared `CHILD_LINKS` — and those two are the only
-// two the exercise suite judges, because it is gated on the declaration. So
+// survey of half 1 failed twice on the same mechanism, and the reason is not
+// carelessness: a shipped migration whose delete target had a blocking inbound parent
+// could omit `CHILD_LINKS`, and the exercise suite judges only the migrations that
+// declared one, because it is gated on the declaration. So
 // `blockingInboundLinks` answers half 1's enumeration the way `inboundDeleteLinks`
 // answers half 2's, and `parentIdsNamedBy` probes it in the one shape that belongs
 // on a boot path. The POLICY for a blocking link stays with the caller, which is
@@ -173,10 +173,10 @@ export function inboundDeleteLinks(
  *
  * WHY THIS EXISTS AS CODE RATHER THAN AS A LIST. The blocking half is what a
  * row-deleting migration declares by hand as `CHILD_LINKS`, and the hand survey is
- * what keeps failing: two of the six shipped migrations whose delete target had a
- * blocking inbound parent declared one. Two of those six were also the only two
- * with fixtures, because the exercise suite is gated on the declaration it exists
- * to judge — declare nothing and nothing judges you. A caller that asks the schema
+ * what keeps failing: a shipped migration whose delete target had a blocking inbound
+ * parent could declare nothing, and only a declared link gets a fixture, because the
+ * exercise suite is gated on the declaration it exists to judge — declare nothing and
+ * nothing judges you. A caller that asks the schema
  * instead cannot forget a link, and a link added AFTER the caller was written shows
  * up in its answer without an edit.
  *
@@ -210,9 +210,10 @@ export function blockingInboundLinks(
  *   chunked over the ids (500 chunks of 400) :   6,232 ms   (36×)
  *   one query per id                         :   2,204 ms per 400 (~18 min for 200k)
  *
- * The cost is the CHILD table's size, not the delete-set's: 63 of this schema's 150
- * blocking inbound links have no index on the referencing column, so the probe is a
- * scan of the child and the number of ids barely moves it. Chunking therefore
+ * The cost is the CHILD table's size, not the delete-set's: a blocking inbound link
+ * need not have an index on the referencing column (many in this schema did not when
+ * this was measured), so the probe is a scan of the child and the number of ids
+ * barely moves it. Chunking therefore
  * multiplies that scan by the number of chunks — the one thing that must not be done
  * here, and the shape the `CHUNK = 400` delete loop below invites. A per-id probe
  * measures fast on a fixture whose matches sit at the front of the table and takes

@@ -56,8 +56,8 @@ import { parseUtcSql } from "@/lib/date";
 //
 // -- IT MOVES A NIGHT ONLY WHEN THE MOVE CARRIES EVERYTHING THE NIGHT HAS -----------
 //
-// A reading can have more on it than its number, and there are exactly two kinds of
-// more: a row another table still POINTS AT, and a row with a correction LINEAGE
+// A reading can have more on it than its number, and two kinds of more hold its night
+// back: a row another table still POINTS AT, and a row with a correction LINEAGE
 // hanging off it. The rule for both is the same, and the unit is the NIGHT, not the
 // row, because the night is an ELECTION: its rows are ranked and one of them becomes
 // the number. Deciding row by row inside an election set silently changes which row

@@ -246,8 +246,8 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
   // it for is a drift of a breath or two, which 0dp would render as a flat line with
   // occasional steps. The same argument skin temperature's decimal makes one entry up.
   //
-  // IMPORT-ONLY, so no quick-add. Nobody counts their own breaths while asleep; the two
-  // wearable parsers are the only writers (`WEARABLE_RESPIRATORY_SOURCES`), and a
+  // IMPORT-ONLY, so no quick-add. Nobody counts their own breaths while asleep; the
+  // wearable parsers write it (`WEARABLE_RESPIRATORY_SOURCES`), and a
   // counted rate taken while awake is the OTHER slug's `medical_records` row, which the
   // combined "Log measurements" form already offers.
   //

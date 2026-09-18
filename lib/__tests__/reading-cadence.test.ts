@@ -88,7 +88,7 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   //
   // `readingCadence` answers "which renderer does a reading of this canonical name
   // use", and for this name the readings are `metric_samples` `respiratory_rate_bpm`
-  // rows written by the two wearable parsers and by nothing else. It is continuous for
+  // rows, written by the wearable parsers. It is continuous for
   // the reason #2032 and #1850 generalized this table to: the destination has to hold
   // readings of the same #482 identity, not to hold them in `medical_records` — and the
   // `breathing-rate` metric page charts exactly this identity's stream.

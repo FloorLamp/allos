@@ -474,8 +474,8 @@ describe("the runner applies migrations with cascades DISABLED (#2680)", () => {
 
   it("REFUSES a row a NO ACTION parent still names (#5409)", () => {
     // IT USED TO DELETE IT. The helper was the cascading half only, and the blocking
-    // half was the migration's own hand-written `CHILD_LINKS` — which two of the six
-    // shipped migrations that needed it declared. So this delete removed the row, the
+    // half was the migration's own hand-written `CHILD_LINKS` — which a shipped
+    // migration that needed it could omit. So this delete removed the row, the
     // reference dangled (keys are OFF in a migration), `foreign_key_check` reported it
     // from then on and the orphan sweep could not clear it. The unresolved case is now
     // unreachable: the helper asks the same pragma the cascading half reads and throws
@@ -1836,8 +1836,8 @@ describe("a migration whose delete lives in a lib helper is still guarded (#5409
 // ---- THE BLOCKING HALF IS ENUMERATED, NOT SURVEYED (#5409) -------------------
 //
 // `CHILD_LINKS` is a hand survey of exactly these links, and a hand survey is what
-// failed twice on the #5409 branch — including a header that named two of the three
-// unguarded links as covered. `blockingInboundLinks` is the complement of
+// failed twice on the #5409 branch — including a header that named unguarded links
+// as covered. `blockingInboundLinks` is the complement of
 // `inboundDeleteLinks` out of the same pragma walk, so the two together are every
 // inbound key and nothing falls between them.
 //

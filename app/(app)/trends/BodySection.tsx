@@ -303,9 +303,10 @@ export default async function BodySection({
   // "Respiratory Rate")`, the clinical spot count judged at 12–20, and after this
   // issue's migration it carries only those clinical rows. Two identities, two charts.
   //
-  // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums: a
-  // night can carry both a Health Connect and a Fitbit Takeout reading, and two agreeing
-  // 13.6s summed would chart a 27.2 br/min night nobody breathed.
+  // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums:
+  // one source's nap and night in one wake day are two rows on two session starts, and
+  // 13.6 + 13.6 would chart a 27.2 br/min night nobody breathed. Two SOURCES on one
+  // night elect rather than average (`pointSourceRank`, lib/metric-buckets.ts).
   //
   // One decimal, through the registry's own `decimals` rather than a hand-rolled ×10,
   // so this gather and `STREAM_SERIES["breathing-rate"]` (the detail page's reader)

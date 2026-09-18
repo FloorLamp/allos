@@ -53,9 +53,9 @@ export const CLINICAL_RESPIRATORY_CANONICAL = "Respiratory Rate";
  *
  * Both write the SAME quantity: Health Connect carries Fitbit's per-session reading
  * stamped at the session end, and Fitbit Takeout's `daily_respiratory_rate` is that same
- * nightly number labelled by day. No other source writes a `Respiratory Rate` row — the
- * pull-sync integrations have no respiratory feed, and manual entry and document
- * extraction are clinical by construction.
+ * nightly number labelled by day. A source absent from this list is read as clinical:
+ * `isWearableRespiratorySource` is an exact match, so manual entry, document
+ * extraction and any integration not named here leave an observation where it is.
  */
 export const WEARABLE_RESPIRATORY_SOURCES: readonly string[] = [
   // ORDER IS LOAD-BEARING, and only for display: `breathingRateSourceRank` reads it.

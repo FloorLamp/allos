@@ -27,17 +27,19 @@ import type { Migration } from "../runner";
 //
 // Migration 060 spells its pair with NO ON DELETE and frees the link by hand at each
 // delete seam ("house style"). That style is what #5409's falsifying round was about:
-// a blocking link is only as good as the survey that finds it, two of the six shipped
-// migrations whose delete target had one declared it, and at runtime an unfreed
+// a blocking link is only as good as the survey that finds it, shipped migrations
+// whose delete target had one did not reliably declare it, and at runtime an unfreed
 // blocking link raises SQLITE_CONSTRAINT_FOREIGNKEY inside somebody else's write.
 //
 // `metric_samples` is not `medical_records`: it HAS live delete paths written without
-// follow-ups in mind — integration re-times, whole-table wipes, the offline queue's
-// replay — and it keeps growing them, which is the point rather than the list. A new
-// NO ACTION link into it would make each of those a potential throw, guarded by a hand
-// survey of exactly the kind that just failed. `SET NULL` binds without one:
-// SQLite applies it at runtime and `inboundDeleteLinks` reads it inside a migration, in
-// both postures, for every delete path including the ones written after this one.
+// follow-ups in mind, and it keeps growing them, which is the point rather than any
+// list of them. A new NO ACTION link into it would make each such path a potential
+// throw, guarded by a hand survey of exactly the kind that just failed. `SET NULL`
+// binds without one: SQLite applies it to every runtime delete, and inside a migration
+// `inboundDeleteLinks` reads it for a delete run through `deleteRowsWithCascade`. The
+// whole-table delete a person reaches from Data → Manage runs the hand seam itself
+// before its wipe (app/(app)/data/manage-actions.ts); the action stands behind a path
+// that does not.
 //
 // IT IS A BACKSTOP, NOT THE DE-LINK ITSELF, and the difference is exactly one column.
 // SQLite can only null the column the action is declared ON; every hand seam in

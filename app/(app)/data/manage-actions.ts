@@ -251,9 +251,12 @@ export async function deleteAllDatasetRows(
   // discriminator migration 184 exists to repair. So run the same shared seam first,
   // for this profile's links to the rows this wipe removes.
   //
-  // Anchored on `metric_samples` rather than on `care_plan_items` so a link held by
-  // ANOTHER profile is not freed against a row this wipe is not removing. Such a link
-  // is left dangling — the cross-profile case #5409 records as not done.
+  // Anchored on `metric_samples` rather than on `care_plan_items`. The seam frees by
+  // sample id within THIS profile (`unlinkFollowUpsForMetricSample` scopes both of its
+  // statements to the caller's profile), so an id set read off the follow-ups could
+  // carry the id of ANOTHER profile's sample and free this profile's link to a row
+  // the wipe below is not removing. Read off this profile's own samples, every id the
+  // seam is handed is a row the wipe removes.
   //
   // The seam is not in a transaction with the wipe: a wipe that failed after it would
   // leave these links already freed.

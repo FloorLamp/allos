@@ -331,8 +331,7 @@ export const METRIC_DOCUMENT_REACH: Record<
   // produces a reading of this quantity. A respiratory rate extracted from a document,
   // or typed by hand, is CLINICAL by construction (`isWearableRespiratorySource` matches
   // the two wearable integration ids exactly and nothing else), so it is a
-  // `Respiratory Rate` observation on the `respiratory-rate` slug's chart. This chart's
-  // rows come from the two wearable parsers and from nowhere else.
+  // `Respiratory Rate` observation on the `respiratory-rate` slug's chart.
   //
   // AND NOTHING IS STRANDED BY THAT, which is the guard's actual concern. The name is
   // removed from the catalog by the STREAM clause in `listedInResultsCatalog` below —
