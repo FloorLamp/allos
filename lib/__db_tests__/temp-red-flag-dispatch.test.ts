@@ -374,10 +374,20 @@ describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
     // The hourly tick asks the same orchestrator for the profile's today.
     await runTempRedFlag(p, date);
     expect(fetchMock).not.toHaveBeenCalled();
+    // Refused, not deferred: no marker was written for yesterday's key either.
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toEqual([]);
 
     const fresh = logTemperatureCore(p, 100.8, "F", date, "page", "09:00");
     expect(fresh.kind).toBe("logged");
     await dispatchTempRedFlagForReading(p, 100.8);
     expect(urls(fetchMock)).toEqual([CHILD_URL]);
+    const markers = getProfileSettingKeysWithPrefix(
+      p,
+      "notify_last_tempredflag_"
+    );
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toContain(`:${date}:infant_fever`);
   });
 });

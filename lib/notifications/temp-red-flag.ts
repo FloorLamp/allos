@@ -81,7 +81,14 @@ export async function runTempRedFlag(
   // read a fever red-flag correctly either way — so the safety message carries
   // BOTH scales ("38.5 °C / 101.3 °F"). The dedupeKey is display-independent, so
   // the bus gating below still matches the web surfaces' keys exactly.
-  const finding = tempRedFlagFindingFor(profileId, date, "dual");
+  const found = tempRedFlagFindingFor(profileId, date, "dual");
+  // REFUSED HERE: a finding whose day precedes `date`, the run's day (#5969, owner
+  // ruling 2026-09-18). It is not sent and no per-finding marker is written for it;
+  // the run continues as if there were no finding, so a marker that is no longer
+  // actionable is still cleared. The reading itself stays on the episode's web
+  // surfaces. The episode-open door, the reading door and the hourly tick all pass
+  // through this line.
+  const finding = found && found.date < date ? null : found;
   const actionableKeys = finding ? [finding.dedupeKey] : [];
 
   // Route through the shared findings-suppression bus (#227).
@@ -183,8 +190,10 @@ export async function dispatchTempRedFlagForReading(
 // `[episode.start, …]`; a reading logged before that start is not `latestTemp` and
 // produces no finding. Since #5969 the symptom bar's door can open the row on the day
 // the bar was showing, so the reading that walked the door is inside the window on
-// whichever day it was logged for. That door refuses a start day after the profile's
-// today (`activateIllnessForSymptoms`); this module compares no finding `date` to today.
+// whichever day it was logged for. What keeps that from pushing a day late is the
+// refusal in `runTempRedFlag`: a finding whose day precedes the run's day is not sent
+// and gets no marker. This door runs for the profile's today, so it meets that refusal
+// like the reading door and the hourly tick do.
 //
 // The per-finding marker and the suppression bus are unchanged, so this can no more
 // double-send than the reading path can — the two share one orchestrator and one key.
