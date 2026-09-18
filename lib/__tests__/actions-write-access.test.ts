@@ -1254,6 +1254,20 @@ const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 // authorization boundary. What the brand does refuse is the ordinary accident — a
 // plain `number` reaching a write core — which is the shape #5348 converts cores to
 // catch.
+//
+// WHAT THE STEP-ASIDE RESTS ON, for an action the loop below skips (#5936): `tsc`
+// refusing an unbranded ARGUMENT at the core's call site. Observed on
+// setEquipmentRetiredAction with `requireWriteAccess()` swapped for `requireSession()`
+// and `profile.id` handed to the core: this scan, lint and the equipment action tier
+// stay green, and `npm run typecheck` reds with
+//   error TS2345: Argument of type 'number' is not assignable to parameter of type
+//   'WriteAuthorizedProfileId'.
+// It refuses the argument, not the missing gate, so it does not refuse an `any`
+// assigned into a `WriteAuthorizedProfileId` annotation (`JSON.parse(...)`, no `as`,
+// #5939's probe shape): under that shape the same swap leaves typecheck and lint green
+// too. The check that reds THEN is behavioural, not static —
+// lib/__action_tests__/write-gate-survives-brand.actions.test.ts drives that action
+// under a read-only session and expects the refusal.
 const WRITE_BRAND = "WriteAuthorizedProfileId";
 
 function productionSources(root: string): string[] {
@@ -1686,7 +1700,9 @@ function gateScan(
     for (const { name, body } of exportedAsyncFunctions(src)) {
       scanned++;
       if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
-      if (typeGated.has(name)) continue; // gated by the brand, and tsc says so (#5348)
+      // Calls a branded core: tsc refuses an unbranded argument at its call site, and
+      // what that does and does not refuse is stated above WRITE_BRAND (#5348, #5936).
+      if (typeGated.has(name)) continue;
       const allowEntry = allow.find((a) => a.file === rel && a.fn === name);
       if (allowEntry) {
         matchedAllow.add(`${allowEntry.file}#${allowEntry.fn}`);
