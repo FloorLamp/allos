@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Component,
   Activity,
   Suspense,
   createContext,
@@ -14,7 +13,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import { LoggedViaSurface } from "./LoggedViaSurface";
 import { useToast } from "./Toast";
@@ -44,6 +42,14 @@ import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
 import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import {
+  BodyBoundary,
+  loadBodies,
+  QuickEntryError,
+  QUICK_ENTRY_LOADING,
+  QUIET_STATE_CLASS,
+  type Bodies,
+} from "./quick-entry/body-chunks";
+import {
   useVisitResumeBoundary,
   useVisitResumeWatch,
   type VisitResumeWatch,
@@ -72,59 +78,6 @@ import { wipeDeviceForSignOut } from "./device-wipe";
 import { ActiveProfileProvider } from "./ActiveProfileProvider";
 import type { IntakeItemKind } from "@/lib/types";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
-
-// The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
-// route, and its promise is that it COSTS NOTHING until opened — a promise about
-// JavaScript as much as about queries. The forms it already carried are small and
-// shared with pages the shell links to anyway; the upload form and the practice list
-// each drag in machinery (the file/camera inputs and the toast lifecycle, the
-// practice button's modal and date field) that no page-load should pay for. Both are
-// only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
-// trip that was already happening and costs nothing perceptible.
-function loadBodies(attempt: number) {
-  return {
-    attempt,
-    UploadForm: dynamic(() => import("./UploadForm")),
-    QuickPracticeList: dynamic(() => import("./quick-entry/QuickPracticeList")),
-    QuickCyclePanel: dynamic(() => import("./quick-entry/QuickCyclePanel")),
-    MoodForm: dynamic(() => import("./mood/MoodForm")),
-    StoolTypeControl: dynamic(() => import("./stool/StoolTypeControl")),
-    QuickSubstanceList: dynamic(
-      () => import("./quick-entry/QuickSubstanceList")
-    ),
-    QuickSymptomPanel: dynamic(() => import("./quick-entry/QuickSymptomPanel")),
-    IntakeItemForm: dynamic(async () => {
-      const [{ default: IntakeItemForm }, { addIntakeItem }] =
-        await Promise.all([
-          import("./IntakeItemForm"),
-          import("@/app/(app)/nutrition/intake-actions"),
-        ]);
-      return function QuickEntryIntakeItemForm(
-        props: Omit<React.ComponentProps<typeof IntakeItemForm>, "action">
-      ) {
-        return <IntakeItemForm {...props} action={addIntakeItem} />;
-      };
-    }),
-  };
-}
-
-type Bodies = ReturnType<typeof loadBodies>;
-
-class BodyBoundary extends Component<
-  { children: ReactNode; onRetry: () => void },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    if (!this.state.failed) return this.props.children;
-    return <QuickEntryError onRetry={this.props.onRetry} />;
-  }
-}
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -370,12 +323,14 @@ export function useQuickEntryVisit(
   // does any future host that takes a visit. What it watches, why the day is derived
   // at event time and why a draft holds the sheet open: visit-resume.ts.
   //
-  // (The desktop panel reaches these forms through the provider's DIRECT overlay
-  // rather than a visit, so it has no visit to invalidate and is not covered.)
+  // The desktop panel reaches these forms through the provider's DIRECT overlay
+  // rather than a visit, so it takes the same watch on its own `open` state and its
+  // own draft subtree, keyed `"panel"` (see the provider below).
   useVisitResumeBoundary({
     watching: outerOpen && currentVisit,
     timeZone: liveProfileClocks.get(ctx.actingProfileId)?.timeZone ?? null,
     watch: ctx.resume,
+    host: "visit",
     onCrossed: ctx.visit.invalidate,
   });
 
@@ -487,24 +442,6 @@ function asOfCopy(fetchedAt: string | Date, why: string): string {
   )} — ${why}`;
 }
 
-function QuickEntryError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div data-testid="quick-entry-error">
-      <p role="alert" className={QUIET_STATE_CLASS}>
-        Couldn&apos;t open that form.
-      </p>
-      <button
-        type="button"
-        data-testid="quick-entry-retry"
-        onClick={onRetry}
-        className="btn-ghost mt-2"
-      >
-        Retry
-      </button>
-    </div>
-  );
-}
-
 function quickEntryToday(data: QuickEntryBody): string | null {
   if (data.form === "measurements") return data.defaultDate;
   if (data.form === "cycle" || data.form === "document") return null;
@@ -548,16 +485,6 @@ function withLiveDayLabels(
 // connection still finishes first, short enough that a dead one does not leave the
 // sheet looking merely quiet.
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
-const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
-
-// The sheet's cold-open paragraph, in ONE place: the Suspense fallback below and the
-// body's own loading branch are the same wait, and they must not be able to differ —
-// `quick-entry-loading` is the testid every spec waits on.
-const QUICK_ENTRY_LOADING = (
-  <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
-    Loading…
-  </p>
-);
 
 export default function QuickEntryProvider({
   children,
@@ -678,6 +605,26 @@ export default function QuickEntryProvider({
     updateVisit((current) => ({ ...current, completable: false }));
     setOpen(false);
   }, [invalidateVisitRequests, updateVisit]);
+
+  // THE PANEL DOES NOT SURVIVE ONE EITHER (#5902 slice 2, PM ruling 2026-09-16).
+  // The desktop panel reaches these forms through this DIRECT overlay, so the visit's
+  // watch in `useQuickEntryVisit` cannot see it — there is no visit to invalidate and
+  // the draft lives in this host's own subtree. Same module, same two event-time
+  // reads, same draft guard; only the `host` key and the close differ.
+  //
+  // THE CLOSE IS `close`, the overlay's own — the very callback the scrim tap and
+  // Escape run — and NOT the last-good invalidation above, which additionally empties
+  // and flags the visit. A resume crossing on the panel is the panel's business
+  // alone. The two watches cannot double-fire: `openForm` takes the visit identity
+  // for its direct session, which drops `currentVisit` for every sheet host, and
+  // `startVisit` closes this overlay, so `open` and a live visit are never both true.
+  useVisitResumeBoundary({
+    watching: open,
+    timeZone: liveProfileClocks.get(actingProfileId)?.timeZone ?? null,
+    watch: resume,
+    host: "panel",
+    onCrossed: close,
+  });
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
@@ -1786,38 +1733,47 @@ export default function QuickEntryProvider({
               pages mount, posting the SAME Server Actions, so the server can only
               tell the sheet from the page if the sheet says so. Declared once here,
               at the region root, rather than on each body. */}
-          <QuickEntrySessionBody
-            form={directEntry.form}
-            prefill={directEntry.prefill}
-            subject={directEntry.subject}
-            view={directEntry.view}
-            host={directEntry.host}
-            bodies={directEntry.bodies}
-            actingProfileId={actingProfileId}
-            onDone={() => {
-              if (completeVisitEntry(directEntry.id)) close();
-            }}
-            onRetry={() => retryVisitEntry(directEntry.id)}
-            onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
-            canAdd={writableProfiles.some(
-              (profile) => profile.id === directEntry.subject
-            )}
-            onOpenIntake={(kind, trigger) =>
-              openIntake(directEntry.id, kind, trigger)
-            }
-            onExitIntake={() => exitIntake(directEntry.id)}
-            onIntakeSaved={(activation) =>
-              acceptIntakeSave(directEntry.id, activation)
-            }
-            onRefreshDose={() =>
-              refreshDose(directEntry.id, directEntry.bodyActivation)
-            }
-            addTriggerRef={directEntry.addTriggerRef}
-            focusReturn={directEntry.focusReturn}
-            onFocusReturn={(activation) =>
-              focusDoseReturn(directEntry.id, activation)
-            }
-          />
+          {/* A NODE for the resume check's draft question, the direct overlay's
+              half of what `QuickEntryVisitBodies` is for the visit (#5902).
+              `display: contents`, so it generates no box; the callback is inline
+              for the same react-hooks/refs reason recorded there. */}
+          <div
+            className="contents"
+            ref={(node) => resume.attachBodies("panel", node)}
+          >
+            <QuickEntrySessionBody
+              form={directEntry.form}
+              prefill={directEntry.prefill}
+              subject={directEntry.subject}
+              view={directEntry.view}
+              host={directEntry.host}
+              bodies={directEntry.bodies}
+              actingProfileId={actingProfileId}
+              onDone={() => {
+                if (completeVisitEntry(directEntry.id)) close();
+              }}
+              onRetry={() => retryVisitEntry(directEntry.id)}
+              onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
+              canAdd={writableProfiles.some(
+                (profile) => profile.id === directEntry.subject
+              )}
+              onOpenIntake={(kind, trigger) =>
+                openIntake(directEntry.id, kind, trigger)
+              }
+              onExitIntake={() => exitIntake(directEntry.id)}
+              onIntakeSaved={(activation) =>
+                acceptIntakeSave(directEntry.id, activation)
+              }
+              onRefreshDose={() =>
+                refreshDose(directEntry.id, directEntry.bodyActivation)
+              }
+              addTriggerRef={directEntry.addTriggerRef}
+              focusReturn={directEntry.focusReturn}
+              onFocusReturn={(activation) =>
+                focusDoseReturn(directEntry.id, activation)
+              }
+            />
+          </div>
         </BottomSheet>
       )}
     </Ctx.Provider>
@@ -2107,7 +2063,10 @@ export function QuickEntryVisitBodies({
     </Activity>
   ));
   return (
-    <div className="contents" ref={(node) => ctx.resume.attachBodies(node)}>
+    <div
+      className="contents"
+      ref={(node) => ctx.resume.attachBodies("visit", node)}
+    >
       {bodies}
     </div>
   );

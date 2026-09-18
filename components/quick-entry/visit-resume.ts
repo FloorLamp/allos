@@ -23,6 +23,14 @@ import { useUnsavedInputWithin } from "@/components/DirtyFormRegistry";
 // was considered and reversed for size, so nothing here re-reads anything — the
 // next puck tap gathers fresh, exactly as it does today.
 //
+// TWO HOSTS, ONE RULE (PM ruling 2026-09-16, slice 2). The phone sheet reaches these
+// forms through a VISIT; the desktop panel (`SidebarLogButton` above `md`) reaches
+// them through the provider's DIRECT overlay, which has no visit to invalidate. The
+// boundary facts, the two event-time reads and the draft question are identical, so
+// the hosts differ in exactly one thing: WHOSE subtree holds the draft. That is the
+// `host` key below, and it is the whole extension — a second copy of this clock is
+// what it exists to prevent.
+//
 // WHY A MODULE AND NOT A BLOCK INSIDE THE VISIT OWNER. Resume staleness is its own
 // subject — a profile clock, two food windows and a draft question — and it shares
 // nothing with the visit machinery beyond the flag it ends at. `QuickEntryProvider`
@@ -48,13 +56,22 @@ interface VisitBoundaryFacts {
 }
 
 /**
+ * Which host's overlay a watch is about. Not a presentation and not a viewport: it
+ * names the subtree whose unsaved input holds that host open, and the two never run
+ * at once (opening the direct overlay takes the visit identity away from any sheet
+ * host, and starting a visit closes the direct overlay).
+ */
+export type QuickEntryResumeHost = "visit" | "panel";
+
+/**
  * The provider-owned half: the two boxes the listener reads at event time, neither
  * of which is state, because nothing renders from either.
  *
  * Created once by `useVisitResumeWatch` in the provider and handed back through the
  * quick-entry context — `noteSlotBoundaries` to whoever gathered the windows
- * (`QuickLogMenu`'s `loadLogSheetContext`), `attachBodies` to the element the visited
- * bodies render inside, `peek` to the listener that reads both back.
+ * (`QuickLogMenu`'s `loadLogSheetContext`, which BOTH hosts mount, so the windows are
+ * published once), `attachBodies` to the element each host's bodies render inside,
+ * `peek` to the listener that reads both back.
  *
  * THREE FUNCTIONS AND NO REF OBJECTS. The boxes ARE refs, but they stay private to
  * this module: a context value carrying a `RefObject` field makes every property
@@ -65,8 +82,11 @@ interface VisitBoundaryFacts {
  */
 export interface VisitResumeWatch {
   noteSlotBoundaries: (boundaries: FoodSlotBoundaries | null) => void;
-  attachBodies: (node: HTMLDivElement | null) => void;
-  peek: () => {
+  attachBodies: (
+    host: QuickEntryResumeHost,
+    node: HTMLDivElement | null
+  ) => void;
+  peek: (host: QuickEntryResumeHost) => {
     bodies: HTMLDivElement | null;
     boundaries: FoodSlotBoundaries | null;
   };
@@ -74,15 +94,26 @@ export interface VisitResumeWatch {
 
 export function useVisitResumeWatch(): VisitResumeWatch {
   const boundaries = useRef<FoodSlotBoundaries | null>(null);
-  const bodies = useRef<HTMLDivElement | null>(null);
+  // Keyed rather than one box: both hosts mount their bodies from the same provider,
+  // and a host that is closed leaves its key null instead of overwriting the other's.
+  const bodies = useRef<Record<QuickEntryResumeHost, HTMLDivElement | null>>({
+    visit: null,
+    panel: null,
+  });
   const noteSlotBoundaries = useCallback((next: FoodSlotBoundaries | null) => {
     boundaries.current = next;
   }, []);
-  const attachBodies = useCallback((node: HTMLDivElement | null) => {
-    bodies.current = node;
-  }, []);
+  const attachBodies = useCallback(
+    (host: QuickEntryResumeHost, node: HTMLDivElement | null) => {
+      bodies.current[host] = node;
+    },
+    []
+  );
   const peek = useCallback(
-    () => ({ bodies: bodies.current, boundaries: boundaries.current }),
+    (host: QuickEntryResumeHost) => ({
+      bodies: bodies.current[host],
+      boundaries: boundaries.current,
+    }),
     []
   );
   return useMemo(
@@ -92,13 +123,14 @@ export function useVisitResumeWatch(): VisitResumeWatch {
 }
 
 /**
- * The visit-owner half: one `visibilitychange` listener, live only while a visit is
- * open, that closes the sheet through `onCrossed` when the return lands in another
- * food window or on another profile day.
+ * The host half: one `visibilitychange` listener, live only while that host's overlay
+ * is open, that closes it through `onCrossed` when the return lands in another food
+ * window or on another profile day.
  *
- * `onCrossed` is the visit's EXISTING invalidation — the flag both hosts already
- * turn into their close through `onInvalidated`. There is no new close path here and
- * no new gather path.
+ * `onCrossed` is always the host's OWN EXISTING close — the visit's `invalidate`,
+ * which every visit host already turns into its close through `onInvalidated`, or the
+ * provider's `close` for the direct overlay, which is the same callback its scrim tap
+ * and Escape run. There is no new close path here and no new gather path.
  *
  * `timeZone` is the acting profile's live clock zone; null (no clock yet) disables
  * the comparison rather than guessing at the device's.
@@ -107,11 +139,13 @@ export function useVisitResumeBoundary({
   watching,
   timeZone,
   watch,
+  host,
   onCrossed,
 }: {
   watching: boolean;
   timeZone: string | null;
   watch: VisitResumeWatch;
+  host: QuickEntryResumeHost;
   onCrossed: () => void;
 }): void {
   const hasUnsavedInputWithin = useUnsavedInputWithin();
@@ -127,7 +161,7 @@ export function useVisitResumeBoundary({
     const read = (): VisitBoundaryFacts | null => {
       if (!timeZone) return null;
       const { date, hhmm } = zonedDateParts(timeZone, new Date());
-      const splits = watch.peek().boundaries;
+      const splits = watch.peek(host).boundaries;
       return { day: date, slot: splits ? foodSlotForHhmm(hhmm, splits) : null };
     };
     // Scoped to this subscription, so a closed sheet or a changed clock discards
@@ -145,14 +179,14 @@ export function useVisitResumeBoundary({
       if (before.day === after.day && before.slot === after.slot) return;
       // NEVER OVER A DRAFT. The header keeps naming the window it gathered in,
       // which is the accepted cost of not putting a confirm in front of someone who
-      // has just picked their phone back up. The registry is asked about the
-      // visited bodies' subtree ONLY: a dirty form on the page behind the sheet is
-      // not this sheet's unsaved work.
-      if (hasUnsavedInputWithin(watch.peek().bodies)) return;
+      // has just picked their phone back up. The registry is asked about THIS host's
+      // bodies' subtree only: a dirty form on the page behind the sheet, or in the
+      // other host, is not this overlay's unsaved work.
+      if (hasUnsavedInputWithin(watch.peek(host).bodies)) return;
       onCrossed();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () =>
       document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [hasUnsavedInputWithin, onCrossed, timeZone, watch, watching]);
+  }, [hasUnsavedInputWithin, host, onCrossed, timeZone, watch, watching]);
 }
