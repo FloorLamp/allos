@@ -380,7 +380,7 @@ export function planSyncEventPrune<
 >(events: readonly T[], cutoffIso: string): number[] {
   const newestId = new Map<string, number>();
   for (const e of events) {
-    const key = `${e.profile_id} ${e.sourceId}`;
+    const key = `${e.profile_id}\u0000${e.sourceId}`;
     const cur = newestId.get(key);
     if (cur === undefined || e.id > cur) newestId.set(key, e.id);
   }
