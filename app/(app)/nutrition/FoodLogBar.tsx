@@ -250,6 +250,7 @@ export default function FoodLogBar({
   slot,
   slotBoundaries,
   initialFoodGroup,
+  proposedAt,
   nutrientSummaryByDate = [],
   proteinQuickAdd,
   ledgerDoor,
@@ -294,6 +295,15 @@ export default function FoodLogBar({
   // for this mount so opening "Log servings" lands on the intended existing
   // write control without inventing another food-log path.
   initialFoodGroup?: string;
+  /**
+   * The minute an opener is answering for (#5927) — a profile-local "HH:MM" on the
+   * bar's own day, handed straight to the eating-time statement's `proposed` (#5489
+   * rule 6). Home's day chart is the one mount that has one: a click at a time on
+   * today opens this bar through the Quicklogger, and the servings logged from it are
+   * the ones eaten at the minute clicked. Absent everywhere else, which keeps the
+   * statement closed and empty as it has always opened.
+   */
+  proposedAt?: string;
   // Mobile-only compact feedback for each bounded date, placed between the meal
   // context and its add controls. Kept as server-rendered slots so this client island
   // continues to own only logging state while an older date gets its own nutrients.
@@ -369,6 +379,7 @@ export default function FoodLogBar({
   // Tuesday's claim about Wednesday.
   const statement = useTimeStatement({
     day: activeDate,
+    proposed: proposedAt ?? null,
     timeLabel: "Time the servings were eaten",
     testId: "food-when",
   });

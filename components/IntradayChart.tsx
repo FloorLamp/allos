@@ -29,7 +29,9 @@ import {
   useState,
 } from "react";
 import { useIntradayInteraction } from "@/components/IntradayInteraction";
-import { snapToBucket } from "@/lib/intraday-window";
+import { useLiveProfileClocks } from "@/components/DayContext";
+import { useOptionalQuickEntry } from "@/components/QuickEntryProvider";
+import { formatClockMinute, snapToBucket } from "@/lib/intraday-window";
 import ActivityIcon from "@/components/ActivityIcon";
 import { chartDash } from "@/components/chart-scaffold";
 import { useResettableState } from "@/components/useResettableState";
@@ -190,6 +192,19 @@ interface IntradayChartProps {
    * window highlighted under the new gesture.
    */
   selectedWindow?: { from: number; to: number | null } | null;
+  /**
+   * WHETHER A CLICK AT A MINUTE ON TODAY IS A LOGGING DOOR (#5927, spec §3.2/§6.6).
+   *
+   * Home's day view has no add row — "the Quicklogger is today's door" — so on that
+   * surface the chart IS the door: a click at a time on today opens the Quicklogger
+   * with that minute proposed. The record's day view already has a reader for the same
+   * gesture (#4950: the pin is the add row's start, and the chips carry it into their
+   * forms), so `IntradayPanel` turns this off rather than giving one tap two meanings.
+   *
+   * Default ON, so the plain `IntradayChart` mount — Home's, and any later one with no
+   * add row of its own — is a door without having to ask for it.
+   */
+  opensQuickLog?: boolean;
 }
 
 /**
@@ -239,6 +254,7 @@ function IntradayDrawing({
   className,
   profileId,
   selectedWindow = null,
+  opensQuickLog = true,
 }: IntradayChartProps & {
   variant: IntradayVariant;
   className: string;
@@ -247,6 +263,37 @@ function IntradayDrawing({
   // otherwise, so a chart mounted on its own still zooms and scrubs.
   const { view, setView, cursor, setCursor, pin, setPin } =
     useIntradayInteraction();
+  // ── THE CHART AS A LOGGING DOOR (#5927, spec §3.2 and §6.6) ──────────────────
+  //
+  // "ON TODAY" IS THE SHELL'S ANSWER, NEVER A CLOCK READ HERE. `RouteDayContext`
+  // publishes every profile's live local day and moves it at that profile's own
+  // midnight; this chart already carries the profile whose day it draws, so the
+  // question is a lookup and a string comparison with the day in the model. A
+  // `new Date()` here would answer for the BROWSER's zone and never move again —
+  // both of the ways this could be wrong, in one line.
+  //
+  // A PAST DAY THEREFORE OPENS NOTHING, which is the point rather than a gap: the
+  // day view of a day you are READING is not a day you are logging into, and a
+  // minute prefilled onto it would be a guess. Past days keep #4950 whole — the
+  // window the chart shows feeds the record's chips, unchanged.
+  const profileToday = useLiveProfileClocks().get(profileId)?.today ?? null;
+  const opensDoor =
+    opensQuickLog && profileToday != null && profileToday === model.date;
+  // Null where no overlay is above (a component test, a chart on its own), which
+  // leaves every gesture below exactly as it was.
+  const quickEntry = useOptionalQuickEntry();
+  // THIS EXTENDS THE EXISTING TAP, it does not replace it. The full-day tap already
+  // means "this minute" — it snaps a mark and #4950's add row reads it — so the door
+  // is that same gesture on the surface where the minute has nowhere else to go.
+  const openQuickLogAt = (minute: number) => {
+    if (!opensDoor || !quickEntry) return;
+    // The bucket the chart DRAWS, so the form opens on the minute the mark is
+    // standing over. Both spellings are `lib/intraday-window.ts`'s own — the same
+    // snap and the same minter the window params round-trip through.
+    quickEntry.open("food", {
+      proposedAt: formatClockMinute(snapToBucket(minute)),
+    });
+  };
   const [drag, setDrag] = useState<{
     from: number;
     to: number;
@@ -541,6 +588,7 @@ function IntradayDrawing({
     } else if (!zoomed && drag.pinEligible && isPinPointer(event)) {
       const chosen = snapToBucket(minute);
       setPin((current) => (current === chosen ? null : chosen));
+      openQuickLogAt(minute);
     }
   };
 
@@ -572,6 +620,9 @@ function IntradayDrawing({
     ) {
       event.preventDefault();
       setPin(snapToBucket(cursor));
+      // The keyboard spelling of the same tap, so the door is not a pointer-only
+      // affordance (#1220's discipline, which this chart already follows for zoom).
+      openQuickLogAt(cursor);
     } else if (
       event.key === "Escape" &&
       (zoomed || pin != null || cursor != null)
