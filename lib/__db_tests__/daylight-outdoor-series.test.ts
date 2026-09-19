@@ -12,7 +12,7 @@ import {
   getDaylightOutdoorMinutesTotal,
   getDaylightOutdoorMinutesSeries,
 } from "@/lib/queries";
-import { setHomeLocation } from "@/lib/settings";
+import { setHomeLocation, setProfileSetting } from "@/lib/settings";
 import { lastNDates } from "@/lib/date";
 
 function newProfile(name: string): number {
@@ -39,10 +39,14 @@ function seedOutdoorActivity(
 describe("getDaylightOutdoorMinutesSeries (#1171)", () => {
   it("is a formatter that agrees with the chip map and the window total", () => {
     const p = newProfile("sun-series");
-    const anchor = today(p);
+    // An unset profile timezone resolves to the UTC default, not to the zone the
+    // home location below sits in. Set it explicitly.
+    setProfileSetting(p, "timezone", "America/New_York");
     setHomeLocation(p, { lat: 40.7, lng: -74 });
+    const anchor = today(p);
     const dates = lastNDates(anchor, 30);
     // Outdoor walks on three distinct days across the window; other days have none.
+    // Each window is late morning to afternoon on the profile's clock.
     const d1 = dates[dates.length - 1]; // today
     const d2 = dates[dates.length - 5];
     const d3 = dates[dates.length - 12];
@@ -70,6 +74,7 @@ describe("getDaylightOutdoorMinutesSeries (#1171)", () => {
 
   it("is empty when the profile has no home location (sun features off)", () => {
     const p = newProfile("sun-series-nohome");
+    setProfileSetting(p, "timezone", "America/New_York");
     const anchor = today(p);
     const dates = lastNDates(anchor, 30);
     seedOutdoorActivity(p, dates[dates.length - 1], "10:00", "11:00");
