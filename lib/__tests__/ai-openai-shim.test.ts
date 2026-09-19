@@ -55,6 +55,77 @@ describe("toOpenAiRequest", () => {
     ]);
   });
 
+  it("sends a PDF with Luna-compatible function tools", async () => {
+    let sentBody: unknown;
+    const client = createOpenAiCompatClient({
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "test",
+      fetchImpl: async (_url, init) => {
+        sentBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "ok" } }],
+          })
+        );
+      },
+    });
+    await client.messages.create({
+      model: "gpt-5.6-luna",
+      max_tokens: 1024,
+      tools: [
+        { name: "extract", input_schema: { type: "object", properties: {} } },
+      ],
+      tool_choice: { type: "tool", name: "extract" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: "JVBERi0xLjcK",
+              },
+            },
+            { type: "text", text: "Extract the results." },
+          ],
+        },
+      ],
+    });
+    expect(sentBody).toEqual({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1024,
+      reasoning_effort: "none",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "extract",
+            description: "",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "extract" } },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              file: {
+                filename: "document.pdf",
+                file_data: "data:application/pdf;base64,JVBERi0xLjcK",
+              },
+            },
+            { type: "text", text: "Extract the results." },
+          ],
+        },
+      ],
+    });
+  });
+
   it("translates tools + a forced tool_choice into OpenAI function-calling", () => {
     const body = toOpenAiRequest({
       model: "m",
