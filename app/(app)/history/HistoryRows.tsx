@@ -402,9 +402,9 @@ export default function HistoryRows({
    */
   selectionSubjectId?: number;
   /**
-   * Home's closed-empty meal windows (#6011), which are also in `rows`. Each title is the add
-   * door for its window: the food form opens in place, and the logged serving clears
-   * the row on the next render.
+   * Home's closed-empty meal windows (#6011), which are also in `rows`. Each title
+   * is the add door for its window: the food form opens in place, and the logged
+   * serving clears the row on the next render.
    */
   foodGaps?: readonly FoodWindowGapRow[];
 }) {
