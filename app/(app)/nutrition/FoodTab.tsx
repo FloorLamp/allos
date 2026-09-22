@@ -55,6 +55,7 @@ import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
 import { historyHref } from "@/lib/hrefs";
 import WeeklyHabits from "./WeeklyHabits";
+import { declaredMealProperties } from "@/lib/food-sensitivity-store";
 import { trackFoodHabit } from "./actions";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import NutrientsCard from "@/components/NutrientsCard";
@@ -682,6 +683,7 @@ export default async function FoodTab({
                 initialGramsByDate: proteinLoggedGramsByDate,
                 lastPreset: proteinPreset,
               }}
+              mealProperties={declaredMealProperties(profile.id)}
             />
           </div>
         }

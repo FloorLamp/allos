@@ -25,8 +25,11 @@ import { SENSITIVITY_CATALOG } from "./sensitivity-catalog";
 // Delete.
 export default function SensitivitiesSection({
   sensitivities,
+  canWrite,
 }: {
   sensitivities: FoodSensitivity[];
+  /** A read-only session sees the list and none of the writes, as the supplement rows do. */
+  canWrite: boolean;
 }) {
   const catalog = SENSITIVITY_CATALOG;
   return (
@@ -34,17 +37,21 @@ export default function SensitivitiesSection({
       <SectionCreateHeader
         title="Food sensitivities"
         subtitle="Not allergies. Say what sets something off and what it does, and the app will keep track of it — it never warns, blocks, or changes what you can log."
-        createAction={{
-          kind: "sensitivity",
-          control: (
-            <CatalogEditor
-              create
-              title="Add sensitivity"
-              Form={catalog.Form}
-              formProps={{}}
-            />
-          ),
-        }}
+        createAction={
+          canWrite
+            ? {
+                kind: "sensitivity",
+                control: (
+                  <CatalogEditor
+                    create
+                    title="Add sensitivity"
+                    Form={catalog.Form}
+                    formProps={{}}
+                  />
+                ),
+              }
+            : undefined
+        }
       />
       {sensitivities.length === 0 ? (
         <EmptyState message="Nothing declared. Add one if a food or a kind of meal reliably does something to you." />
@@ -65,15 +72,19 @@ export default function SensitivitiesSection({
                 formProps: { sensitivity: item },
               }}
               control={
-                <CatalogLifecycleControl
-                  name={triggerLabel(item.trigger_kind, item.trigger_slug)}
-                  inactive={item.status === "stopped"}
-                  lifecycle={catalog.lifecycle}
-                  action={catalog.setInactive.bind(null, item.id)}
-                  testId="food-sensitivity-stop-toggle"
-                />
+                canWrite && (
+                  <CatalogLifecycleControl
+                    name={triggerLabel(item.trigger_kind, item.trigger_slug)}
+                    inactive={item.status === "stopped"}
+                    lifecycle={catalog.lifecycle}
+                    action={catalog.setInactive.bind(null, item.id)}
+                    testId="food-sensitivity-stop-toggle"
+                  />
+                )
               }
-              deleteAction={catalog.remove.bind(null, item.id)}
+              deleteAction={
+                canWrite ? catalog.remove.bind(null, item.id) : undefined
+              }
             />
           ))}
         </ul>

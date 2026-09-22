@@ -1504,8 +1504,9 @@ export const DATASETS: ExportDataset[] = [
       "meal_slot",
       "notes",
       "bundle_id",
+      "properties",
     ],
-    select: `SELECT id, date, group_key, recorded_at, meal_slot, notes, bundle_id
+    select: `SELECT id, date, group_key, recorded_at, meal_slot, notes, bundle_id, properties
        FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),

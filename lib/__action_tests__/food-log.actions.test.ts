@@ -739,6 +739,51 @@ describe("food_log_events ledger through the actions (#950)", () => {
     expect(result.ok).toBe(false);
     expect(rows(profile.id)).toEqual([]);
   });
+
+  // #5865: the mark lives on the event row, so the tap's Undo takes it with the row.
+  it("marks every tap of a burst, refuses an unknown mark, and Undo leaves no mark behind", async () => {
+    const login = createLogin();
+    const profile = createProfile("meal-marks", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const day = today(profile.id);
+    const tap = (properties: string) =>
+      logFoodServing(
+        fd({
+          group_key: "legumes",
+          date: day,
+          meal_slot: "Evening",
+          properties,
+        })
+      );
+    const marks = () =>
+      db
+        .prepare(
+          "SELECT properties FROM food_log_events WHERE profile_id = ? ORDER BY id"
+        )
+        .all(profile.id);
+
+    expect((await tap("vibe")).ok).toBe(false);
+    const first = addedEventId(await tap("spicy"));
+    const second = addedEventId(await tap("spicy,spicy"));
+    await tap("");
+    expect(marks()).toEqual([
+      { properties: '["spicy"]' },
+      { properties: '["spicy"]' },
+      { properties: null },
+    ]);
+
+    for (const eventId of [first, second])
+      await undoFoodServing(
+        fd({
+          group_key: "legumes",
+          date: day,
+          meal_slot: "Evening",
+          event_id: eventId,
+        })
+      );
+    expect(marks()).toEqual([{ properties: null }]);
+  });
 });
 
 describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
