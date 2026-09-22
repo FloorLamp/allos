@@ -1313,6 +1313,7 @@ export default function FoodLogBar({
             // rather than trusting it, and an unusable one costs the statement, never the
             // serving.
             eatenAt: statedAt,
+            properties: marks,
           },
           capturedDayContext
         )) === "kept";

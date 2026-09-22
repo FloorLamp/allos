@@ -63,9 +63,10 @@ export function isMealProperty(slug: string): slug is MealPropertySlug {
 }
 
 /**
- * The marks a tap posted (`properties`, comma-separated slugs), in vocabulary order and
- * deduplicated, so one set of marks has one stored spelling. Null when any slug is
- * outside the vocabulary: the write refuses rather than storing a mark no reader knows.
+ * The marks a tap posted (comma-separated slugs, or the offline intent's array), in
+ * vocabulary order and deduplicated, so one set of marks has one stored spelling. Null
+ * when any slug is outside the vocabulary: the write refuses rather than storing a mark
+ * no reader knows.
  */
 export function parseMealProperties(raw: unknown): MealPropertySlug[] | null {
   const posted = String(raw ?? "")
