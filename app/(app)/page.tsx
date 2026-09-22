@@ -53,7 +53,7 @@ import { activeFindings } from "@/lib/findings";
 import { requireSession } from "@/lib/auth";
 import { canWrite, requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
-import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
+import { FOOD_SLOTS } from "@/lib/food-slot";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
 import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
@@ -655,31 +655,6 @@ async function renderHome(
     ? { kind: "period", lastSignalOn: openPeriodStart }
     : null;
 
-  // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
-  // of its own: the window is `currentFoodSlot`'s, so the offer is evaluated for the
-  // window it is ABOUT (#3265). Read-only access renders no control at all.
-  const routineSlot =
-    foodLoggingApplicable && writable
-      ? currentFoodSlotWindow(profile.id)
-      : null;
-  const routineOffer =
-    routineSlot != null
-      ? getUsualRoutineOffer(profile.id, routineSlot.slot, on)
-      : null;
-  const routineControl = routineOffer
-    ? {
-        window: routineOffer.window,
-        food: usualRoutineFoodMembers(routineOffer, foodGroupName),
-        proteinGrams: routineOffer.proteinGrams,
-        doses: routineOffer.doses.map((d) => ({
-          id: d.doseId,
-          name: d.name,
-          stack: d.stack ?? null,
-        })),
-        subjectName: actingSubjectName,
-      }
-    : null;
-
   // ── THE LOW-SUPPLY CUE'S TARGET (#5121, §9) ───────────────────────────────────
   //
   // "An eligible Home low-supply cue opens the shared refill action; no inventory
@@ -730,6 +705,38 @@ async function renderHome(
       writable,
     },
   });
+
+  // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
+  // of its own. Asked for the LATEST seated dose slot's window, not the clock's food
+  // window (#6013): a Morning tapped past the Morning/Midday midpoint still files Morning
+  // food and takes the Morning doses. An earlier slot still owed keeps Take all.
+  // Read-only access renders no control at all.
+  const seatedSlots = new Set(
+    (homeList.now?.rows ?? []).map((row) =>
+      row.content.kind === "dose-slot" ? row.content.bucket : null
+    )
+  );
+  const routineWindow =
+    foodLoggingApplicable && writable
+      ? (FOOD_SLOTS.findLast((slot) => seatedSlots.has(slot)) ?? null)
+      : null;
+  const routineOffer =
+    routineWindow != null
+      ? getUsualRoutineOffer(profile.id, routineWindow, on)
+      : null;
+  const routineControl = routineOffer
+    ? {
+        window: routineOffer.window,
+        food: usualRoutineFoodMembers(routineOffer, foodGroupName),
+        proteinGrams: routineOffer.proteinGrams,
+        doses: routineOffer.doses.map((d) => ({
+          id: d.doseId,
+          name: d.name,
+          stack: d.stack ?? null,
+        })),
+        subjectName: actingSubjectName,
+      }
+    : null;
 
   // ── THE RECORD'S OWN DAY READ (§3.2 band 3, §7.3) ─────────────────────────────
   //
