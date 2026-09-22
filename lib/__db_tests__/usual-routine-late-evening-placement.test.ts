@@ -302,7 +302,7 @@ describe("the usual routine follows the seated dose slot (#6013)", () => {
     const on = today(profileId);
     const outcome = logUsualRoutineCore(
       profileId,
-      props.window,
+      "Morning",
       on,
       props.food.map((member) => member.slug),
       props.doses.map((dose) => dose.id),
