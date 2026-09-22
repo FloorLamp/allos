@@ -69,8 +69,8 @@ function check(input: SensitivityFormInput): Checked {
 }
 
 function refresh() {
-  // The declaration is listed on Nutrition → Manage, and (once slices 2 and 3 land)
-  // decides whether the food sheet shows a `This meal` chip at all.
+  // The declaration is listed on Nutrition → Manage, and decides whether the food
+  // bar shows a `This meal` chip at all.
   revalidateRoute("/nutrition");
 }
 
