@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import {
+  appContent,
   expectAtomicCardPairs,
   expectNoClippedContent,
   expectNoEscapingOverflow,
@@ -1146,7 +1147,7 @@ test("Home's Now practice row keeps its name and a one-line detail (#6009)", asy
   });
   try {
     await page.goto("/");
-    const row = page
+    const row = appContent(page)
       .getByTestId("home-now")
       .getByTestId("home-action")
       .filter({ hasText: practice });
