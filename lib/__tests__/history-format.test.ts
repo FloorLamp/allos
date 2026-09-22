@@ -12,6 +12,7 @@ import {
   resolveHistoryFamily,
   resolveHistoryItem,
   resolveHistoryKind,
+  resultRowSubject,
   BODY_METRIC_SLUGS,
   type HistoryRow,
   type HistoryRowEdit,
@@ -509,5 +510,20 @@ describe("within-day order", () => {
       { profileId: 2, today: "2026-08-28", events: [theirs] },
     ]);
     expect(merged[0].events.map((e) => e.profileId)).toEqual([1, 2]);
+  });
+});
+
+describe("resultRowSubject — a single result's flag in the subject cell (#6012)", () => {
+  const item = (flag?: string) => ({ label: "TSH", value: "6.1", flag });
+
+  it.each([
+    [[item("high")], "High"],
+    [[item("low")], "Low"],
+    [[item()], undefined],
+    [[item("non-optimal-high")], undefined],
+    [[item("high"), item("high")], undefined],
+    [undefined, undefined],
+  ])("%j → %j", (items, expected) => {
+    expect(resultRowSubject(items)).toBe(expected);
   });
 });
