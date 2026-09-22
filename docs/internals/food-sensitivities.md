@@ -12,8 +12,8 @@ passport or emergency card. The app never proposes one.
 - **Mark.** `food_log_events.properties`, a JSON array written by the tap. The
   food sheet offers `This meal` chips for declared properties only; a pressed
   chip marks every tap of that day and meal, usual bundles included. Undo
-  deletes the row, mark included. Past marks outlive the declaration. Telegram
-  and offline taps carry none.
+  deletes the row, mark included. Past marks outlive the declaration. Offline
+  taps queue their marks; Telegram taps carry none.
 
 Owner rulings (2026-09-11): the pair stays silent unless the effect was logged
 on half the window’s days or more, and above that an unlogged day counts as
