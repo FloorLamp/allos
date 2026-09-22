@@ -163,7 +163,7 @@ test("a collapsed group announces its value and still saves it", async ({
       page,
       form.getByRole("button", { name: "Save measurements" })
     );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
 
     // Server truth, not the toast: the collapsed field reached the write core.
     const handle = new Database(DB_PATH);
@@ -250,7 +250,7 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
       page,
       form.getByRole("button", { name: "Save measurements" })
     );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
 
     // Server truth: the ONE statement landed on BOTH stores, each on its own
     // convention — the observation's occurred_at in the canonical UTC shape, and
@@ -325,7 +325,7 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
       page,
       form.getByRole("button", { name: "Save measurements" })
     );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
 
     // Server truth: the statement landed on today's manual row in the canonical
     // utcInstant shape — never a midnight anchor, never a re-dated row.
@@ -402,7 +402,7 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
     // fired rather than diagnosing a device whose clock the user can see.
     await expect(
       page.getByText(
-        "Measurements saved without the time — that time hasn't happened yet."
+        "Measurements logged without the time — that time hasn't happened yet."
       )
     ).toBeVisible();
 

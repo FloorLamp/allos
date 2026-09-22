@@ -182,7 +182,7 @@ test.describe("the intraday chart reads the reading's own occurred_at (#2154)", 
         page,
         form.getByRole("button", { name: "Save measurements" })
       );
-      await expect(page.getByText("Measurements saved")).toBeVisible();
+      await expect(page.getByText("Measurements logged")).toBeVisible();
 
       // Server truth first: the statement round-tripped onto the observation
       // rows in the canonical shape, on the row's own day.

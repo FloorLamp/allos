@@ -16,6 +16,9 @@ import TemperatureField from "@/components/vitals/TemperatureField";
 import WeightField from "@/components/vitals/WeightField";
 import TimeRangeFields from "@/components/TimeRangeFields";
 import { useTimezone } from "@/components/TimezoneProvider";
+import { useTimeStatement } from "@/components/TimeStatement";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatClockValue } from "@/lib/format-date";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -49,10 +52,9 @@ import {
   addMeasurements,
   type MeasurementsSaveResult,
 } from "./measurement-actions";
-import { whenOnDay } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { DATED_REACH } from "@/lib/log-manifest";
 import { useOptionalDayContext } from "@/components/DayContext";
-import { isRealIsoDate } from "@/lib/date";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -307,21 +309,26 @@ export default function MeasurementsQuickAdd({
   // pair below; the initial statedAt is the seed from the day's existing manual row
   // (or null — the control never defaults it to now).
   const tz = useTimezone();
+  const prefs = useFormatPrefs();
   const [when, setWhen] = useState<WhenValue>(() =>
-    whenOnDay(ownedDate ?? defaultDate, tz, defaultStatedAt)
+    whenOnDay(defaultDate, tz, defaultStatedAt)
   );
-  const [seenOwnedDate, setSeenOwnedDate] = useState(ownedDate);
-  if (ownedDate !== null && seenOwnedDate !== ownedDate) {
-    setSeenOwnedDate(ownedDate);
-    setWhen(whenOnDay(ownedDate, tz));
-  }
-  const updateWhen = (next: WhenValue) => {
-    if (ownedDate === null) {
-      setWhen(next);
-    } else if (isRealIsoDate(ownedDate)) {
-      setWhen({ ...next, date: ownedDate });
-    }
-  };
+  // THE WHEN DOOR (#5663 ruling 3). Where the surface owns the day (the quick-log
+  // sheet's switcher, a record day) the time is stated through the shared door, like
+  // every sheet body; a mount with no day context keeps the date + time pair, since
+  // it has to choose its own day. The day's stored time still seeds the statement,
+  // opening the reveal with it, so a resubmission keeps it.
+  const statement = useTimeStatement({
+    shown: ownedDate !== null,
+    day: ownedDate ?? defaultDate,
+    proposed:
+      ownedDate === defaultDate
+        ? statedHhmm(defaultStatedAt, tz) || null
+        : null,
+    timeLabel: "Time measured",
+    testId: "m",
+  });
+  const statedAt = ownedDate === null ? when.statedAt : statement.instant;
   // The night's two clocks (#1851, #4976), controlled the same way `when` is —
   // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
   // `wake_time`, unchanged names), so the write below reads the pair exactly as
@@ -582,6 +589,7 @@ export default function MeasurementsQuickAdd({
       // React state now (#4976) and clear themselves here instead.
       setBedTime("");
       setWakeTime("");
+      statement.spend(statement.at);
     };
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
@@ -718,9 +726,26 @@ export default function MeasurementsQuickAdd({
     // is a NOTICE on the ordinary success toast — never `setError`, which would read
     // as "your entry failed" for a reading that is sitting right there — and never a
     // durable marker to chase the user with later.
+    //
+    // Ruling 1's grammar, `<Thing> logged · <time>` (#5663), where the time slot is a
+    // STATED minute and drops otherwise, as on the stool sheet (#5921).
+    //
+    // NO UNDO. A sitting upserts the day's manual body row column by column and
+    // corrects the day's samples in place, so taking it back means restoring prior
+    // values nothing captured; a delete would take readings logged earlier with it.
+    // That inverse is not complete (lib/undo-offer.ts), so the toast offers none.
+    const stated = String(formData.get("occurred_at") ?? "");
+    const clock = saved.statedTimeRefused
+      ? ""
+      : formatClockValue(
+          statedHhmm(stated || null, tz),
+          prefs.timeFormat,
+          "",
+          "upper-space"
+        );
     toast(
       measurementsSavedText(
-        metric ? `${metric.label} saved` : "Measurements saved",
+        `${metric ? metric.label : "Measurements"} logged${clock ? ` · ${clock}` : ""}`,
         saved.statedTimeRefused,
         saved.sleepWindowRefused
       )
@@ -1204,9 +1229,9 @@ export default function MeasurementsQuickAdd({
       <input type="hidden" name="weight_unit" value={weightUnit} />
       {/* The submission's one date + one optional Time (#2235 decision 3): the
           shared WhenControl owns the pair (ids m-date / m-time from its testId),
-          and the hidden pair below is what actually posts — so the Server Action
-          and the offline queue read the same two names whatever the control
-          renders. The Time never defaults to now (#2053); the control offers a
+          or, under a day context, the When door's reveal owns the time (m-time
+          again) — and the hidden pair below is what actually posts, so the Server
+          Action and the offline queue read the same two names whatever renders. The Time never defaults to now (#2053); the control offers a
           one-tap "Now" while the chosen day is today. This ONE Time is the whole
           sitting's statement — #2154 folded the two per-measure time inputs
           (temperature, peak flow) into it, and the write boundary carries it to
@@ -1224,26 +1249,22 @@ export default function MeasurementsQuickAdd({
         value={ownedDate ?? when.date}
         readOnly
       />
-      <input
-        type="hidden"
-        name="occurred_at"
-        value={when.statedAt ?? ""}
-        readOnly
-      />
-      <div>
-        <span className="label">Date &amp; time</span>
-        <WhenControl
-          mode="state"
-          value={when}
-          onChange={updateWhen}
-          timeRequired={false}
-          minDate={ownedDate ?? undefined}
-          maxDate={ownedDate ?? maxDate}
-          testId="m"
-          dateLabel="Date"
-          timeLabel="Time"
-        />
-      </div>
+      <input type="hidden" name="occurred_at" value={statedAt ?? ""} readOnly />
+      {ownedDate === null ? (
+        <div>
+          <span className="label">Date &amp; time</span>
+          <WhenControl
+            mode="state"
+            value={when}
+            onChange={setWhen}
+            timeRequired={false}
+            maxDate={maxDate}
+            testId="m"
+            dateLabel="Date"
+            timeLabel="Time"
+          />
+        </div>
+      ) : null}
       {metric ? (
         <div className={GRID_CLASS}>{scopedFields[metric.key]}</div>
       ) : null}
@@ -1315,9 +1336,13 @@ export default function MeasurementsQuickAdd({
           shared spinner through `useFormStatus`, and swapping "Save reading" for
           "Saving…" changed the control's width under the finger for nothing the
           spinner does not already say. */}
-      <SubmitButton variant="primary">
-        {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
-      </SubmitButton>
+      <div className="flex items-center gap-2">
+        <SubmitButton variant="primary">
+          {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
+        </SubmitButton>
+        {statement.door}
+      </div>
+      {statement.reveal ? <div>{statement.reveal}</div> : null}
     </form>
   );
 }

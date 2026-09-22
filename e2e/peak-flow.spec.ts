@@ -105,7 +105,7 @@ test.describe("logging a blow and reading its zone (#1850)", () => {
     await form
       .getByRole("button", { name: "Save peak expiratory flow" })
       .click();
-    await expect(page.getByText("Peak Expiratory Flow saved")).toBeVisible();
+    await expect(page.getByText("Peak Expiratory Flow logged")).toBeVisible();
 
     // The blow is listed under the chart it shapes, in the metric's own unit —
     // proof it landed in the stream this surface reads, not in a store of its own.

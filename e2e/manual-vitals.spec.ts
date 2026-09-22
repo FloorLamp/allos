@@ -79,7 +79,7 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   await form.getByRole("button", { name: "Save measurements" }).click();
 
   // End-to-end confirmation the server action wrote without error.
-  await expect(page.getByText("Measurements saved")).toBeVisible();
+  await expect(page.getByText("Measurements logged")).toBeVisible();
 
   // The reading surfaces in the body census VITALS section (#1076/#1486),
   // widened so today's entry is in range regardless of the default window.
@@ -128,7 +128,7 @@ test("the measurements form logs a temperature with an optional reading time (#8
   await timeField.fill("07:00");
 
   await form.getByRole("button", { name: "Save measurements" }).click();
-  await expect(page.getByText("Measurements saved")).toBeVisible();
+  await expect(page.getByText("Measurements logged")).toBeVisible();
 
   // The reading joins the Body Temperature acute view in the body census vitals
   // section (#1076/#1486): recent-readings grammar with a fever line, not a lab
@@ -159,7 +159,7 @@ test("the measurements form takes water, lean/bone mass and respiratory rate (#1
   await form.getByLabel("Bone Mass", { exact: true }).fill("2.9");
 
   await form.getByRole("button", { name: "Save measurements" }).click();
-  await expect(page.getByText("Measurements saved")).toBeVisible();
+  await expect(page.getByText("Measurements logged")).toBeVisible();
 
   // Each value on its own detail page's readings table — the surface that renders
   // the STORED row, so a field that appears and writes nothing fails here. The
@@ -198,7 +198,7 @@ test("the measurements form takes a bed and wake time (#1851)", async ({
   await form.getByLabel("Bed time", { exact: true }).fill("23:15");
   await form.getByLabel("Wake time", { exact: true }).fill("07:05");
   await form.getByRole("button", { name: "Save measurements" }).click();
-  await expect(page.getByText("Measurements saved")).toBeVisible();
+  await expect(page.getByText("Measurements logged")).toBeVisible();
 
   // The log's own row for today, not the page — scoping to the row is what keeps this
   // an assertion about THIS night. The seed already carries a SYNCED 5h night for

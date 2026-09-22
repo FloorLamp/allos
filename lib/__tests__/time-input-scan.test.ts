@@ -587,6 +587,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
         "the rule below would then range over fewer files and go on passing.\n"
     ).toEqual([
       "app/(app)/nutrition/FoodLogBar.tsx",
+      "app/(app)/trends/MeasurementsQuickAdd.tsx",
       "components/medications/DatedDoseControl.tsx",
       "components/medications/QuickLogPrnControl.tsx",
       "components/medications/ScheduledDoseAction.tsx",
