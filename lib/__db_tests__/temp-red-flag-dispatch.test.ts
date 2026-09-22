@@ -23,8 +23,9 @@ import {
   setProfileBirthdate,
   getProfileSettingKeysWithPrefix,
   resolveSituationId,
+  setTimezone,
 } from "@/lib/settings";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import {
   serializeSituationEvents,
   type SituationEvent,
@@ -389,5 +390,66 @@ describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
     );
     expect(markers).toHaveLength(1);
     expect(markers[0]).toContain(`:${date}:infant_fever`);
+  });
+});
+
+// ── STALE WHEN THE RUN STARTED, NOT WHEN THE DAY ROLLED (#5984) ──────────────
+//
+// The refusal above is for a finding that was already a day old when the event that
+// surfaced it happened. A reading that was current when it was logged still pushes when
+// its dispatch, or a retry of a failed one, runs after local midnight. The profile has
+// its own zone so "midnight" is the profile's, not the tier's UTC.
+describe("a live reading across local midnight (#5984)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+
+  function feverishProfile(name: string): { p: number; day: string } {
+    const p = newProfile(name);
+    setTimezone(p, TZ);
+    configureHA(p);
+    makeSick(p, 1);
+    return { p, day: today(p) };
+  }
+
+  it("a 23:58 reading whose dispatch resolves after local midnight pushes", async () => {
+    const { p, day } = feverishProfile("TrfMidnight");
+    const fetchMock = stubFetch();
+
+    at(day, "23:58");
+    const reading = logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    expect(reading.kind).toBe("logged");
+    at(shiftDateStr(day, 1), "00:03");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+  });
+
+  it("a send that failed before midnight is retried by the next day's tick", async () => {
+    const { p, day } = feverishProfile("TrfFailedSend");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    at(day, "23:58");
+    logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    expect((await dispatchTempRedFlagForReading(p, 104.5)).failed).toBe(true);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toEqual([]);
+
+    // The next waking tick is on the profile's next day.
+    at(shiftDateStr(day, 1), "08:00");
+    const retry = await runTempRedFlag(p, today(p));
+    expect(retry.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
   });
 });
