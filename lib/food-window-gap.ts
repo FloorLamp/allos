@@ -31,8 +31,13 @@
 // re-absorb exactly the split that keeps its own answer honest. What they do owe each
 // other is window coherence, below.
 
-import { shiftDateStr } from "./date";
-import type { FoodSlot, FoodSlotBoundaries } from "./food-slot";
+import { hhmmFromMinutes, shiftDateStr } from "./date";
+import {
+  FOOD_SLOTS,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "./food-slot";
+import { detailSegment, type HistoryRow } from "./history-format";
 
 // The trailing window the habit gate reads. It nests STRICTLY INSIDE both other engines
 // reading this ledger — the food-group right-sizing window (RIGHTSIZE_WINDOW_DAYS, 28 —
@@ -205,4 +210,44 @@ export function foodWindowGapDates(
   const { dayOffset } = previousFoodWindow(window);
   const gapDate = shiftDateStr(date, dayOffset);
   return { from: shiftDateStr(gapDate, -FOOD_WINDOW_HABIT_DAYS), to: gapDate };
+}
+
+// HOME'S RECORD STATES THE SAME GAP (#6011), through this one detector. Every window
+// is asked, and only a gap on `now.date` itself is kept: Morning's answer is
+// yesterday's Evening, which is history, and Evening closes at the rollover. The row
+// sorts at the window's close minute and prints no clock, because nothing happened then.
+export type FoodWindowGapRow = HistoryRow & {
+  window: FoodSlot;
+  boundaries: FoodSlotBoundaries;
+};
+
+export function todayFoodWindowGapRows(
+  input: Omit<FoodWindowGapInput, "window" | "date"> & {
+    profileId: number;
+    tz: string;
+  }
+): FoodWindowGapRow[] {
+  return FOOD_SLOTS.flatMap((window) => {
+    const gap = foodWindowGap({ ...input, window, date: input.now.date });
+    if (!gap?.sameDay) return [];
+    return {
+      id: `food-gap:${gap.window}`,
+      window: gap.window,
+      boundaries: input.boundaries,
+      kind: "food",
+      profileId: input.profileId,
+      tz: input.tz,
+      date: gap.date,
+      sortTime: hhmmFromMinutes(
+        foodWindowCloseMinute(gap.window, input.boundaries)
+      ),
+      clock: null,
+      clockKind: "stated",
+      title: gap.window,
+      href: null,
+      detail: detailSegment(["nothing logged"]),
+      media: 0,
+      edit: null,
+    } satisfies FoodWindowGapRow;
+  });
 }

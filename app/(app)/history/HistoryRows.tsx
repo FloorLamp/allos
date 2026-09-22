@@ -63,6 +63,8 @@ import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { isSubstanceFoodGroup } from "@/lib/substance-use";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
+import type { FoodWindowGapRow } from "@/lib/food-window-gap";
+import { logHeading } from "@/lib/log-manifest";
 import {
   HISTORY_KIND_LABELS,
   historyRowPick,
@@ -342,6 +344,7 @@ export default function HistoryRows({
   rowClassName = "",
   showGlyphs = true,
   selectionSubjectId,
+  foodGaps,
 }: {
   /**
    * The day's entries in the order the record put them in — plain rows, and the
@@ -398,6 +401,12 @@ export default function HistoryRows({
    * the feed, which spans many days and therefore has no day for a batch to name.
    */
   selectionSubjectId?: number;
+  /**
+   * Home's closed-empty meal windows (#6011), which are also in `rows`. Each title is the add
+   * door for its window: the food form opens in place, and the logged serving clears
+   * the row on the next render.
+   */
+  foodGaps?: readonly FoodWindowGapRow[];
 }) {
   const prefs = useFormatPrefs();
   const batch = useLedgerBatch();
@@ -882,6 +891,9 @@ export default function HistoryRows({
     const Glyph = KIND_GLYPH[row.kind];
     const pickable = pick(row);
     const subject = subjectNames[row.profileId];
+    const gap = writable.has(row.profileId)
+      ? foodGaps?.find((candidate) => candidate.id === row.id)
+      : undefined;
     return (
       <Fragment key={row.id}>
         <li
@@ -951,7 +963,17 @@ export default function HistoryRows({
               {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
                 which is what the row grammar buys with its disclosure. */}
               <span className="flex min-w-0 items-baseline gap-1.5 truncate">
-                {row.href && !canEdit(row) && row.edit == null ? (
+                {gap ? (
+                  <button
+                    type="button"
+                    className="min-w-0 truncate text-left text-link"
+                    aria-haspopup="dialog"
+                    data-testid="history-row-title"
+                    onClick={() => setEditingId(row.id)}
+                  >
+                    {row.title}
+                  </button>
+                ) : row.href && !canEdit(row) && row.edit == null ? (
                   /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
@@ -1196,16 +1218,34 @@ export default function HistoryRows({
             is being corrected. */}
         {editingId === row.id ? (
           <ModalShell
-            title={menuName(row)}
+            title={gap ? logHeading("food") : menuName(row)}
             onClose={() => setEditingId(null)}
             size="sm"
             testId={`history-row-edit-sheet-${row.id}`}
           >
-            {/* THE MARKER STAYS ON THE FORM'S WRAPPER, where every spec on this page
-                already looks for it; the host's chrome is the host's to assert. */}
-            <div data-testid="history-row-editing">
-              {editForm(row, () => setEditingId(null))}
-            </div>
+            {gap ? (
+              <FoodServingForm
+                groups={FOOD_GROUPS}
+                date={row.date}
+                slot={gap.window}
+                slotBoundaries={gap.boundaries}
+                maxDate={maxDateFor(row)}
+                subjectProfileId={row.profileId}
+                tz={row.tz}
+                testId="history-row-food-gap"
+                onSaved={() => {
+                  toast("Added to the record.");
+                  setEditingId(null);
+                }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              /* THE MARKER STAYS ON THE FORM'S WRAPPER, where every spec on this page
+                 already looks for it; the host's chrome is the host's to assert. */
+              <div data-testid="history-row-editing">
+                {editForm(row, () => setEditingId(null))}
+              </div>
+            )}
           </ModalShell>
         ) : null}
       </Fragment>
