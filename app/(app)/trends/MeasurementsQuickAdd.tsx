@@ -1231,8 +1231,9 @@ export default function MeasurementsQuickAdd({
           shared WhenControl owns the pair (ids m-date / m-time from its testId),
           or, under a day context, the When door's reveal owns the time (m-time
           again) — and the hidden pair below is what actually posts, so the Server
-          Action and the offline queue read the same two names whatever renders. The Time never defaults to now (#2053); the control offers a
-          one-tap "Now" while the chosen day is today. This ONE Time is the whole
+          Action and the offline queue read the same two names whatever renders.
+          The Time never defaults to now (#2053); the control offers a one-tap
+          "Now" while the chosen day is today. This ONE Time is the whole
           sitting's statement — #2154 folded the two per-measure time inputs
           (temperature, peak flow) into it, and the write boundary carries it to
           body_metrics and medical_records `occurred_at` and the peak-flow
