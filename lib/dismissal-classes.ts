@@ -510,19 +510,6 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // moves the key moves with it, which is the mechanism, not a leak. No sweep needed.
   },
   {
-    prefix: "household-setup:",
-    keyClass: "anchored",
-    shape:
-      "`<checkId>+<checkId>…` (the failing setup checks, declaration order)",
-    // Anchored on the FAILING CHECK SET (#2173), which is the episode: the moment a new
-    // check type fails the key changes and the row is offered again. Nothing in the tail
-    // is a user string — the ids are a closed union (HOUSEHOLD_SETUP_CHECK_IDS) — so a
-    // stale row can only ever re-silence the identical set of problems on the identical
-    // profile, and no sweep is needed. The one set that must never be silenceable is
-    // handled at a different layer: a row carrying `unroutable` is marked
-    // non-dismissible, so no key containing it is ever written OR read.
-  },
-  {
     prefix: DOSE_BAND_UPDATE_PREFIX,
     keyClass: "anchored",
     shape: "`<intakeItemId>:<bandMg>` (#5538)",
@@ -626,6 +613,16 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
       "The records bridge was removed in #1270; the prefix survives ONLY so an " +
       "already-stored row still resolves to a label and clears via Restore. No " +
       "surface reads it as suppression, so a recycled name cannot inherit anything.",
+  },
+  {
+    prefix: "household-setup:",
+    keyClass: "legacy",
+    shape: "`<checkId>+<checkId>…` — pre-#5667 rows only",
+    risk:
+      "The member setup row retired with the Household page in #5667; the prefix " +
+      "survives ONLY so an already-stored row still resolves to a label and clears via " +
+      "Restore. The tail is a closed set of check ids, not a user string, and no " +
+      "surface reads it as suppression.",
   },
 ];
 

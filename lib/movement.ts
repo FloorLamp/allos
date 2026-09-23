@@ -70,10 +70,9 @@ export function movementDirection(
 
 // A declared "flat" band for a series asked the point-to-point question. Weight is
 // the one quantity that has ever needed one: a bathroom scale moves 50–100 g between
-// two honest weigh-ins of an unchanged body, so the household card has always
-// refused to draw an arrow under 0.1 kg. The constant lives HERE rather than as a
-// default argument in the household module (#3394) — it is a property of the
-// quantity, not of the surface that happens to render it.
+// two honest weigh-ins of an unchanged body, so no arrow is drawn under 0.1 kg. The
+// constant lives HERE (#3394) — it is a property of the quantity, not of the surface
+// that happens to render it.
 export const WEIGHT_TOLERANCE_KG = 0.1;
 
 export interface PointToPointMovement {

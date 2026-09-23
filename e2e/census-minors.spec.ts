@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 
 // The rendered half of the #2615 census sweep. Both claims are about what a
-// caregiver can READ off the household surface, so both are asserted on the text
+// caregiver can READ off a profile's avatar, so both are asserted on the text
 // the page actually produces — never on a screenshot.
 //
 //   1. AVATAR INITIALS. "Riley (child)" rendered "R(" — the first character of the
@@ -40,16 +40,19 @@ function rileyId(): number {
 test("a parenthetical profile name does not put a bracket in its avatar (#2615)", async ({
   page,
 }) => {
-  // Admin reaches every profile, so the household page carries a card per profile.
+  // Admin reaches every profile, so the profile switcher carries a row per profile.
   const profileId = rileyId();
-  await page.goto("/household");
-  const card = page.locator(
-    `[data-testid="household-card"][data-profile-id="${profileId}"]`
-  );
-  await expect(card).toBeVisible();
-  await expect(card).toContainText(RILEY);
+  await page.goto("/");
+  // Past the pre-hydration disable gate (#830): the identity bar renders disabled
+  // until mounted, so wait for enabled before clicking.
+  const trigger = page.getByTestId("profile-identity-bar"); // testid-scope-ok: sidebar chrome, outside the streamed app content
+  await expect(trigger).toBeEnabled();
+  await trigger.click();
+  const row = page.getByTestId(`switcher-row-${profileId}`); // testid-scope-ok: the switcher panel is sidebar chrome, one copy
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(RILEY);
 
-  const initials = card.getByTestId("avatar-initials");
+  const initials = row.getByTestId("avatar-initials");
   await expect(initials).toHaveText("RC");
   // The defect, stated as the thing that must never come back.
   await expect(initials).not.toContainText("(");

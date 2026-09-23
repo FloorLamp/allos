@@ -3,8 +3,7 @@
 //
 // Seeds realistic fixtures and asserts the END-TO-END outputs the pure tier can't
 // see: a completed mental_health visit satisfying the depression/anxiety screenings
-// through the shared inference stream; the household rollup minimizing a
-// mental_health visit's title unless the owner overrode; the crisis finding reading
+// through the shared inference stream; the crisis finding reading
 // the CONFIGURED resources (with the neutral fallback when unconfigured); and the
 // privacy invariant that a crisis signal stays with the profile.
 //
@@ -19,7 +18,6 @@ import {
 } from "@/lib/queries";
 import { recordInstrumentScore } from "@/lib/instrument-records";
 import {
-  setMentalHealthShareFull,
   setGlobalCrisisResources,
   setProfileCrisisResourcesOverride,
 } from "@/lib/settings";
@@ -89,48 +87,6 @@ describe("#997 — a completed mental_health visit satisfies depression + anxiet
   });
 });
 
-describe("#997 — shared household rollup minimizes a mental_health visit", () => {
-  it("shows only 'Medical appointment' by default; own Upcoming keeps the real title; override reveals it", () => {
-    const p = newProfile("MH rollup");
-    const td = today(p);
-    addAppointment(
-      p,
-      shiftDateStr(td, 2),
-      "Therapy — Dr. Okafor",
-      "scheduled",
-      "mental_health"
-    );
-
-    // Shared household rollup → minimal by default.
-    const rollup = collectHouseholdRollup(p, td);
-    expect(rollup.nextAppointment).toBeTruthy();
-    expect(rollup.nextAppointment!.title).toBe("Medical appointment");
-
-    // The profile's OWN Upcoming page → full title.
-    const own = collectUpcoming(p, td).find((i) => i.domain === "appointment");
-    expect(own?.title).toBe("Therapy — Dr. Okafor");
-
-    // Owner opts into full shared detail → the rollup reveals the real title.
-    setMentalHealthShareFull(p, true);
-    const rollup2 = collectHouseholdRollup(p, td);
-    expect(rollup2.nextAppointment!.title).toBe("Therapy — Dr. Okafor");
-  });
-
-  it("a non-sensitive kind is shown in full on the household rollup", () => {
-    const p = newProfile("Phys rollup");
-    const td = today(p);
-    addAppointment(
-      p,
-      shiftDateStr(td, 2),
-      "Cardiology follow-up",
-      "scheduled",
-      "physical"
-    );
-    const rollup = collectHouseholdRollup(p, td);
-    expect(rollup.nextAppointment!.title).toBe("Cardiology follow-up");
-  });
-});
-
 describe("#996 — the crisis finding reads the configured resources", () => {
   function severeProfile(name: string): { p: number; td: string } {
     const p = newProfile(name);
@@ -185,7 +141,7 @@ describe("#996 — the crisis finding reads the configured resources", () => {
 });
 
 describe("#996 — the crisis signal stays with the profile (privacy pin)", () => {
-  it("is NEVER part of the cross-profile household rollup — only doses/refills/appointments are", () => {
+  it("is NEVER part of the cross-profile household rollup — only doses/refills are", () => {
     const p = newProfile("crisis private");
     const td = today(p);
     recordInstrumentScore(
@@ -200,19 +156,11 @@ describe("#996 — the crisis signal stays with the profile (privacy pin)", () =
     ).toBe(true);
 
     // ...but the household rollup (what a caregiver login sees across profiles)
-    // carries only doses, refills, and the next appointment — structurally never a
-    // mental-health crisis signal.
+    // carries only doses and refills — structurally never a mental-health crisis
+    // signal.
     const rollup = collectHouseholdRollup(p, td);
-    const rollupItems = [
-      ...rollup.dueDoses,
-      ...rollup.lowRefills,
-      ...(rollup.nextAppointment ? [rollup.nextAppointment] : []),
-    ];
+    const rollupItems = [...rollup.dueDoses, ...rollup.lowRefills];
     expect(rollupItems.every((i) => i.domain !== "mental-health")).toBe(true);
-    expect(Object.keys(rollup)).toEqual([
-      "dueDoses",
-      "lowRefills",
-      "nextAppointment",
-    ]);
+    expect(Object.keys(rollup)).toEqual(["dueDoses", "lowRefills"]);
   });
 });
