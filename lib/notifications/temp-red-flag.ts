@@ -12,7 +12,10 @@
 
 import { tempRedFlagFindingFor } from "../temp-red-flag-findings";
 import { episodeForProfileDate } from "../illness-episode";
-import { tempRedFlagFullDetail } from "../temp-red-flag";
+import {
+  tempRedFlagFullDetail,
+  type TempRedFlagFinding,
+} from "../temp-red-flag";
 import { detectTempRedFlag } from "../datasets/temperature-red-flags";
 import { planIllnessCareNudges } from "../illness-care";
 import { getFindingSuppressions } from "../queries/upcoming";
@@ -85,13 +88,12 @@ export interface TempRedFlagAsk {
   retryOwed: boolean;
 }
 
-// Send the temperature red-flag nudge for one profile when a NEW crossing comes due.
-// Returns whether a send failed. `date` is the profile-local date (the dedup value).
-export async function runTempRedFlag(
+// Clear the marker and owed record of a finding that is gone, and return the finding
+// still due a send, if any. Sends nothing, so a normal reading can run it (#6018).
+function settleTempRedFlag(
   profileId: number,
-  date: string,
-  ask: TempRedFlagAsk = { staleBefore: date, retryOwed: true }
-): Promise<{ failed: boolean }> {
+  date: string
+): TempRedFlagFinding | null {
   // "dual" display (#1019): the nudge has no login-unit context (prefs are
   // per-login, notifications per-profile), and a mixed-preference household must
   // read a fever red-flag correctly either way — so the safety message carries
@@ -134,7 +136,18 @@ export async function runTempRedFlag(
     }
   }
 
-  if (toSend.length === 0 || !finding) return { failed: false };
+  return toSend.length > 0 ? finding : null;
+}
+
+// Send the temperature red-flag nudge for one profile when a NEW crossing comes due.
+// Returns whether a send failed. `date` is the profile-local date (the dedup value).
+export async function runTempRedFlag(
+  profileId: number,
+  date: string,
+  ask: TempRedFlagAsk = { staleBefore: date, retryOwed: true }
+): Promise<{ failed: boolean }> {
+  const finding = settleTempRedFlag(profileId, date);
+  if (!finding) return { failed: false };
 
   // REFUSED HERE: a finding that was already stale when the run started (#5969, #5984):
   // its day precedes `ask.staleBefore`, and no earlier live run left it owed. Only the
@@ -178,10 +191,10 @@ export async function runTempRedFlag(
 // successful reading write whose value crosses a red-flag line, evaluate + send
 // immediately instead of waiting up to a day (pre-#1025) or an hour (the tick
 // fallback) — the push exists exactly for the OTHER caregiver (#858), who isn't
-// looking at the logger's inline toast. The cheap pre-check (one dataset lookup)
-// keeps the ordinary-reading write path free of any notification work; everything
-// else — the open-episode framing (a backfilled historical reading is never the
-// episode's LATEST, and no open episode ⇒ no finding), the per-finding marker, the
+// looking at the logger's inline toast. A reading that crosses nothing never sends;
+// it only clears the marker of a finding it ended (#6018). Everything else — the
+// open-episode framing (a backfilled historical reading is never the episode's
+// LATEST, and no open episode ⇒ no finding), the per-finding marker, the
 // suppression bus, delivery accounting — is the SAME runTempRedFlag the tick runs,
 // so the two paths can never disagree ("one question, one computation").
 //
@@ -202,7 +215,10 @@ export async function dispatchTempRedFlagForReading(
   // Captured before any await, so the reading judges against the day it arrived.
   const date = today(profileId);
   const minuteOfDay = hhmmToMinutes(nowTime(profileId));
+  // A normal reading sends nothing, but it may end a finding, and that finding's
+  // marker must go now: a second crossing later the same day has the same key.
   if (!detectTempRedFlag(degF, profileAgeMonths(profileId, date))) {
+    settleTempRedFlag(profileId, date);
     return { failed: false };
   }
   const staleBefore =

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -231,7 +230,12 @@ export default function QuickLogPrnControl({
   // label's refusal — "Recorded weight is 22 lb…" — is why there is no amount on
   // file, and it says the same thing before and after the field is filled.
   const needsDoseAmount = doseAmount === undefined;
-  const [firstDoseAmount, setFirstDoseAmount] = useState("");
+  // Keyed on whether the field is asked, so a row that loses its dose row again
+  // asks from blank rather than with the amount typed for the last one.
+  const [firstDoseAmount, setFirstDoseAmount] = useResettableState(
+    "",
+    needsDoseAmount
+  );
   const typedAmount = firstDoseAmount.trim();
   // Give is the tap, and it has nothing to write until an amount is stated.
   const amountMissing = needsDoseAmount && !typedAmount;
