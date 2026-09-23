@@ -34,12 +34,12 @@ import { sqlNow } from "./clock";
 import { shiftDateStr } from "./date";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import { episodeReopenEligibility } from "./illness-episode-reopen";
-import { isEditLocked } from "./integrations/sync-log";
 import {
+  episodeConditionValues,
   getEpisodeRow,
   getOpenEpisodeRow,
+  syncPromotedCondition,
   updateEpisodeBoundaries,
-  type IllnessEpisodeRow,
 } from "./illness-episode-store";
 import {
   stopMedicationCourses,
@@ -54,55 +54,6 @@ export type EpisodePromoteOutcome =
   | { kind: "already"; conditionId: number }
   | { kind: "invalid" };
 
-function conditionValues(row: IllnessEpisodeRow) {
-  return {
-    externalId: episodeConditionExternalId(row.id),
-    name: row.situation.trim(),
-    status: row.end_date ? "resolved" : "active",
-    onsetDate: row.start_date,
-    // The inclusive end_date IS the last active day (#2232) — resolved on it directly.
-    resolvedDate: row.end_date,
-  } as const;
-}
-
-// Keep an already-promoted condition aligned with its episode. Called inside the
-// caller's writeTx; "none" simply means this episode has not been promoted.
-//
-// THE EDIT LOCK (#2137): the manual edit path stamps `conditions.edited`, and this
-// sync consults it through the SAME isEditLocked predicate every imported store uses
-// (#133/#944). RULING — a locked row is a FULL hold-out: it receives nothing from the
-// episode, not even the episode's resolved_date on close. The providers precedent
-// exactly ("contact refreshed only when NOT manually edit-locked", #1030): once the
-// user has corrected the row by hand, the row is theirs, and a partial sync that
-// still moved one column would be the same silent revert one column narrower. The
-// typed outcome makes the hold-out visible ("locked", parallel to the substrate's
-// `edited` upsert split) instead of folding it into "nothing changed"; the `AND
-// edited = 0` guard on the UPDATE keeps the decision enforced at the row even if a
-// future caller skips the read.
-export type PromotedConditionSyncOutcome = "synced" | "locked" | "none";
-
-export function syncPromotedCondition(
-  profileId: number,
-  row: IllnessEpisodeRow
-): PromotedConditionSyncOutcome {
-  const v = conditionValues(row);
-  const existing = db
-    .prepare(
-      `SELECT edited FROM conditions
-        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
-    )
-    .get(profileId, v.externalId) as { edited: number } | undefined;
-  if (!existing) return "none";
-  if (isEditLocked(existing.edited)) return "locked";
-  db.prepare(
-    `UPDATE conditions
-        SET name = ?, status = ?, onset_date = ?, resolved_date = ?
-      WHERE profile_id = ? AND external_id = ? AND source = 'episode'
-        AND edited = 0`
-  ).run(v.name, v.status, v.onsetDate, v.resolvedDate, profileId, v.externalId);
-  return "synced";
-}
-
 // Create (or find and synchronize) the Condition for an episode. onset = episode start;
 // a closed episode resolves on its end_date (the inclusive last active day, #2232)
 // with status 'resolved'; an ongoing episode stays 'active' with no resolved date.
@@ -114,7 +65,7 @@ export function promoteEpisodeToConditionCore(
   return writeTx(() => {
     const episode = getEpisodeRow(profileId, episodeId);
     if (!episode || !episode.situation.trim()) return { kind: "invalid" };
-    const v = conditionValues(episode);
+    const v = episodeConditionValues(episode);
     const existing = db
       .prepare(
         `SELECT id FROM conditions WHERE profile_id = ? AND external_id = ?`

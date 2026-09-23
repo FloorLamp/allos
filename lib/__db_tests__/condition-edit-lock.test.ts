@@ -13,10 +13,13 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import {
   promoteEpisodeToConditionCore,
-  syncPromotedCondition,
   editEpisodeCore,
 } from "@/lib/illness-episode-write";
-import { getEpisodeRow, mergeEpisodeRows } from "@/lib/illness-episode-store";
+import {
+  getEpisodeRow,
+  mergeEpisodeRows,
+  syncPromotedCondition,
+} from "@/lib/illness-episode-store";
 import { episodeConditionExternalId } from "@/lib/illness-episode-format";
 import type { WriteAuthorizedProfileId } from "@/lib/auth";
 
