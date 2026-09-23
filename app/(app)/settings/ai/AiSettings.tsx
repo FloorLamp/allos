@@ -5,6 +5,7 @@ import type { AiPrefs } from "@/lib/settings";
 import { saveAiSettings } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
   const { status, value: ai, edit, save: runSave } = useSaveStatus(prefs);
@@ -29,9 +30,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
   return (
     <div ref={formRef} className="card space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          AI automation
-        </h2>
+        <SectionHeading level={2}>AI automation</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

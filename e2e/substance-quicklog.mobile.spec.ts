@@ -231,10 +231,15 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
       page,
       page.getByTestId(`quick-entry-substance-log-${NAME}`)
     );
+    // The row states the day beside the week (#5663 ruling 1): the tracking tap
+    // above and this one, both today.
+    const receipt = entry.getByTestId(`quick-entry-substance-receipt-${NAME}`);
+    await expect(receipt).toHaveText("2 today · 2 this week");
     const toasts = page.getByTestId("toast");
-    const logged = toasts.filter({ hasText: "Use logged." });
+    const logged = toasts.filter({ hasText: "Use logged" });
     await settledClick(page, logged.getByRole("button", { name: "Undo" }));
     await expect(toasts.filter({ hasText: "Use undone." })).toBeVisible();
+    await expect(receipt).toHaveText("1 today · 1 this week");
     await page.goto("/records/specialty/substance-use");
     await expect(
       page.getByTestId(`substance-week-count-${NAME}`)

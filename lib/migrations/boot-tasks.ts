@@ -550,33 +550,39 @@ export function seedCanonicalResultDefinitions(db: MaintenanceDatabase) {
       name: string;
     }[]
   ).some((c) => c.name === "ranges_by_cycle_phase");
+  const updated = [
+    "category",
+    "unit",
+    "ref_low",
+    "ref_high",
+    "ref_low_male",
+    "ref_high_male",
+    "ref_low_female",
+    "ref_high_female",
+    "optimal_low",
+    "optimal_high",
+    "optimal_low_male",
+    "optimal_high_male",
+    "optimal_low_female",
+    "optimal_high_female",
+    "direction",
+    "ranges_by_age",
+    "ranges_by_status",
+    ...(hasCyclePhase ? ["ranges_by_cycle_phase"] : []),
+    "note",
+  ];
+  // An unchanged row is left untouched. Each module graph that opens the database
+  // re-runs these boot tasks, and a no-op rewrite would still advance the data write
+  // revision, so every open page would repaint for data that never changed.
   const insert = db.prepare(
     `INSERT INTO canonical_result_definitions
-       (name, category, unit, ref_low, ref_high,
-        ref_low_male, ref_high_male, ref_low_female, ref_high_female,
-        optimal_low, optimal_high,
-        optimal_low_male, optimal_high_male, optimal_low_female, optimal_high_female,
-        direction, ranges_by_age, ranges_by_status,
-        ${hasCyclePhase ? "ranges_by_cycle_phase," : ""} note, source)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${hasCyclePhase ? "?," : ""}?, 'seed')
+       (name, ${updated.join(", ")}, source)
+     VALUES (?, ${updated.map(() => "?").join(", ")}, 'seed')
      ON CONFLICT(name) DO UPDATE SET
-       category = excluded.category, unit = excluded.unit,
-       ref_low = excluded.ref_low, ref_high = excluded.ref_high,
-       ref_low_male = excluded.ref_low_male,
-       ref_high_male = excluded.ref_high_male,
-       ref_low_female = excluded.ref_low_female,
-       ref_high_female = excluded.ref_high_female,
-       optimal_low = excluded.optimal_low, optimal_high = excluded.optimal_high,
-       optimal_low_male = excluded.optimal_low_male,
-       optimal_high_male = excluded.optimal_high_male,
-       optimal_low_female = excluded.optimal_low_female,
-       optimal_high_female = excluded.optimal_high_female,
-       direction = excluded.direction,
-       ranges_by_age = excluded.ranges_by_age,
-       ranges_by_status = excluded.ranges_by_status,
-       ${hasCyclePhase ? "ranges_by_cycle_phase = excluded.ranges_by_cycle_phase," : ""}
-       note = excluded.note,
-       source = 'seed'`
+       ${updated.map((c) => `${c} = excluded.${c}`).join(", ")},
+       source = 'seed'
+     WHERE source IS NOT 'seed'
+        OR ${updated.map((c) => `${c} IS NOT excluded.${c}`).join(" OR ")}`
   );
   const num = (v: unknown) =>
     typeof v === "number" && Number.isFinite(v) ? v : null;

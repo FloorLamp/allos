@@ -98,7 +98,6 @@ const FIXTURES = [
       "action app/(app)/medical/document-actions.ts uploadMedicalDocument",
       "action app/(app)/quick-entry-actions.ts loadQuickEntry",
       "action app/(app)/trends/actions.ts generateForDate",
-      "render app/(app)/household/page.tsx HouseholdPage",
       "render app/(app)/integrations/calendar-feed/page.tsx CalendarFeedPage",
       "render app/(app)/medications/page.tsx MedicationsPage",
       "render app/(app)/page.tsx Dashboard",
