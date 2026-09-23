@@ -85,8 +85,8 @@ See [notification suppression](notifications.md#suppression-and-safety).
 - Paired observations use declared factors the user recorded, coverage floors,
   and the existing registry. Do not add an exploratory correlation miner or
   imply causation. Below the floor, stay silent.
-- Household setup health derives structural checks at read time. It does not
-  create stored finding state or a new notification engine.
+- The unroutable-reminders check derives at read time. It does not create
+  stored finding state or a new notification engine.
 - Intake suggestions are proposals, not findings. Reconsider that distinction
   only when their actual lifecycle or reach requires the finding substrate.
 

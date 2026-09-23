@@ -150,7 +150,6 @@
   "home-assistant-notify.spec.ts": 22,
   "home-location.spec.ts": 11,
   "household-history.spec.ts": 17,
-  "household-rollup.spec.ts": 12,
   "household-round.spec.ts": 3,
   "household-setup.spec.ts": 1,
   "ia-nutrition-medications.spec.ts": 34,

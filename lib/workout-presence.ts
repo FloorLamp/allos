@@ -101,15 +101,6 @@ export interface PresenceActivityRow {
   source: string | null; // NULL = manual/live; set = imported
 }
 
-// The compact household presence chip label (#921), active-only: a cross-profile
-// glance shows only what the server honestly knows — mid-workout + elapsed from
-// start_time. NEVER live distance/pace (no live telemetry channel exists). Returns
-// null for idle/finished so the chip is a live-only affordance.
-export function householdPresenceChip(p: WorkoutPresence): string | null {
-  if (p.state !== "active") return null;
-  return `mid-workout · ${p.sinceMin} min`;
-}
-
 // Whether an activity row is a COMPLETED session — vs a live/unfinished draft.
 // Completed = an end is known (end_time, or start + a positive duration), OR the
 // row carries no start_time at all (an untimed retroactive log is inherently
