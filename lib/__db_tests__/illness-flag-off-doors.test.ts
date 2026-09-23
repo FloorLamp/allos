@@ -21,7 +21,7 @@ import { db, today } from "@/lib/db";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptom-actions";
 import {
   endEpisodeAction,
-  reopenEpisodeAction,
+  promoteEpisodeToConditionAction,
 } from "@/app/(app)/medical/episodes/actions";
 import { toggleSituationIllnessType } from "@/app/(app)/nutrition/intake-actions";
 import {
@@ -269,30 +269,25 @@ describe("a backdated door after a close (#6007)", () => {
     return { profile, day };
   }
 
-  it("reopens the episode it overlaps instead of opening a second", async () => {
+  it("reopens the episode it overlaps, and its condition, instead of opening a second", async () => {
     const { profile, day } = closedEpisode("backdated-reopen");
     const opened = await activateIllnessForSymptoms(fd({ date: day(-3) }));
-    const ended = await endEpisodeAction(fd({ episodeId: opened.episodeId }));
-    expect(ended.ok).toBe(true);
+    await endEpisodeAction(fd({ episodeId: opened.episodeId }));
+    await promoteEpisodeToConditionAction(fd({ episodeId: opened.episodeId }));
 
     const res = await activateIllnessForSymptoms(fd({ date: day(-1) }));
     expect(res.ok).toBe(true);
-    expect(res.episodeId).toBe(opened.episodeId);
     expect(listEpisodeRows(profile.id)).toMatchObject([
       { id: opened.episodeId, start_date: day(-3), end_date: null },
     ]);
-  });
-
-  it("an ordinary close then reopen keeps the one row", async () => {
-    const { profile, day } = closedEpisode("ordinary-reopen");
-    const opened = await activateIllnessForSymptoms(fd({ date: day(-3) }));
-    await endEpisodeAction(fd({ episodeId: opened.episodeId }));
-
-    const res = await reopenEpisodeAction(fd({ episodeId: opened.episodeId }));
-    expect(res.ok).toBe(true);
-    expect(listEpisodeRows(profile.id)).toMatchObject([
-      { id: opened.episodeId, start_date: day(-3), end_date: null },
-    ]);
+    expect(
+      db
+        .prepare(
+          `SELECT status, resolved_date FROM conditions
+            WHERE profile_id = ? AND source = 'episode'`
+        )
+        .all(profile.id)
+    ).toEqual([{ status: "active", resolved_date: null }]);
   });
 
   it("a backdated day past an older episode still opens a new row", async () => {
