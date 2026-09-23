@@ -223,7 +223,7 @@ describe("nav ↔ route consistency", () => {
     "/upcoming",
     "/trends",
     "/wellness",
-    "/longevity",
+    "/protocols",
     "/progress",
   ];
 

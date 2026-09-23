@@ -648,33 +648,8 @@ export function rangeBadge(
   return ref === "in" ? "optimal" : "unknown";
 }
 
-// The MedicalFlag a RangeBadge corresponds to — the ONE translation between the
-// badge vocabulary (a judged value's verdict) and the flag vocabulary MedicalValue
-// renders (color + caret + sr-only severity, #1220). A surface that has already
-// judged a value with rangeBadge and wants to show it value-led (the Longevity
-// pillar card, #1501) maps through here instead of hand-rolling the pairing or
-// falling back to the row's STORED flag, which was derived at ingest and can
-// disagree with the badge the same surface counted. Optimal/unknown carry no flag
-// (nothing to announce); the directional "-high"/"-low" variants are deliberate —
-// the legacy directionless "non-optimal" is never produced here.
-export function rangeBadgeFlag(badge: RangeBadge): MedicalFlag | null {
-  switch (badge) {
-    case "high":
-      return "high";
-    case "low":
-      return "low";
-    case "above-optimal":
-      return "non-optimal-high";
-    case "below-optimal":
-      return "non-optimal-low";
-    default:
-      return null;
-  }
-}
-
 // The chip a judged value wears. A RangeBadge already IS a verdict — "above range"
-// is a bad outcome, "optimal" a good one, which is the pairing `rangeBadgeFlag`
-// above already makes — so reading the shared palette here asserts nothing new; it
+// is a bad outcome, "optimal" a good one — so reading the shared palette here asserts nothing new; it
 // just stops this surface from keeping its own copy of the emerald/amber/rose
 // steps. Being keyed by RANGE WORDS is what hid it from #5187's verdict-map guard
 // (#5725), even though five of its six chips were already byte-identical to what

@@ -20,7 +20,6 @@
 // computation").
 
 import type { Sex } from "@/lib/types";
-import type { VerdictTone } from "./chart-colors";
 import type { WeightUnit } from "@/lib/settings";
 import { fmtWeight } from "@/lib/units";
 import { assistedBaseLift, defaultEquipment, variantOf } from "@/lib/lifts";
@@ -494,15 +493,7 @@ export function strengthStandingPercent(
   return Math.round(Math.min(100, Math.max(0, pos)));
 }
 
-// Tone bucket for the healthspan pillar / any badge coloring, from a level.
-export function strengthTone(level: StrengthLevel): VerdictTone {
-  if (level === "advanced" || level === "elite") return "good";
-  if (level === "intermediate" || level === "novice") return "warn";
-  return "bad"; // beginner / untrained
-}
-
-// Rank order (higher = stronger standing) so a caller can pick the BEST standing
-// across several lifts for the single strength pillar.
+// Rank order (higher = stronger standing).
 const LEVEL_RANK: Record<StrengthLevel, number> = {
   untrained: 0,
   beginner: 1,
@@ -513,19 +504,4 @@ const LEVEL_RANK: Record<StrengthLevel, number> = {
 };
 export function strengthLevelRank(level: StrengthLevel): number {
   return LEVEL_RANK[level];
-}
-
-// The strongest of several standings (highest level; ties keep the first). Used
-// by the pillar seam to surface one representative "strength standard" from the
-// lifter's core lifts. Null when the list is empty.
-export function bestStanding(
-  standings: StrengthStanding[]
-): StrengthStanding | null {
-  let best: StrengthStanding | null = null;
-  for (const s of standings) {
-    if (!best || strengthLevelRank(s.level) > strengthLevelRank(best.level)) {
-      best = s;
-    }
-  }
-  return best;
 }

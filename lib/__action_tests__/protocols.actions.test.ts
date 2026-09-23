@@ -131,9 +131,7 @@ describe("createProtocol", () => {
     ]);
     // Situation activated via the shared situations wiring.
     expect(getActiveSituations(profile.id)).toContain("Creatine loading");
-    // The hub revalidates the Longevity page (its #protocols section, #1042
-    // phase 4).
-    expect(revalidate).toHaveBeenCalledWith("/longevity");
+    expect(revalidate).toHaveBeenCalledWith("/protocols");
   });
 });
 
@@ -210,7 +208,7 @@ describe("the protocol write line at an ineligible age (#3133, the #2993 shape)"
       ).not.toBeNull();
       expect(await deleteProtocol(protocolForm({ id: cleanup.id }))).toEqual({
         ok: true,
-        redirectTo: "/longevity#protocols",
+        redirectTo: "/protocols",
       });
       expect(getProtocols(profile.id).map((p) => p.id)).toEqual([before.id]);
     }

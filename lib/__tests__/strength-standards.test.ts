@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   strengthStanding,
   strengthLevelLabel,
-  strengthTone,
-  bestStanding,
   strengthStandingPhrase,
   bodyweightMultiple,
   assumesFreeWeightExecution,
@@ -154,28 +152,11 @@ describe("strengthStanding — missing data hides the standing (null)", () => {
   });
 });
 
-describe("labels, tone, ranking, and best standing", () => {
+describe("labels", () => {
   it("labels every level", () => {
     expect(strengthLevelLabel("untrained")).toBe("Untrained");
     expect(strengthLevelLabel("intermediate")).toBe("Intermediate");
     expect(strengthLevelLabel("elite")).toBe("Elite");
-  });
-
-  it("buckets tone by level", () => {
-    expect(strengthTone("elite")).toBe("good");
-    expect(strengthTone("advanced")).toBe("good");
-    expect(strengthTone("intermediate")).toBe("warn");
-    expect(strengthTone("novice")).toBe("warn");
-    expect(strengthTone("beginner")).toBe("bad");
-    expect(strengthTone("untrained")).toBe("bad");
-  });
-
-  it("bestStanding picks the strongest level across lifts", () => {
-    const squat = strengthStanding("Back Squat", 220, "male", 80)!; // elite
-    const bench = strengthStanding("Bench Press", 90, "male", 80)!; // intermediate
-    expect(bestStanding([bench, squat])!.lift).toBe("Back Squat");
-    expect(bestStanding([bench, squat])!.level).toBe("elite");
-    expect(bestStanding([])).toBeNull();
   });
 
   it("exposes the covered lifts (five core + three retired-model carryovers)", () => {

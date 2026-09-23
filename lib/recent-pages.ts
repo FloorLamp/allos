@@ -71,7 +71,7 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/progress", label: "Progress photos" },
   { href: "/upcoming", label: "Upcoming" },
   { href: "/wellness", label: "Wellness" },
-  { href: "/longevity", label: "Longevity" },
+  { href: "/protocols", label: "Protocols" },
   { href: "/records", label: "Health record" },
   { href: "/results", label: "Results" },
   { href: "/medications", label: "Medications" },

@@ -102,7 +102,7 @@ export default function MobileNav({
   // Accessible profiles held READ-only by this login (issue #33) — the per-row
   // hint in the switcher panel.
   readOnlyIds?: number[];
-  // Known-adult predicate for the Longevity nav entry.
+  // Known-adult predicate for the Protocols nav entry.
   adultContentAvailable?: boolean;
   // False through early childhood; hides workout logging and navigation.
   trainingRelevant?: boolean;

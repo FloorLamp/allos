@@ -374,8 +374,8 @@ describe("bioAgeInputsStatus", () => {
 
   it("says nine present is NOT nine together when no draw carries them all", () => {
     // Albumin from an old draw, the other eight from a recent one: the checklist is
-    // complete, the model has nothing to compute from, and /longevity renders no
-    // section at all. The old sentence claimed a result existed.
+    // complete, the model has nothing to compute from, and no estimate
+    // renders. The old sentence claimed a result existed.
     const s = bioAgeInputsStatus(
       ALL_NINE,
       [],

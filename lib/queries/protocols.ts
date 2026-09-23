@@ -390,7 +390,7 @@ function tallyByDate(
 // Usage-during-window for MANY protocols, in a bounded number of queries (#1655).
 //
 // The per-protocol shape issued its own scope lookup plus its own grouped ledger
-// query, so /longevity's protocol list cost two queries per protocol the profile had
+// query, so the /protocols list cost two queries per protocol the profile had
 // EVER created — a page that gets slower purely as a function of how long someone has
 // used the feature, recomputing windows that closed years ago. This reads each ledger
 // ONCE over the union of the windows and slices per protocol in JS, the same shape

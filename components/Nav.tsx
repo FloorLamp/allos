@@ -8,7 +8,7 @@ import {
   IconLayoutDashboard,
   IconTrendingUp,
   IconMoon,
-  IconHourglass,
+  IconFlask2,
   IconCalendarClock,
   IconBarbell,
   IconChartLine,
@@ -161,10 +161,10 @@ const RECORDS: Group = {
 
 // The episodic group (#3079). Five top-level rows measured at ZERO deliberate
 // visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming,
-// Household (retired in #5667), Wellness, Longevity — plus Progress photos, which
-// shares their shape. The measurement did not find six redundant pages: each holds
-// writes that exist nowhere else (protocol creation only at /longevity#protocols,
-// practice CRUD and back-dated logging only at /wellness, retro symptom entry for an
+// Household (retired in #5667), Wellness, Longevity (retired in #5556; Protocols
+// holds its row) — plus Progress photos, which shares their shape. The measurement
+// did not find six redundant pages: each holds writes that exist nowhere else
+// (protocol creation only at /protocols, practice CRUD and back-dated logging only at /wellness, retro symptom entry for an
 // arbitrary past day only at /history?day=, restore / preventive-override /
 // care-plan completion only at /upcoming). No URL moves, and every gate below keeps
 // the semantics it had as a top-level row.
@@ -231,12 +231,11 @@ const PLAN_REVIEW: Group = {
       icon: IconSparkles,
       relevanceKey: "wellness",
     },
-    // LONGEVITY — the same episodic-management diagnosis as Wellness, and its
+    // PROTOCOLS — the same episodic-management diagnosis as Wellness, and its
     // protocol picker shares the same practice targets, so the two stay adjacent as
-    // #1620 placed them. Still adult-only (ADULT_ONLY_HREFS); NavGroup runs the
-    // same isNavLeafVisible predicate as the top level, so the life-stage boundary
-    // is unchanged by the move.
-    { href: "/longevity", label: "Longevity", icon: IconHourglass },
+    // #1620 placed them. Adult-only (ADULT_ONLY_HREFS); NavGroup runs the same
+    // isNavLeafVisible predicate as the top level.
+    { href: "/protocols", label: "Protocols", icon: IconFlask2 },
     // PROGRESS PHOTOS (#1119) — not one of the zero-use five, and included on shape
     // rather than on measurement: a data-gated visual review surface opened in
     // bursts around a training block. Its `progress` relevance bit and the
@@ -333,7 +332,7 @@ const entries: Entry[] = [
   },
   // The episodic group (#3079) sits between the daily reading surfaces above and
   // the reference surfaces below — exactly where the ORDER note calls for a
-  // cluster that is neither. Progress photos, Wellness and Longevity kept their
+  // cluster that is neither. Progress photos, Wellness and Protocols kept their
   // relevance and life-stage gates on the way in; see PLAN_REVIEW for the
   // per-surface diagnosis behind each child.
   PLAN_REVIEW,
@@ -347,7 +346,7 @@ const entries: Entry[] = [
 
 // Whole-route adult content. Activity, Timeline, Trends, and Equipment stay
 // reachable; only the longevity/protocol content class is hidden here.
-const ADULT_ONLY_HREFS = new Set<string>(["/longevity"]);
+const ADULT_ONLY_HREFS = new Set<string>(["/protocols"]);
 
 const leafClass = (active: boolean, nested: boolean) =>
   // Active = accent text on the accent-soft fill, per the palette doctrine

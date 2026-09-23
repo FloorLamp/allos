@@ -333,7 +333,7 @@ describe("CreateAction", () => {
       medication: { label: "Add medication", housing: ["page", "section"] },
       practice: { label: "Add practice", housing: ["page"] },
       "training-activity": { label: "Add activity", housing: ["page"] },
-      protocol: { label: "Add protocol", housing: ["section"] },
+      protocol: { label: "Add protocol", housing: ["page"] },
       goal: { label: "Add goal", housing: ["section"] },
       routine: { label: "Add routine", housing: ["section"] },
       equipment: { label: "Add equipment", housing: ["section"] },

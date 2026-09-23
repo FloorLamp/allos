@@ -1800,7 +1800,7 @@ export const DELETE_POLICY = {
   // which is exactly what "delete this from my record" means here. Not an undo
   // root (no UNDO_KINDS entry), so DATASET_UNDO_KIND needs no decision.
   preventive_record_decisions: { revalidate: ["/upcoming", "/"] },
-  protocols: { revalidate: ["/longevity", "/"] },
+  protocols: { revalidate: ["/protocols", "/"] },
   milestones: { revalidate: ["/"] },
   equipment: {
     revalidate: ["/equipment", "/training"],
@@ -1848,7 +1848,7 @@ export const DELETE_POLICY = {
   // delete moves the whole fact — there is no second half to leave contradicting the
   // first, which is the exact argument that makes `substance_log_events` browse-only.
   stool_events: { revalidate: ["/history", "/trends", "/"] },
-  practice_logs: { revalidate: ["/history", "/longevity", "/"] },
+  practice_logs: { revalidate: ["/history", "/protocols", "/"] },
 } satisfies Record<string, DatasetDeletePolicy>;
 
 // The closed union of deletable dataset keys — every key equals its dataset's

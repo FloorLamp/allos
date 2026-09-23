@@ -36,7 +36,7 @@ import {
 function revalidatePracticeSurfaces() {
   revalidateRoute("/wellness");
   revalidateRoute("/history");
-  revalidateRoute("/longevity");
+  revalidateRoute("/protocols");
   revalidateRoute("/upcoming");
   revalidateRoute("/");
 }

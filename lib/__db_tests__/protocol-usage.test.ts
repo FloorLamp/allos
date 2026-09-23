@@ -528,7 +528,7 @@ describe("the protocol list's batched heatmap gather (#1655)", () => {
     return scopes;
   }
 
-  // One protocol of EVERY scope per window — the list the /longevity section actually
+  // One protocol of EVERY scope per window — the list /protocols actually
   // renders for someone who has been running experiments for years.
   function addProtocols(
     scopes: ReturnType<typeof seedLedgers>,

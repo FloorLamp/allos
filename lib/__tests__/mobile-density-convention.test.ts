@@ -254,18 +254,13 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   ["app/(app)/training/EndurancePlanBar.tsx", "subpanel-inset-sm", "py-3"],
   ["app/(app)/training/MuscleCoverageCard.tsx", "subpanel-inset-xs", "p-2.5"],
   ["app/(app)/encounters/AppointmentList.tsx", "subpanel-inset-sm", "p-3"],
-  ["app/(app)/longevity/PillarStat.tsx", "subpanel-inset-xs", "p-2.5"],
   // B. The unwrapped card-in-card, which lands as a sub-panel of its host card.
   ["components/IntegrationSyncHistoryLink.tsx", "subpanel-inset", "p-4"],
   // C. The seams the sweep flagged by name.
   ["app/(app)/records/VisitsSection.tsx", "section-stack", "space-y-10"],
   ["app/(app)/records/VisitsSection.tsx", "section-stack-sm", "space-y-6"],
   ["app/(app)/whats-new/page.tsx", "section-stack-sm", "space-y-6"],
-  // The stack the /longevity seam collapses against. Censused because an
-  // un-stepped stack beside a stepped seam renders the LARGER of the two, so this
-  // line is load-bearing for a margin declared two files away.
-  ["app/(app)/longevity/page.tsx", "section-stack-sm", "space-y-6"],
-  ["app/(app)/results/BioAgeInputsCard.tsx", "section-seam", "mb-6"],
+  ["app/(app)/results/BioAgeCard.tsx", "section-seam", "mb-6"],
   // `components/dashboard/DashboardAhead.tsx` and
   // `components/dashboard/DashboardStandingCluster.tsx` were censused here at
   // `section-seam-lg` / `mb-8` until #5435 §4 deleted them. The census names files,

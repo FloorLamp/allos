@@ -43,11 +43,11 @@ export default async function TrainingZonesSection({
 
   return (
     <div data-testid="training-zones">
-      {/* Zone minutes are a COMPOSITE weekly series; Longevity is where the Zone 2
-          / 80-20 targets this chart is measured against are set and explained. */}
+      {/* Zone minutes are a COMPOSITE weekly series; training settings is where the
+          Zone 2 target this chart is measured against is set. */}
       <ChartCard
         title="Training intensity (HR zones)"
-        detailHref={adultContentAvailable ? "/longevity" : "/settings/training"}
+        detailHref="/settings/training"
         detailTitle="training intensity"
         description={
           adultContentAvailable

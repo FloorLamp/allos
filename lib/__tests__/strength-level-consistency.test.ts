@@ -5,14 +5,13 @@ import {
   strengthLevelLabel,
 } from "@/lib/strength-standards";
 import { benchmarkState } from "@/lib/analyze-view";
-import { buildPillars } from "@/lib/longevity-pillars";
 import type { Sex } from "@/lib/types";
 
 // "One question, one computation" guard (#152, per AGENTS.md / issues #221/#222/
 // #223): the strength LEVEL a lifter is at must be IDENTICAL across every surface's
 // formatter for the same fixture. All surfaces route through strengthStanding, so
-// this pins the label the badge (ExerciseDetailPanel / LevelBadge), the Analyze
-// benchmark card, and the healthspan pillar each show —
+// this pins the label the badge (ExerciseDetailPanel / LevelBadge) and the Analyze
+// benchmark card each show —
 // exactly the drift that used to let the flat-ratio badge and a second model
 // disagree by a tier on the same panel.
 
@@ -68,16 +67,6 @@ describe("strength level is one computation across every surface", () => {
       expect(bench.rows.some((r) => r.label === bench.rankedLevelLabel)).toBe(
         !bench.isUntrained
       );
-
-      // Healthspan strength pillar headline.
-      const [pillar] = buildPillars({
-        strength: {
-          level,
-          lift: standing.lift,
-          exercise: standing.exercise,
-        },
-      });
-      expect(pillar.value).toBe(label);
     });
   }
 });

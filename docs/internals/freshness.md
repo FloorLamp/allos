@@ -79,9 +79,7 @@ floor and withhold its trend direction unless freshness is `current`; Trends
 cards stamp an as-of date. Dormancy is a separate, later decision.
 
 Fitness current-coverage copy uses `coverage.fresh`; `measuredCount` includes
-historical readings. The [Longevity optimal-biomarker pillar](../../lib/longevity-pillars.ts)
-turns neutral when no reading is current **and at least one is due** — unknown
-freshness alone does not. Keep both distinctions when changing aggregate copy.
+historical readings. Keep that distinction when changing aggregate copy.
 
 ## Dormancy
 

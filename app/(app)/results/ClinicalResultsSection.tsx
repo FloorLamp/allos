@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
 import { type ProfileScope } from "@/lib/scope";
 import StarredResults from "@/components/StarredResults";
-import BioAgeInputsCard from "./BioAgeInputsCard";
+import BioAgeCard from "./BioAgeCard";
 import TrajectoryFindings from "./TrajectoryFindings";
 import ClinicalResultsTable from "@/components/ClinicalResultsTable";
 import TableSortSelect from "@/components/TableSortSelect";
@@ -148,13 +148,10 @@ export default function ClinicalResultsSection({
             <UnclassifiedResultsCard rows={unclassified} />
           </div>
 
-          {/* Biological-age INPUTS (#209 → split by #2367): which of the nine PhenoAge
-          analytes this profile has, which it still needs, and a link to the headline
-          result on Longevity — the hero itself renders on exactly one page, and the
-          catalog half of it belongs on the page where the missing analytes are added.
-          Adult-gated; renders nothing for child profiles. */}
+          {/* Biological age (#209, #5556): the estimate, or which of the nine
+          PhenoAge analytes are still needed. Adult-gated. */}
           <div className={PHONE_STACK.glance}>
-            <BioAgeInputsCard />
+            <BioAgeCard />
           </div>
 
           <div className={PHONE_STACK.index}>

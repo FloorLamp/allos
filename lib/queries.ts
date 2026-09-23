@@ -50,7 +50,6 @@ export * from "./queries/continuous-streams";
 export * from "./queries/protocols";
 export * from "./queries/situation-impact";
 export * from "./queries/equipment";
-export * from "./queries/longevity";
 export * from "./queries/sun";
 export * from "./queries/providers";
 export * from "./queries/provider-options";

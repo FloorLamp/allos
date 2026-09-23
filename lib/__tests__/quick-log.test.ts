@@ -277,7 +277,7 @@ describe("the registry itself", () => {
       "/nutrition",
       "/medications",
       "/trends",
-      "/longevity",
+      "/protocols",
       "/upcoming",
       "/settings",
     ]) {

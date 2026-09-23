@@ -53,7 +53,7 @@ export default function ProtocolControls({
   ) => Promise<FormResult & { redirectTo?: `/protocols/${number}` }>;
   deleteAction: (
     formData: FormData
-  ) => Promise<FormResult & { redirectTo?: "/longevity#protocols" }>;
+  ) => Promise<FormResult & { redirectTo?: "/protocols" }>;
   // Whether the record-REWRITING controls are offered (#3133, the #2993 line):
   // Edit, Resume, and "Run again" are adult-only content and their actions
   // refuse for a minor or unknown-age profile, so the page withholds them
@@ -123,7 +123,7 @@ export default function ProtocolControls({
         toast(result.error, { tone: "error" });
         return;
       }
-      router.push(result.redirectTo ?? "/longevity#protocols");
+      router.push(result.redirectTo ?? "/protocols");
     } finally {
       setBusy(false);
     }
@@ -157,7 +157,7 @@ export default function ProtocolControls({
         this IS the protocol detail page's heading, so it gets the same treatment —
         including the compact mobile size — as every other page. */}
         <PageHeader
-          back={{ href: "/longevity#protocols", destination: "Protocols" }}
+          back={{ href: "/protocols", destination: "Protocols" }}
           title={protocol.name}
           className="mb-0! max-sm:flex-wrap max-sm:gap-2 max-sm:[&>div:first-child]:w-full"
           subtitle={

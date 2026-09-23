@@ -1,7 +1,6 @@
 // DB INTEGRATION TIER (#834). Proves the Fitness-check write core lands values in their
-// NATURAL stores and that EXISTING consumers pick them up with zero changes — a check
-// improves healthspan-pillar coverage (the VO2 pillar appears only after the check feeds
-// a VO2 Max reading). Runs via `npm run test:db`.
+// NATURAL stores and that EXISTING consumers pick them up with zero changes. Runs via
+// `npm run test:db`.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -14,7 +13,6 @@ import {
 } from "@/lib/fitness-assessment";
 import { batteryForAge } from "@/lib/fitness-battery";
 import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
-import { getHealthspanPillars } from "@/lib/queries";
 import { addCanonicalNames } from "@/lib/queries/medical";
 
 function makeAdult(name: string, sex = "male", birthdate = "1985-06-01") {
@@ -29,33 +27,6 @@ function makeAdult(name: string, sex = "male", birthdate = "1985-06-01") {
   ins.run(profileId, "birthdate", birthdate);
   return { profileId, anchor: today(profileId) };
 }
-
-describe("fitness check improves healthspan-pillar coverage", () => {
-  it("adds the VO2 pillar only after a check feeds a VO2 Max reading", () => {
-    const { profileId, anchor } = makeAdult("pillar-coverage");
-
-    // Before: no VO2 reading → no VO2 pillar.
-    const before = getHealthspanPillars(profileId);
-    expect(before.some((p) => p.key === "vo2max")).toBe(false);
-
-    // A check records VO2 Max through its natural store (medical_records biomarker).
-    const r = saveFitnessEntry(
-      profileId,
-      {
-        date: anchor,
-        testKey: "vo2max",
-        value: 44,
-        rawInput: { method: "watch", watchValue: 44 },
-      },
-      "page"
-    );
-    expect(r.ok).toBe(true);
-
-    // After: the SAME healthspan query — unchanged — now surfaces the VO2 pillar.
-    const after = getHealthspanPillars(profileId);
-    expect(after.some((p) => p.key === "vo2max")).toBe(true);
-  });
-});
 
 describe("fitness-assessment session model", () => {
   it("groups a date's tests into one session with a coverage ledger", () => {

@@ -51,13 +51,10 @@ export type CreateProtocolResult =
   | { ok: true; redirectTo: `/protocols/${number}` }
   | { ok: false; error: string };
 export type DeleteProtocolResult =
-  | { ok: true; redirectTo: "/longevity#protocols" }
-  | { ok: false; error: string };
+  { ok: true; redirectTo: "/protocols" } | { ok: false; error: string };
 
 function revalidateProtocols(id?: number) {
-  // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
-  // the per-protocol detail route below still lives under /protocols.
-  revalidateRoute("/longevity");
+  revalidateRoute("/protocols");
   if (id) revalidateRoute(`/protocols/${id}`);
   revalidateRoute("/history");
   revalidateRoute("/");
@@ -592,5 +589,5 @@ export async function deleteProtocol(
       deactivateSituation(profile.id, existing.situation, id);
   });
   revalidateProtocols();
-  return { ok: true, redirectTo: "/longevity#protocols" };
+  return { ok: true, redirectTo: "/protocols" };
 }

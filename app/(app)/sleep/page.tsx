@@ -18,7 +18,6 @@ import {
   typicalBedTime,
   typicalWakeTime,
 } from "@/lib/queries";
-import { chartSeries } from "@/lib/chart-colors";
 import {
   formatHm,
   formatUsualSleepBand,
@@ -27,8 +26,12 @@ import {
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
-import { PillarToneBadge } from "@/components/dashboard/HealthspanPillarPresentation";
-import { verdictText } from "@/lib/chart-colors";
+import {
+  chartSeries,
+  VERDICT_TONE_LABEL,
+  verdictBadge,
+  verdictText,
+} from "@/lib/chart-colors";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import SleepHero from "./SleepHero";
@@ -247,7 +250,15 @@ export default async function SleepPage() {
                 >
                   {sleepRegDisplay.text}
                 </div>
-                <PillarToneBadge tone={sleepRegDisplay.tone} />
+                {/* The tone in words beside the colored value (WCAG 1.4.1, #1220). */}
+                {VERDICT_TONE_LABEL[sleepRegDisplay.tone] && (
+                  <span
+                    className={`badge ${verdictBadge[sleepRegDisplay.tone].class}`}
+                    data-testid="pillar-tone-badge"
+                  >
+                    {VERDICT_TONE_LABEL[sleepRegDisplay.tone]}
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Sleep timing is {sleepRegDisplay.qualifier}. SRI ranges from

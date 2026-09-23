@@ -30,7 +30,7 @@ export const CREATE_ACTIONS = {
   },
   protocol: {
     label: "Add protocol",
-    housing: ["section"],
+    housing: ["page"],
   },
   goal: {
     label: "Add goal",

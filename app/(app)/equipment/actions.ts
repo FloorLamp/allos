@@ -43,7 +43,7 @@ function refresh() {
   revalidateRoute("/equipment");
   revalidateRoute("/data");
   revalidateRoute("/training");
-  revalidateRoute("/longevity");
+  revalidateRoute("/protocols");
 }
 
 export async function createEquipmentAction(

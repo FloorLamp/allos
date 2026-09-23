@@ -1,12 +1,10 @@
-// SERVER-COMPONENT RENDER TIER — what the bio-age inputs card actually PUTS ON
-// SCREEN (#3050, holding #2367's split).
+// SERVER-COMPONENT RENDER TIER — what the Results bio-age card actually PUTS ON
+// SCREEN (#3050, #5556).
 //
 // Every other guard on this card tests something one step away from the reader: the
-// copy layer's sentences (pure), the gather's shapes (DB), the source's vocabulary (a
-// scan). None of them can answer "does the card show an import button in the state
-// where importing is the whole answer", and a scan over spellings cannot answer "can
-// this card render the number" — a review defeated exactly that scan with ordinary
-// destructuring while every tier stayed green.
+// copy layer's sentences (pure) and the gather's shapes (DB). Neither can answer
+// "does the card show an import button in the state where importing is the whole
+// answer", or "does it show the number exactly when a complete draw exists".
 //
 // So this file renders the component. It is an async server component, so it is
 // awaited directly and its returned React tree is walked — no DOM, no Next runtime,
@@ -20,9 +18,13 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { seedActor } from "./harness";
 import { getBioAgeReadings } from "@/lib/queries";
-import { PHENOAGE_INPUT_NAMES } from "@/lib/bio-age";
+import {
+  bioAgeDelta,
+  bioAgeDeltaPhrase,
+  PHENOAGE_INPUT_NAMES,
+} from "@/lib/bio-age";
 import { setProfileBirthdate } from "@/lib/settings";
-import BioAgeInputsCard from "@/app/(app)/results/BioAgeInputsCard";
+import BioAgeCard from "@/app/(app)/results/BioAgeCard";
 
 const CRP = "High-Sensitivity C-Reactive Protein (hs-CRP)";
 
@@ -80,7 +82,7 @@ function collectLinks(node: unknown, into: Rendered["links"]): void {
 }
 
 async function renderCard(): Promise<Rendered> {
-  const tree = await BioAgeInputsCard();
+  const tree = await BioAgeCard();
   const links: Rendered["links"] = [];
   collectLinks(tree, links);
   return { text: textOf(tree).replace(/\s+/g, " ").trim(), links };
@@ -89,10 +91,11 @@ async function renderCard(): Promise<Rendered> {
 // Seed one profile per state and act as it, so each render is a real gather.
 async function cardFor(
   name: string,
-  seed: (profileId: number) => void
+  seed: (profileId: number) => void,
+  birthdate = "1980-01-01"
 ): Promise<Rendered> {
   const { profile } = seedActor({ profileName: name });
-  setProfileBirthdate(profile.id, "1980-01-01");
+  setProfileBirthdate(profile.id, birthdate);
   seed(profile.id);
   return renderCard();
 }
@@ -106,11 +109,15 @@ let stale: Rendered;
 let neverTogether: Rendered;
 let partial: Rendered;
 let computedBioAge: number;
+let computedChronoAge: number;
+let minorTree: unknown;
 
 beforeAll(async () => {
   computed = await cardFor("card_computed", (id) => {
     draw(id, "2026-06-03");
-    computedBioAge = getBioAgeReadings(id).draws[0].bioAge;
+    const [first] = getBioAgeReadings(id).draws;
+    computedBioAge = first.bioAge;
+    computedChronoAge = first.chronoAge!;
   });
   stale = await cardFor("card_stale", (id) => {
     draw(id, "2026-06-03");
@@ -127,6 +134,10 @@ beforeAll(async () => {
   partial = await cardFor("card_partial", (id) => {
     draw(id, "2026-06-03", [CRP, "Albumin"]);
   });
+  const { profile: minor } = seedActor({ profileName: "card_minor" });
+  setProfileBirthdate(minor.id, "2012-01-01");
+  draw(minor.id, "2026-06-03");
+  minorTree = await BioAgeCard();
 });
 
 describe("the import CTA follows the STATUS, not the tick count (#3050)", () => {
@@ -142,14 +153,9 @@ describe("the import CTA follows the STATUS, not the tick count (#3050)", () => 
   it("withdraws it once a current draw computes", () => {
     expect(hasImportCta(computed)).toBe(false);
   });
-
-  it("keeps the door to the hero in every state", () => {
-    for (const r of [computed, stale, neverTogether, partial])
-      expect(r.links.map((l) => l.href)).toContain("/longevity#bio-age");
-  });
 });
 
-describe("the card says which draw, and never the number (#2367)", () => {
+describe("the card says which draw the number is from (#3050, #5556)", () => {
   it("names the draw the linked result is computed from", () => {
     expect(computed.text).toContain(
       "All 9 inputs present · computed from your Jun 3, 2026 draw."
@@ -168,25 +174,24 @@ describe("the card says which draw, and never the number (#2367)", () => {
     );
   });
 
-  it("puts the ESTIMATE on screen in no state", () => {
-    // The strongest form of #2367's rule available: the very number the Longevity
-    // hero renders for this profile, asserted absent from this card's text. It holds
-    // whatever anyone renames — and `getBioAgeInputCatalog` means there is nothing in
-    // scope here to render it from.
-    expect(computedBioAge).toBeGreaterThan(0);
-    for (const r of [computed, stale, neverTogether, partial]) {
-      expect(r.text).not.toContain(String(computedBioAge));
-      expect(r.text).not.toContain(String(Math.trunc(computedBioAge)));
-      expect(r.text).not.toMatch(/calendar age/i);
-      expect(r.text).not.toMatch(/years (younger|older)/i);
-      expect(r.text).not.toMatch(/per year/i);
+  it("shows the estimate whenever a complete draw exists, and only then", () => {
+    const delta = bioAgeDelta(computedBioAge, computedChronoAge);
+    for (const r of [computed, stale]) {
+      expect(r.text).toContain(`${delta.bioAge} years Estimate`);
+      expect(r.text).toContain(bioAgeDeltaPhrase(delta));
     }
+    for (const r of [neverTogether, partial])
+      expect(r.text).not.toMatch(/calendar age/i);
   });
 
-  it("still renders the catalog it owns: nine analytes, and the model's caveat", () => {
+  it("shows nothing to a minor, even with a complete draw", () => {
+    expect(minorTree).toBeNull();
+  });
+
+  it("still renders the checklist without a result: nine analytes, and the model's caveat", () => {
     for (const name of PHENOAGE_INPUT_NAMES)
-      expect(computed.text).toContain(name);
-    expect(computed.text).toContain(
+      expect(partial.text).toContain(name);
+    expect(partial.text).toContain(
       "needs all nine of these analytes from one draw"
     );
   });

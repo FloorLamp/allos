@@ -39,7 +39,6 @@ import { collectCoachingFindings } from "@/lib/rule-findings";
 import {
   gatherCoachingInput,
   getActiveProtocolSummaries,
-  getHealthspanPillars,
   getScheduledAppointments,
 } from "@/lib/queries";
 import { getRecapCard } from "@/lib/notifications/recap-data";
@@ -69,11 +68,11 @@ function freshProfile(label: string): void {
 // THE MEMO'S OWN COST, and the reason a warm load reads 1 rather than 0. `commitCached`
 // reads its version pair once per request: `PRAGMA data_version` is invisible to the
 // trace (better-sqlite3's `pragma()` bypasses `db.prepare`) and the durable revision
-// is one SELECT. It is not one of the six gathers' statements — it is what a warm load
+// is one SELECT. It is not one of the gathers' statements — it is what a warm load
 // spends INSTEAD of all of them.
 const VERSION_READ = 1;
 
-/** The six gathers above the dashboard's first candidate, called as the page calls them. */
+/** The gathers above the dashboard's first candidate, called as the page calls them. */
 const GATHERS: { name: string; run: () => unknown }[] = [
   {
     name: "collectCoachingFindings",
@@ -84,7 +83,6 @@ const GATHERS: { name: string; run: () => unknown }[] = [
     run: () => gatherCoachingInput(profileId, "kg", "km"),
   },
   { name: "getRecapCard", run: () => getRecapCard(profileId, "kg") },
-  { name: "getHealthspanPillars", run: () => getHealthspanPillars(profileId) },
   {
     name: "getActiveProtocolSummaries",
     run: () => getActiveProtocolSummaries(profileId, today(profileId), "kg"),
@@ -102,7 +100,7 @@ async function load(fn: () => void): Promise<number> {
   return trace.count();
 }
 
-/** All six gathers in one request, as a dashboard render reaches them. */
+/** All the gathers in one request, as a dashboard render reaches them. */
 const allGathers = (): void => {
   for (const gather of GATHERS) gather.run();
 };

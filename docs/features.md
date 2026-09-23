@@ -30,7 +30,7 @@ one list, no ranking; row identity comes from columns, not icons.
 | Fitness checks and benchmarks | Records supported checks and compares measurements with the applicable reference data. A reference comparison is not a diagnosis.                                                                       |
 | Trends                        | Shows saved metric series, training/nutrition analysis, comparisons, events, and insights. Windows must communicate their coverage; sparse or coincident windows should not imply independent evidence. |
 | Goals                         | Tracks explicit targets and their cadence. Progress uses the same shared frequency/history calculations as other surfaces.                                                                              |
-| Longevity                     | Presents supported preventive and risk-related context with underlying evidence and limitations.                                                                                                        |
+| Protocols                     | Compares the health data you track before and during a change you are testing. A before/during difference is not proof the change caused it.                                                            |
 | Year in review                | Summarizes longer-term history without treating missing coverage as zero activity.                                                                                                                      |
 | Progress photos and video     | Keeps profile-owned media with dated records, viewing, and deletion behavior.                                                                                                                           |
 
