@@ -65,6 +65,8 @@ export interface TimelineEvent {
     value: string;
     unit?: string | null;
     flag?: string | null;
+    // The reading's own profile-local clock ("HH:MM"), when it states an instant.
+    clock?: string | null;
   }[];
   // HOW MANY MEDIA FILES THIS EVENT CARRIES (#3285 item 3 / #3283). The record's
   // Photos filter is a predicate on the ROW, and a feed row's count can only come
@@ -290,6 +292,14 @@ export function groupTimelineDays(events: TimelineEvent[]): TimelineDay[] {
   return days;
 }
 
+// Collapse repeated names in first-appearance order, carrying the count (#5407):
+// three draws of one analyte read "Glucose ×3", not "Glucose, Glucose, Glucose".
+export function countedNames(names: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name));
+}
+
 export function compactList(items: string[], max = 3): string {
   const clean = items.map((i) => i.trim()).filter(Boolean);
   if (clean.length <= max) return clean.join(", ");
@@ -497,26 +507,44 @@ export function clinicalObservationHref(
   return "/results/clinical-results";
 }
 
-// Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the
-// timeline SQL builds for expandable result/dose detail rows. Returns undefined
-// when nothing usable parses out (so the caller can omit the field).
+// Parse the "label::value::unit::flag[::occurredAt]" pipe-delimited GROUP_CONCAT
+// payload the timeline SQL builds for a results fold's expandable readings. A stated
+// instant becomes the item's profile-local clock, and timed items sort by instant
+// (then name) ahead of untimed ones, which keep their order. Returns undefined when
+// nothing usable parses out (so the caller can omit the field).
 export function parseDetailItems(
-  value: string | null | undefined
+  value: string | null | undefined,
+  tz: string
 ): TimelineEvent["detailItems"] {
   const items = (value ?? "")
     .split("||")
     .map((part) => {
-      const [label, itemValue, unit, flag] = part.split("::");
+      const [label, itemValue, unit, flag, occurredAt] = part.split("::");
       const unitValue = unit?.trim();
       const flagValue = flag?.trim();
+      const at = parseUtcStamp(occurredAt);
       return {
-        label: label?.trim() ?? "",
-        value: itemValue?.trim() ?? "",
-        ...(unitValue ? { unit: unitValue } : {}),
-        ...(flagValue ? { flag: flagValue } : {}),
+        at: at?.getTime(),
+        item: {
+          label: label?.trim() ?? "",
+          value: itemValue?.trim() ?? "",
+          ...(unitValue ? { unit: unitValue } : {}),
+          ...(flagValue ? { flag: flagValue } : {}),
+          ...(at ? { clock: zonedDateParts(tz, at).hhmm } : {}),
+        },
       };
     })
-    .filter((item) => item.label && item.value);
+    .filter(({ item }) => item.label && item.value)
+    .sort((a, b) =>
+      a.at != null && b.at != null
+        ? a.at - b.at || a.item.label.localeCompare(b.item.label)
+        : a.at != null
+          ? -1
+          : b.at != null
+            ? 1
+            : 0
+    )
+    .map(({ item }) => item);
   return items.length > 0 ? items : undefined;
 }
 
