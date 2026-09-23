@@ -328,4 +328,44 @@ describe("the feed rows carry their disclosure content (#3958 phase 2d)", () => 
       { label: "Omega protein", value: "55", unit: "mg/dL" },
     ]);
   });
+
+  // #5407: several same-day draws of ONE analyte name it once, state each reading's
+  // clock in the profile's zone, clock the fold at the latest draw, and link to the
+  // analyte. A dated-only lab beside them stays clockless.
+  it("names a repeated analyte once and states each draw's clock", () => {
+    const loginId = login();
+    const p = profile("draws", "America/New_York");
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, name, value, unit, date, category, panel, occurred_at)
+       VALUES (?, ?, ?, 'mg/dL', ?, 'lab', 'Draws', ?)`
+    );
+    insert.run(
+      p,
+      "Zeta sugar",
+      "101",
+      "2026-08-18",
+      "2026-08-18T14:40:00.000Z"
+    );
+    insert.run(p, "Zeta sugar", "96", "2026-08-18", "2026-08-18T12:05:00.000Z");
+    insert.run(p, "Zeta sugar", "99", "2026-08-18", "2026-08-18T13:15:00.000Z");
+    insert.run(p, "Zeta sugar", "90", "2026-08-17", null);
+
+    const labs = gatherHistoryLog(p, { loginId, limit: 200 }).rows.filter(
+      (r) => r.kind === "lab"
+    );
+    const draws = labs.find((r) => r.date === "2026-08-18");
+    expect(draws?.detail).toBe("3 results · Zeta sugar ×3");
+    expect(draws?.clock).toBe("10:40am");
+    expect(draws?.detailItems?.map((i) => [i.value, i.clock])).toEqual([
+      ["96", "08:05"],
+      ["99", "09:15"],
+      ["101", "10:40"],
+    ]);
+    const dated = labs.find((r) => r.date === "2026-08-17");
+    expect(dated?.clock).toBeNull();
+    expect(dated?.detailItems).toEqual([
+      { label: "Zeta sugar", value: "90", unit: "mg/dL" },
+    ]);
+  });
 });
