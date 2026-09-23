@@ -480,14 +480,17 @@ const FEED_RULE: Record<TimelineCategory, FeedRule> = {
   symptom: [null, "plain"],
 };
 
-// WHOSE CLOCK A FEED EVENT'S `sortTime` IS. One category states a real event time
-// (`activities.start_time`); every other one that carries a clock at all derives it
+// WHOSE CLOCK A FEED EVENT'S `sortTime` IS. Two categories state a real event time
+// (`activities.start_time`, a results fold's latest `occurred_at` — #5407); every
+// other one that carries a clock at all derives it
 // from `created_at` through `timeFromCreatedAt`, i.e. a FILING time. The page has one
 // clock grammar and it distinguishes the two — "6:41am" against "logged 6:41am" — so
 // this answers it from the category rather than printing a filing stamp as if the visit
 // had happened then (#2228 decision 4).
 function feedClockKind(category: TimelineCategory): "stated" | "logged" {
-  return category === "activity" ? "stated" : "logged";
+  return category === "activity" || category === "medical"
+    ? "stated"
+    : "logged";
 }
 
 /**
