@@ -1069,14 +1069,19 @@ function HomeRow({
       // `target:` is the Telegram handoff's whole mechanism (§6.2): the row's id IS
       // the fragment the nudge's open-in-app link carries, so the browser scrolls to
       // it and this marks it. No deep-link scheme, and no script.
-      className={`${LOGGED_EVENT_ROW} scroll-mt-24 transition-colors target:bg-(--accent-soft) ${
+      className={`${LOGGED_EVENT_ROW} flex-wrap scroll-mt-24 transition-colors target:bg-(--accent-soft) ${
         accent ? "bg-(--accent-soft)" : ""
       }`}
     >
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      {/* THE TITLE KEEPS 10rem; A WIDE CONTROL WRAPS BELOW IT (#6009). With a
+          zero basis the title took whatever the control left, and the practice
+          cluster left a 390px phone three letters. The basis is the wrap point, not
+          a shrink factor: a one-button row still fits beside it, a wider cluster
+          drops to its own line, right-aligned, and the detail gets the full width. */}
+      <span className="flex min-w-0 flex-[1_1_10rem] flex-col gap-0.5">
         <span className="min-w-0 truncate">{title}</span>
         {detail ? (
-          <span className="min-w-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+          <span className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400">
             {detail}
           </span>
         ) : null}
@@ -1084,7 +1089,7 @@ function HomeRow({
       {trailing ? (
         <span className={LOGGED_EVENT_TRAILING}>{trailing}</span>
       ) : null}
-      {control ? <span className="shrink-0">{control}</span> : null}
+      {control ? <span className="ml-auto min-w-0">{control}</span> : null}
     </li>
   );
 }
