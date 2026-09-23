@@ -13,6 +13,7 @@ import {
 import { isLongevityRelevant } from "@/lib/life-stage";
 import { pillarHref } from "@/lib/longevity-pillars";
 import CardFootnote from "@/components/CardFootnote";
+import { DestinationActionLink } from "@/components/DestinationLink";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 
 // The bio-age INPUT PANEL on Results › Clinical results (#2367).
@@ -129,17 +130,16 @@ export default async function BioAgeInputsCard() {
         {isLongevityRelevant(age) ? (
           // The href is pillarHref's, so this link and the dashboard pillar card can
           // never point at different anchors.
-          <Link
+          <DestinationActionLink
             href={pillarHref("bio-age")}
-            className="btn btn-sm"
             data-testid="bio-age-hero-link"
           >
             See biological age
-          </Link>
+          </DestinationActionLink>
         ) : (
-          <Link href="/settings/health" className="btn btn-sm">
+          <DestinationActionLink href="/settings/health">
             Add your age
-          </Link>
+          </DestinationActionLink>
         )}
         {/* The import CTA follows the STATUS, not the tick count (#3050). Keyed on
             "all nine ticked" it disappeared in exactly the two states where importing
@@ -147,9 +147,9 @@ export default async function BioAgeInputsCard() {
             newer panel that missed by one — both of which leave the reader a card
             with nothing to act on. It stays hidden once a current draw computes. */}
         {status.kind !== "computed" && (
-          <Link href="/data" className="btn-ghost btn-sm">
+          <DestinationActionLink href="/data">
             Import labs
-          </Link>
+          </DestinationActionLink>
         )}
       </div>
 

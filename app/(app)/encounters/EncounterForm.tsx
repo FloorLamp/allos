@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import Combobox from "@/components/Combobox";
 import { useProviderOptions } from "@/components/ProviderOptionsContext";
@@ -390,11 +391,7 @@ export default function EncounterForm({
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>
-        {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {editing && onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
     </form>
   );

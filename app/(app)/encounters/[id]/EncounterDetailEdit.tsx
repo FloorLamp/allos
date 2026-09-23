@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IconPencil } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import EncounterForm from "../EncounterForm";
 import { updateEncounter } from "../actions";
 import ModalShell from "@/components/ModalShell";
@@ -18,15 +19,10 @@ export default function EncounterDetailEdit({
 
   return (
     <>
-      <button
-        type="button"
-        className="btn btn-sm"
-        onClick={() => setOpen(true)}
-        data-testid="edit-encounter"
-      >
+      <Button onClick={() => setOpen(true)} data-testid="edit-encounter">
         <IconPencil className="h-4 w-4" stroke={1.75} />
         Edit visit
-      </button>
+      </Button>
       {open ? (
         <ModalShell title="Edit visit" onClose={() => setOpen(false)}>
           {/* Wrapper kept deliberately bare: the dialog host owns the gap under

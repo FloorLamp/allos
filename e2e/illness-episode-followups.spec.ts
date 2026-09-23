@@ -199,7 +199,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .getByRole("link", { name: "Medications", exact: true })
     ).toHaveCount(0);
     const addMedication = page.getByTestId("illness-add-medication");
-    await expect(addMedication).toHaveClass(/\bbtn-ghost\b/);
+    await expect(addMedication).toHaveAttribute("data-button-control", "");
+    await expect(addMedication).not.toHaveClass(/\bbutton-control-primary\b/);
     await expect(addMedication).toHaveAttribute("aria-expanded", "false");
     const [medsLinkBox, addMedicationBox] = await settledBoxes([
       medsLink,
