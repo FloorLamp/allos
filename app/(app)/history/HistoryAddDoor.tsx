@@ -353,8 +353,10 @@ export default function HistoryAddDoor({
             days={[vocabulary.moodDay]}
             showCalm={vocabulary.moodShowCalm}
             dateReach="dated"
-            repeatAfterSave
-            onSaved={() => router.refresh()}
+            onDone={() => {
+              onClose();
+              router.refresh();
+            }}
             onCancel={onClose}
           />
         );

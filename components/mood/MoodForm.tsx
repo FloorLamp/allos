@@ -76,7 +76,6 @@ interface MoodControllerState {
   readonly complete: boolean;
   readonly error: MoodError;
   readonly attempt: MoodAttempt | null;
-  readonly version: number;
 }
 
 type MoodControllerAction =
@@ -90,8 +89,7 @@ type MoodControllerAction =
   | { kind: "start"; attempt: MoodAttempt }
   | { kind: "failed"; id: number; message: string }
   | { kind: "finished"; id: number }
-  | { kind: "retire"; id: number }
-  | { kind: "reset" };
+  | { kind: "retire"; id: number };
 
 const UNTOUCHED: MoodTouched = {
   valence: false,
@@ -99,14 +97,6 @@ const UNTOUCHED: MoodTouched = {
   anxiety: false,
   factors: false,
   notes: false,
-};
-
-const ALL_TOUCHED: MoodTouched = {
-  valence: true,
-  energy: true,
-  anxiety: true,
-  factors: true,
-  notes: true,
 };
 
 function rowValues(row: MoodFormDay | undefined): MoodDraftValues {
@@ -132,7 +122,6 @@ function initialController(
     complete,
     error: null,
     attempt: null,
-    version: 0,
   };
 }
 
@@ -206,19 +195,6 @@ function moodController(
       return state.attempt?.id === action.id
         ? { ...state, attempt: null }
         : state;
-    case "reset":
-      return {
-        ...state,
-        values: rowValues(undefined),
-        // A repeat History entry starts from an intentionally blank local draft.
-        // Own those blanks so the refresh triggered by the prior save cannot refill
-        // them from the row that was just written.
-        touched: ALL_TOUCHED,
-        complete: true,
-        error: null,
-        attempt: null,
-        version: state.version + 1,
-      };
   }
 }
 
@@ -270,8 +246,6 @@ export default function MoodForm({
   subjectProfileId,
   dateReach = "tap",
   mode = "quick",
-  repeatAfterSave = false,
-  onSaved,
   onDone,
   onCancel,
 }: {
@@ -281,8 +255,6 @@ export default function MoodForm({
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
   mode?: "quick" | "edit";
-  repeatAfterSave?: boolean;
-  onSaved?: () => void;
   onDone?: () => void;
   onCancel?: () => void;
 }) {
@@ -332,9 +304,8 @@ export default function MoodForm({
   // NO UNDO. `logMood` upserts the day's one statement in place and answers nothing
   // about what it replaced, so there is no complete inverse (lib/undo-offer.ts).
   //
-  // NO SETTLE (#5900): the sheet and History's record rows close on save, so it would
-  // never be seen there. History's add door is the exception while `repeatAfterSave`
-  // keeps it open; once that is retired, every mount closes.
+  // NO SETTLE (#5900): every mount closes on save (#5663 ruling 2), so a settle would
+  // never be seen.
   function logged(attempt: MoodAttempt): string {
     const thing = `${moodLabel(attempt.values.valence)} mood logged`;
     return dayContext
@@ -347,9 +318,7 @@ export default function MoodForm({
     dispatch({ kind: "finished", id: attempt.id });
     writing.current = false;
     toast(message ?? logged(attempt));
-    onSaved?.();
-    if (repeatAfterSave) dispatch({ kind: "reset" });
-    else onDone?.();
+    onDone?.();
   }
 
   function payload(attempt: MoodAttempt): FormData {
@@ -411,7 +380,7 @@ export default function MoodForm({
 
   function submit(nextValence: number): void {
     if (controller.date == null || writing.current) return;
-    const ledgerKey = `${controller.date}:${nextValence}:${controller.version}`;
+    const ledgerKey = `${controller.date}:${nextValence}`;
     if (ledger.blocked(ledgerKey)) return;
     if (mode === "edit") {
       dispatch({ kind: "touch", field: "valence", value: nextValence });
