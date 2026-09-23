@@ -10,7 +10,10 @@
 // row belonging to another profile is untouched) and the browse-only guard
 // (intake_log has no policy, so its delete is rejected, matching the hidden UI).
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db, rawDb } from "@/lib/db";
 import {
@@ -29,7 +32,17 @@ import {
   linkRecordToEncounter,
 } from "@/lib/queries/visit-links";
 import { logVisitFromAppointment } from "@/app/(app)/encounters/appointment-actions";
-import { seedActor, createProfile } from "./harness";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
+import { createProtocol } from "@/app/(app)/protocols/actions";
+import { setStoredAge } from "@/lib/settings";
+import { logSymptomCore } from "@/lib/symptom-log-write";
+import {
+  attachSymptomPhotoCore,
+  SYMPTOM_PHOTO_DIR,
+} from "@/lib/symptom-photo-write";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+import type { ProcessedPhoto } from "@/lib/photo/ingest";
+import { seedActor, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -826,6 +839,241 @@ describe("Delete all frees the links a visit or a piece of gear carries (#5990)"
         db.prepare(`DELETE FROM ${key} WHERE profile_id = ?`).run(profile.id)
       ).toThrow(/FOREIGN KEY constraint failed/);
       expect(count(key, profile.id)).toBe(1);
+    }
+  );
+});
+
+// The rest of the #5990 ruling: each dataset's wipe runs the seam its per-row delete
+// runs. Every link is written through its production writer, for both profiles, except
+// `intake_items.source_record_id`, which nothing in production writes: it is planted.
+describe("Delete all frees the links a condition, med, target, record or symptom day carries (#5990)", () => {
+  const DAY = "2026-05-01";
+  const photoProfiles: number[] = [];
+
+  afterAll(() => {
+    for (const id of photoProfiles)
+      fs.rmSync(path.join(SYMPTOM_PHOTO_DIR, String(id)), {
+        recursive: true,
+        force: true,
+      });
+  });
+
+  function one(sql: string, ...args: unknown[]) {
+    return db.prepare(sql).get(...args);
+  }
+
+  function count(table: string, profileId: number): number {
+    return (
+      one(
+        `SELECT COUNT(*) AS c FROM ${table} WHERE profile_id = ?`,
+        profileId
+      ) as { c: number }
+    ).c;
+  }
+
+  function lastId(table: string, profileId: number): number {
+    return (
+      one(
+        `SELECT id FROM ${table} WHERE profile_id = ? ORDER BY id DESC LIMIT 1`,
+        profileId
+      ) as { id: number }
+    ).id;
+  }
+
+  async function addItem(
+    profileId: number,
+    fields: Record<string, string | number> = {}
+  ): Promise<number> {
+    await addIntakeItem(
+      fd({
+        name: "Metformin",
+        condition: "daily",
+        doses: JSON.stringify([{ amount: "1 tab", food_timing: "any" }]),
+        ...fields,
+      })
+    );
+    return lastId("intake_items", profileId);
+  }
+
+  async function addProtocol(
+    profileId: number,
+    fields: Record<string, string | number>
+  ): Promise<number> {
+    expect(
+      await createProtocol(fd({ name: "Trial", ...fields }))
+    ).toMatchObject({ ok: true });
+    return lastId("protocols", profileId);
+  }
+
+  function photo(seed: string): ProcessedPhoto {
+    const bytes = Buffer.from(`synthetic-${seed}`);
+    return {
+      bytes,
+      thumbBytes: bytes,
+      mime: "image/jpeg",
+      width: 4,
+      height: 3,
+      sizeBytes: bytes.length,
+      contentHash: crypto.createHash("sha256").update(bytes).digest("hex"),
+      captureDate: null,
+    };
+  }
+
+  // Each seed writes one row of the dataset and the record linked to it, acting as
+  // `profileId`, and returns a reader of that record's link with its two states.
+  const CASES = [
+    {
+      key: "conditions",
+      seed: async (profileId: number) => {
+        const conditionId = Number(
+          db
+            .prepare(
+              "INSERT INTO conditions (profile_id, name) VALUES (?, 'Diabetes')"
+            )
+            .run(profileId).lastInsertRowid
+        );
+        const itemId = await addItem(profileId, {
+          kind: "medication",
+          indication_condition_id: conditionId,
+          purposes: JSON.stringify([{ kind: "condition", conditionId }]),
+        });
+        return {
+          read: () => ({
+            item: one(
+              "SELECT indication_condition_id AS c FROM intake_items WHERE id = ?",
+              itemId
+            ),
+            purposes: one(
+              "SELECT COUNT(*) AS n FROM intake_item_purposes WHERE item_id = ?",
+              itemId
+            ),
+          }),
+          linked: { item: { c: conditionId }, purposes: { n: 1 } },
+          freed: { item: { c: null }, purposes: { n: 0 } },
+        };
+      },
+    },
+    {
+      key: "intake_items",
+      seed: async (profileId: number) => {
+        const itemId = await addItem(profileId);
+        const protocolId = await addProtocol(profileId, {
+          intake_item_id: itemId,
+        });
+        const read = () =>
+          one(
+            "SELECT intake_item_id AS c FROM protocols WHERE id = ?",
+            protocolId
+          );
+        return { read, linked: { c: itemId }, freed: { c: null } };
+      },
+    },
+    {
+      key: "frequency_targets",
+      seed: async (profileId: number) => {
+        const protocolId = await addProtocol(profileId, {
+          practice_type: "practice:Cold plunge",
+          practice_per_week: 3,
+        });
+        const targetId = lastId("frequency_targets", profileId);
+        const read = () =>
+          one(
+            "SELECT frequency_target_id AS c, owns_frequency_target AS owns FROM protocols WHERE id = ?",
+            protocolId
+          );
+        return {
+          read,
+          linked: { c: targetId, owns: 1 },
+          freed: { c: null, owns: 0 },
+        };
+      },
+    },
+    {
+      key: "medical_records",
+      seed: async (profileId: number) => {
+        const recordId = Number(
+          db
+            .prepare(
+              "INSERT INTO medical_records (profile_id, date, name) VALUES (?, ?, 'Metformin 500 mg')"
+            )
+            .run(profileId, DAY).lastInsertRowid
+        );
+        const itemId = await addItem(profileId, { kind: "medication" });
+        // Planted: no production path writes this column.
+        db.prepare(
+          "UPDATE intake_items SET source_record_id = ? WHERE id = ?"
+        ).run(recordId, itemId);
+        const read = () =>
+          one(
+            "SELECT source_record_id AS c FROM intake_items WHERE id = ?",
+            itemId
+          );
+        return { read, linked: { c: recordId }, freed: { c: null } };
+      },
+    },
+    {
+      // The per-row delete takes the day's photos with it; a whole-day photo, which
+      // names no symptom-day, stays.
+      key: "symptom_logs",
+      seed: async (profileId: number) => {
+        photoProfiles.push(profileId);
+        const gated = profileId as WriteAuthorizedProfileId;
+        logSymptomCore(profileId, "rash", 2, DAY, "page");
+        attachSymptomPhotoCore(gated, DAY, photo(`${profileId}-rash`), "rash");
+        attachSymptomPhotoCore(gated, DAY, photo(`${profileId}-day`));
+        const read = () =>
+          db
+            .prepare(
+              "SELECT symptom FROM symptom_photos WHERE profile_id = ? ORDER BY id"
+            )
+            .all(profileId);
+        return {
+          read,
+          linked: [{ symptom: "rash" }, { symptom: null }],
+          freed: [{ symptom: null }],
+        };
+      },
+    },
+  ] as const;
+
+  // Both profiles' links are written by the same production path, each acting as
+  // itself; the acting profile is left as `profile`.
+  async function seedBoth(seed: (typeof CASES)[number]["seed"]) {
+    const { login, profile } = seedActor();
+    const other = createProfile("Other profile", login.id);
+    for (const p of [profile, other]) setStoredAge(p.id, 30);
+    actAs(login, other);
+    const theirs = await seed(other.id);
+    actAs(login, profile);
+    const mine = await seed(profile.id);
+    return { profile, other, mine, theirs };
+  }
+
+  it.each(CASES)(
+    "$key: Delete all keeps the linked record and frees the link",
+    async ({ key, seed }) => {
+      const { profile, other, mine, theirs } = await seedBoth(seed);
+      expect(mine.read()).toEqual(mine.linked);
+
+      const res = await deleteAllDatasetRows(key);
+      expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+      expect(count(key, profile.id)).toBe(0);
+      expect(mine.read()).toEqual(mine.freed);
+
+      expect(count(key, other.id)).toBe(1);
+      expect(theirs.read()).toEqual(theirs.linked);
+    }
+  );
+
+  it.each(CASES)(
+    "positive control — $key: the bare wipe on the same fixture throws and rolls back",
+    async ({ key, seed }) => {
+      const { profile, mine } = await seedBoth(seed);
+      expect(() =>
+        db.prepare(`DELETE FROM ${key} WHERE profile_id = ?`).run(profile.id)
+      ).toThrow(/FOREIGN KEY constraint failed/);
+      expect(count(key, profile.id)).toBe(1);
+      expect(mine.read()).toEqual(mine.linked);
     }
   );
 });

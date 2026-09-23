@@ -15,8 +15,16 @@ import {
   sweepImmunizationDismissals,
 } from "@/lib/queries";
 import { DATASET_UNDO_KIND, undoKindForTable } from "@/lib/dataset-undo";
-import { captureDelete, detachRepointedLinks } from "@/lib/undo-delete-db";
+import {
+  captureDelete,
+  deleteExplicitChildren,
+  detachRepointedLinks,
+  unlinkIntakeItemsFromRecord,
+  unlinkProtocolsFromIntakeItem,
+} from "@/lib/undo-delete-db";
 import { nullEncounterLinks } from "@/lib/queries/visit-links";
+import { detachConditionIntakeLinks } from "@/lib/condition-delete";
+import { unlinkProtocolsFromTargets } from "@/lib/frequency-target-delete";
 import {
   unlinkFollowUpsForClinicalObservation,
   unlinkFollowUpsForImagingStudy,
@@ -148,10 +156,11 @@ function freeFollowUpLinks(
 // Delete all takes no capture, so it runs the same per-row seam over every row it
 // removes (owner ruling on #5990: Delete all does what deleting each row does; no
 // cascade, no refusal). Keyed on DATASET_UNDO_KIND so an entry can only name a
-// dataset whose per-row path is that capture.
+// dataset whose per-row path is that capture, plus frequency_targets, whose per-row
+// path is deleteFrequencyTargetRow.
 //
 // A dataset absent here runs no seam, and a NO ACTION inbound link still blocks its
-// wipe. #5990 records which remain.
+// wipe.
 type RowUnlinkSeam = (profileId: number, rowId: number) => void;
 
 const ROW_UNLINK_SEAMS: Partial<Record<DeletableDatasetKey, RowUnlinkSeam>> = {
@@ -160,7 +169,20 @@ const ROW_UNLINK_SEAMS: Partial<Record<DeletableDatasetKey, RowUnlinkSeam>> = {
   // Sets, sessions, protocols and goals keep their history; the gear link goes.
   equipment: (profileId, rowId) =>
     detachRepointedLinks(DATASET_UNDO_KIND.equipment, profileId, rowId),
-} satisfies Partial<Record<keyof typeof DATASET_UNDO_KIND, RowUnlinkSeam>>;
+  // A med's indication is nulled; its condition-purpose rows go.
+  conditions: detachConditionIntakeLinks,
+  intake_items: unlinkProtocolsFromIntakeItem,
+  frequency_targets: (profileId, rowId) =>
+    unlinkProtocolsFromTargets(profileId, [rowId]),
+  // The follow-up pairs are freeFollowUpLinks'; this is the projected-med link.
+  medical_records: unlinkIntakeItemsFromRecord,
+  // Not an unlink: a symptom-day's photos are its own rows, deleted with it as the
+  // per-row delete does. Their files stay on disk.
+  symptom_logs: (profileId, rowId) =>
+    deleteExplicitChildren(DATASET_UNDO_KIND.symptom_logs, profileId, rowId),
+} satisfies Partial<
+  Record<keyof typeof DATASET_UNDO_KIND | "frequency_targets", RowUnlinkSeam>
+>;
 
 // Run the dataset's seam over every one of this profile's rows, read off the table
 // being deleted — the same anchoring freeFollowUpLinks keeps.
