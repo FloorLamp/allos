@@ -1,5 +1,5 @@
 import { intakeFormContext } from "./intake-form-context-fixture";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CreateAction, {
   CREATE_ACTIONS,
@@ -14,7 +14,6 @@ import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { PageHeader } from "@/components/ui";
 import { MedicationCreateControl } from "@/app/(app)/medications/MedicationAddWorkspace";
-import AddPracticeButton from "@/app/(app)/wellness/AddPracticeButton";
 import AddTrainingActivityButton from "@/app/(app)/training/AddTrainingActivityButton";
 import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
 import { GoalCreateControl } from "@/app/(app)/training/GoalsManager";
@@ -45,9 +44,6 @@ vi.mock("@/components/TabFirstTabs", () => ({
 // are not opened or submitted here, so keep those dependency graphs outside this
 // component test and fail loudly if a case starts reaching an action.
 vi.mock("@/components/IntakeItemForm", () => ({ default: UnopenedForm }));
-vi.mock("@/app/(app)/wellness/PracticeEditor", () => ({
-  default: UnopenedForm,
-}));
 vi.mock("@/app/(app)/protocols/ProtocolForm", () => ({
   default: UnopenedForm,
 }));
@@ -258,7 +254,10 @@ describe("CreateAction", () => {
           kind: "medication",
           control: <MedicationCreateControl open={false} onToggle={vi.fn()} />,
         },
-        { kind: "practice", control: <AddPracticeButton /> },
+        {
+          kind: "practice",
+          control: <CatalogCreateControl onActivate={vi.fn()} />,
+        },
         { kind: "training-activity", control: <AddTrainingActivityButton /> },
         {
           kind: "protocol",
@@ -309,29 +308,14 @@ describe("CreateAction", () => {
         name: CREATE_ACTIONS[kind].label,
       });
       expect(trigger).toBeTruthy();
-      if (kind === "practice") {
-        expect(trigger.querySelector("span")?.textContent).toBe("Add");
-      }
       cleanup();
     }
-  });
-
-  // ONE PHRASE, TRIGGER AND DIALOG (#5300 rule 6, adopted by #5617). This used to
-  // pin the opposite — a registry-owned dialog title carrying an article over a
-  // control that had none — and practice was the only kind that carried a second
-  // title at all. The article form retires with the record door's four renamings, so
-  // the seam that held it is gone rather than restated shorter.
-  it("titles the practice dialog with the same phrase as its trigger", () => {
-    render(housedAction("practice", <AddPracticeButton />));
-
-    fireEvent.click(screen.getByRole("button", { name: "Add practice" }));
-    expect(screen.getByRole("dialog", { name: "Add practice" })).toBeTruthy();
   });
 
   it("keeps the registry closed to canonical copy and housing", () => {
     expect(CREATE_ACTIONS).toEqual({
       medication: { label: "Add medication", housing: ["page", "section"] },
-      practice: { label: "Add practice", housing: ["page"] },
+      practice: { label: "Add practice", housing: ["section"] },
       "training-activity": { label: "Add activity", housing: ["page"] },
       protocol: { label: "Add protocol", housing: ["section"] },
       goal: { label: "Add goal", housing: ["section"] },

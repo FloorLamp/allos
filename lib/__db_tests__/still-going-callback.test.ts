@@ -259,6 +259,7 @@ describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
     label: "Sauna",
     quietMin: 95,
     detectedEnd: null,
+    day: "2026-09-01",
   };
 
   it("carries a Finish callback with the row id + the deep-link fallback", () => {
@@ -308,7 +309,10 @@ describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
       true
     );
     expect(
-      msg.actions?.find((a) => a.url === "https://allos.test/wellness")
+      msg.actions?.find(
+        (a) =>
+          a.url === "https://allos.test/history?kind=practice&day=2026-09-01"
+      )
     ).toBeTruthy();
   });
 

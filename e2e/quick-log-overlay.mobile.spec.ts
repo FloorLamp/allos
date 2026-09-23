@@ -1680,9 +1680,9 @@ test("a practice logs in one tap from the sheet and the week count moves", async
   browser,
 }) => {
   // #1633: the Telegram bot has had one-tap practice logging since #1259 while the web
-  // app made you find /wellness first. This is the web catching up — and the assertion
-  // that matters is the LAST one: the session reached the same store the Wellness card
-  // counts, not merely a toast that resolved.
+  // app made you find a page first. This is the web catching up — and the assertion
+  // that matters is the LAST one: the session reached the store the server-rendered
+  // week count reads, not merely a toast that resolved.
   clearShellPracticeLogs();
 
   const page = await signIn(browser);
@@ -1696,8 +1696,8 @@ test("a practice logs in one tap from the sheet and the week count moves", async
       .getByRole("listitem")
       .filter({ hasText: SHELL_PRACTICE });
     await expect(row).toBeVisible();
-    // #5431's facts column: the week standing as a QUANTITY, from the same computation
-    // the Wellness card reads, and no verdict badge over it. Today's count is a fact
+    // #5431's facts column: the week standing as a QUANTITY, from the shared weekly
+    // progress computation, and no verdict badge over it. Today's count is a fact
     // only when it is not zero, so nothing here says "no sessions" at all.
     await expect(row.getByTestId("practice-row-facts")).toHaveText(
       "0 of 3 this week"
@@ -1772,26 +1772,22 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     expect(logged.duration_min).toBe(20);
     expect(logged.start_time).toMatch(/^\d{2}:\d{2}$/);
 
-    // Durable, and from SERVER-rendered state: the Wellness card's week count moved,
-    // which is only true if the tap wrote through the shared practice store.
-    await page.goto("/wellness");
-    const card = page
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: SHELL_PRACTICE });
-    await expect(card).toContainText("1 day this week");
-
-    // And the NEXT prefill is the value that was LOGGED, so accepting it a second
-    // time costs zero taps — read off the chip's LABEL, which is where the collapsed
-    // row now states it.
+    // Durable, from a fresh load's gather: the week count moved, which is only true
+    // if the tap wrote through the shared practice store. And the NEXT prefill is the
+    // value that was LOGGED, so accepting it a second time costs zero taps — read off
+    // the chip's LABEL, which is where the collapsed row now states it.
     await page.goto("/");
     const again = await openQuickEntry(page, "log-practice");
-    await expect(
-      again
-        .getByTestId("quick-entry-practice-list")
-        .getByRole("listitem")
-        .filter({ hasText: SHELL_PRACTICE })
-        .getByTestId("practice-duration-toggle")
-    ).toHaveText("20 min");
+    const againRow = again
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    await expect(againRow.getByTestId("practice-row-facts")).toHaveText(
+      "1 today · 1 of 3 this week"
+    );
+    await expect(againRow.getByTestId("practice-duration-toggle")).toHaveText(
+      "20 min"
+    );
   } finally {
     clearShellPracticeLogs();
     await page.context().close();
@@ -2416,7 +2412,7 @@ test("the palette reaches the same two surfaces the sheet does", async ({
     await input.press("Enter");
     // The Server Action's response carries a revalidated render, which can outlast
     // the default on a loaded runner; a named ceiling, not a sleep — and the
-    // Wellness assertion below re-proves the write either way.
+    // sheet assertion below re-proves the write either way.
     await expect(page.getByTestId("toast")).toContainText(
       "Logged today's session",
       { timeout: 20_000 }
@@ -2438,13 +2434,16 @@ test("the palette reaches the same two surfaces the sheet does", async ({
 
     await page.keyboard.press("Escape");
 
-    // The palette's write went to the same store the card counts — not a parallel one.
-    await page.goto("/wellness");
+    // The palette's write went to the same store the sheet counts — not a parallel one.
+    await page.goto("/");
+    const practices = await openQuickEntry(page, "log-practice");
     await expect(
-      page
-        .getByTestId("wellness-practice-card")
+      practices
+        .getByTestId("quick-entry-practice-list")
+        .getByRole("listitem")
         .filter({ hasText: SHELL_PRACTICE })
-    ).toContainText("1 day this week");
+        .getByTestId("practice-row-facts")
+    ).toHaveText("1 today · 1 of 3 this week");
   } finally {
     clearShellPracticeLogs();
     await page.context().close();

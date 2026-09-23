@@ -40,7 +40,7 @@ import {
 // through the form, edits it, and deletes it again, so no seeded row moves.
 
 const FOOD_HABIT = "Fatty fish"; // scripts/seed.ts — a food_group target, home: nutrition
-const PRACTICE = "Red light therapy"; // a practice range target, home: wellness
+const PRACTICE = "Red light therapy"; // a practice range target, home: the quick-log list
 const MOBILITY_CHIP = "Mobility: Legs"; // a mobility_region target, home: training
 // A scope the seed does not use, so the write test can own its own row end to end.
 const OWNED = "Shoulders";
@@ -115,12 +115,11 @@ test("both targets are still fully present on their own pages (#2888)", async ({
   );
   await expect(habits.getByTestId("habit-fatty_fish")).toBeVisible();
 
-  await page.goto("/wellness");
+  // A practice's home is the quick-log sheet's practice list (#5668).
+  await page.goto("/?quick=log-practice");
+  const list = page.getByTestId("quick-entry-practice-list"); // testid-scope-ok: the quick-entry sheet portals to <body>, one copy
   await expect(
-    page
-      .getByRole("main")
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: PRACTICE })
+    list.getByRole("listitem").filter({ hasText: PRACTICE })
   ).toBeVisible();
 });
 

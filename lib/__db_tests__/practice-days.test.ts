@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { getPracticeDays } from "@/lib/queries/wellness";
+import { getPracticeDays, practiceDayHistory } from "@/lib/queries/wellness";
 
 function newProfile(name: string): number {
   return Number(
@@ -41,6 +41,12 @@ describe("getPracticeDays", () => {
     });
     // Both spellings share one canonical key.
     expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+
+    // The heat map's groups lead with the practice done most often.
+    expect(practiceDayHistory(rows).groups.map((g) => g.label)).toEqual([
+      "Sauna",
+      "Cold plunge",
+    ]);
   });
 
   it("is window-bounded and profile-scoped", () => {

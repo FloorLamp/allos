@@ -144,8 +144,8 @@ describe("dayHistoryAddHref", () => {
     expect(
       dayHistoryAddHref("/nutrition?tab=supplements", "dose", "2026-07-12")
     ).toBe("/nutrition?tab=supplements&backfill=2026-07-12");
-    expect(dayHistoryAddHref("/wellness", "practice", "2026-07-12")).toBe(
-      "/wellness?log=2026-07-12"
+    expect(dayHistoryAddHref("/history", "practice", "2026-07-12")).toBe(
+      "/history?day=2026-07-12"
     );
     expect(
       dayHistoryAddHref("/training?tab=log", "workout", "2026-07-12")

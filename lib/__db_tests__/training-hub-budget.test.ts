@@ -139,7 +139,7 @@ describe("/training hub query budget (#5669)", () => {
   const BASELINES: Record<string, number> = {
     bodybuilder: 121,
     "marathon-runner": 130,
-    household: 134,
+    household: 132,
     pregnant: 115,
     "diabetic-cgm": 115,
     biohacker: 127,

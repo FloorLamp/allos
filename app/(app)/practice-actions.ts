@@ -7,7 +7,7 @@ import {
   type StampedFormData,
 } from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
-import { gateItemProfile } from "../gate-item";
+import { gateItemProfile } from "./gate-item";
 import { today } from "@/lib/db";
 import {
   deletePracticeSession,
@@ -34,7 +34,6 @@ import {
 } from "@/lib/types";
 
 function revalidatePracticeSurfaces() {
-  revalidateRoute("/wellness");
   revalidateRoute("/history");
   revalidateRoute("/longevity");
   revalidateRoute("/upcoming");
@@ -100,9 +99,9 @@ export async function logPractice(
     practice,
     date,
     // ONE ACTION, MANY MOUNTINGS (#3087). The shared row control renders on the
-    // Wellness card, the dashboard protocol rows, the quick-log sheet and Upcoming's
-    // practice row; the shared form renders in the card's modal, the backfill launcher
-    // and both of the record's practice surfaces; and the command palette posts this
+    // dashboard protocol rows, the quick-log sheet and Upcoming's practice row; the
+    // shared form renders in History's add door and both of the record's practice
+    // surfaces; and the command palette posts this
     // action directly with no component at all. The server cannot tell them apart, so
     // each mounting declares its own surface and the parse refuses anything outside
     // the web subset.

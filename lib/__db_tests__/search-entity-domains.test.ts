@@ -509,7 +509,7 @@ describe("wellness practices are searchable, ONE hit per identity (#1591/#1595)"
     expect(found[0].subtitle).toContain("3–5×/week");
     expect(found[0].subtitle).toContain("2 sessions");
     expect(found[0].date).toBe("2026-07-02");
-    expect(found[0].href).toBe("/wellness");
+    expect(found[0].href).toBe("/?quick=log-practice");
   });
 
   it("finds a logs-only practice that has no weekly target", () => {

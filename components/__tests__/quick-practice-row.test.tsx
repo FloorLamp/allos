@@ -42,14 +42,17 @@ const {
 }));
 
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   logPractice,
   startPracticeLive,
   endPracticeLive,
 }));
 vi.mock("@/lib/offline/quick-entry-read", () => ({ clearLastGood }));
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
-vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
+vi.mock("@/components/ConfirmDialog", () => ({
+  useConfirm: () => vi.fn(),
+  useConfirmOpen: () => false,
+}));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
   useQueuedDayContextCapture:

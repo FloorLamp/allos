@@ -650,7 +650,7 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     expect(sent).toContain(`pdone:${pid}:${sauna}:n1`);
     expect(sent).toContain(`pdone:${pid}:${breath}:n1`);
     expect(urlButtons(pointer.keyboard)).toEqual([
-      "https://allos.example/wellness",
+      "https://allos.example/?quick=log-practice",
     ]);
 
     await handleCallbackQuery(
@@ -690,7 +690,7 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     expect(
       urlButtons(after.keyboard),
       "the rebuild must keep Open practices →"
-    ).toEqual(["https://allos.example/wellness"]);
+    ).toEqual(["https://allos.example/?quick=log-practice"]);
   });
 
   it("does not un-hold a rhythm-held practice on the rebuild (#2188)", async () => {

@@ -16,7 +16,6 @@ import { db, today } from "@/lib/db";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { practiceIdentity } from "@/lib/practice";
-import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { createLogin, createProfile, actAs, seedActor } from "./harness";
 
 async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
@@ -79,16 +78,11 @@ describe("loadQuickEntry — practice (#1633)", () => {
     expect(data.practices[0]).toMatchObject({ todayCount: 0, perWeek: 5 });
   });
 
-  // THE BOOTSTRAPPING PROPERTY (#3066). Both halves against one profile, because the
-  // defect was that only one of them was ever decided: the #1620 nav gate correctly
-  // hides /wellness for an empty ledger, and the zero state used to answer "add one
-  // under Wellness" — naming the page that gate hides, so the only creation path sat
-  // behind a gate requiring what it creates. The gate stays shut here; what changes
-  // is that the always-visible sheet row now carries the offer itself (the empty
-  // `practices` list is what QuickPracticeList renders the create form for).
-  it("with nothing tracked, the nav row stays hidden and this row becomes the offer", async () => {
-    const { profile } = seedActor({ profileName: "No Practices" });
-    expect(getNavRelevance(profile.id).wellness).toBe(false);
+  // THE BOOTSTRAPPING PROPERTY (#3066): with nothing tracked, the always-visible
+  // sheet row carries the offer itself (the empty `practices` list is what
+  // QuickPracticeList renders the create form for).
+  it("with nothing tracked, this row becomes the offer", async () => {
+    seedActor({ profileName: "No Practices" });
     const data = await readyQuickEntry("practice");
     expect(data.form).toBe("practice");
     if (data.form !== "practice") return;

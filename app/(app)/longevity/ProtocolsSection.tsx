@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconFlask2, IconSparkles } from "@tabler/icons-react";
+import { IconFlask2 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
@@ -79,16 +78,6 @@ export default async function ProtocolsSection({
               <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
                 <IconFlask2 className="h-5 w-5" aria-hidden />
               </span>
-            }
-            action={
-              <Link
-                href="/wellness"
-                className="btn-ghost btn-sm"
-                data-testid="longevity-wellness-link"
-              >
-                <IconSparkles className="h-4 w-4" aria-hidden />
-                Wellness practices
-              </Link>
             }
             createAction={{
               kind: "protocol",

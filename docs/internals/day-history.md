@@ -13,7 +13,7 @@ represents a day or a week. Extend the shared model and renderer for new domains
 | Calendar, matrix, filters, selection, and detail panels         | `components/DayHistory.tsx`                    |
 | Food and confirmed-dose history                                 | `app/(app)/trends/NutritionSection.tsx`        |
 | Workout history                                                 | `app/(app)/training/WorkoutHistorySection.tsx` |
-| Cross-practice history                                          | `app/(app)/wellness/page.tsx`                  |
+| Cross-practice history                                          | `app/(app)/history/page.tsx`                   |
 | Dated entry and history destinations                            | `lib/hrefs.ts`                                 |
 
 Protocols use their own bounded adherence heatmap, including outside-window

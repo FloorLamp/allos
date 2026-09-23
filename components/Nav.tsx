@@ -21,7 +21,6 @@ import {
   IconReportMedical,
   IconChevronRight,
   IconSalad,
-  IconSparkles,
   IconCalendarStats,
   type TablerIcon,
 } from "@tabler/icons-react";
@@ -50,7 +49,7 @@ type Leaf = {
   requiresTraining?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
-  // key. Cycle, Sleep, Progress photos, and Wellness use it in nav; the
+  // key. Cycle, Sleep and Progress photos use it in nav; the
   // Vision/Dental data-presence bits from the SAME bitset gate their folded
   // /records specialty sections instead. Cosmetic — every gated page still renders
   // on a direct URL.
@@ -161,13 +160,12 @@ const RECORDS: Group = {
 
 // The episodic group (#3079). Five top-level rows measured at ZERO deliberate
 // visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming,
-// Household (retired in #5667), Wellness, Longevity — plus Progress photos, which
-// shares their shape. The measurement did not find six redundant pages: each holds
-// writes that exist nowhere else (protocol creation only at /longevity#protocols,
-// practice CRUD and back-dated logging only at /wellness, retro symptom entry for an
-// arbitrary past day only at /history?day=, restore / preventive-override /
-// care-plan completion only at /upcoming). No URL moves, and every gate below keeps
-// the semantics it had as a top-level row.
+// Household, Wellness, Longevity — plus Progress photos, which shares their shape.
+// Household and Wellness have since retired (#5667, #5668), their writes moved to
+// other surfaces. Each remaining child holds writes that exist nowhere else
+// (protocol creation only at /longevity#protocols, restore / preventive-override /
+// care-plan completion only at /upcoming), and every gate below keeps the semantics
+// it had as a top-level row.
 //
 // What the measurement found is FOUR DIFFERENT CAUSES, and the per-child notes
 // below are the point of this group — only one of the six is a defect, and a
@@ -199,43 +197,9 @@ const PLAN_REVIEW: Group = {
     // Upcoming note above). Icon and relevance behaviour are unchanged (no
     // relevanceKey; the page stays reachable by URL either way).
     { href: "/trends", label: "Trends", icon: IconTrendingUp },
-    // WELLNESS (#1620) — an episodic MANAGEMENT surface whose daily reading is
-    // already promoted to the dashboard: a profile opens it to create or edit a
-    // practice a few times a year. #2894's doctrine covers it — "tabs for surfaces
-    // you live in, destination pages for episodic work."
-    //
-    // #3079 PROPOSED TAKING THIS OFF THE NAV ENTIRELY (NAV_PARENT_ROUTES
-    // "/wellness" -> "/", highlighting Dashboard) ON THE #1522 PATTERN. THAT IS NOT
-    // DONE HERE, AND THE REASON IS A FACT ABOUT THE TREE, NOT A DISAGREEMENT WITH
-    // THE RULING. #1522 requires a surface reached from THE THING THAT CONSUMES IT.
-    // The consumer the issue named — the dashboard habits widget's "Manage
-    // practices →" link at components/dashboard/GoalsHabitsWidget.tsx:243 — NO
-    // LONGER EXISTS: that widget was replaced by the atomic dashboard, and its
-    // successor door (the section header of HabitProgressAtom, in
-    // components/dashboard/ProgressAtoms.tsx) renders only when a practice-scope
-    // FREQUENCY TARGET exists and that atom wins placement.
-    //
-    // The `wellness` relevance bit is `hasPracticeTargets || hasPracticeLogs`
-    // (lib/queries/nav-relevance.ts) — the OR is deliberate, because a logs-only
-    // practice is a real state (see the relevanceKey note above). So for a profile
-    // that logs practices without a frequency target, the bit is TRUE, the row
-    // shows today, and there is NO dashboard door at all: taking the row away would
-    // leave global search and a typed URL, which is deletion with extra steps
-    // rather than a surface reached from its consumer. A group child is demoted
-    // exactly as far as its five neighbours here and keeps a door in the chrome.
-    // Restore a durable consumer link and the off-nav move becomes a two-line
-    // follow-up: this placement is chosen to be the reversible half of it.
-    {
-      href: "/wellness",
-      label: "Wellness",
-      icon: IconSparkles,
-      relevanceKey: "wellness",
-    },
-    // LONGEVITY — the same episodic-management diagnosis as Wellness, and its
-    // protocol picker shares the same practice targets, so the two stay adjacent as
-    // #1620 placed them. Still adult-only (ADULT_ONLY_HREFS); NavGroup runs the
-    // same isNavLeafVisible predicate as the top level, so the life-stage boundary
-    // is unchanged by the move.
+    // LONGEVITY — an episodic management surface. Still adult-only
+    // (ADULT_ONLY_HREFS); NavGroup runs the same isNavLeafVisible predicate as the
+    // top level, so the life-stage boundary is unchanged by the move.
     { href: "/longevity", label: "Longevity", icon: IconHourglass },
     // PROGRESS PHOTOS (#1119) — not one of the zero-use five, and included on shape
     // rather than on measurement: a data-gated visual review surface opened in
@@ -333,7 +297,7 @@ const entries: Entry[] = [
   },
   // The episodic group (#3079) sits between the daily reading surfaces above and
   // the reference surfaces below — exactly where the ORDER note calls for a
-  // cluster that is neither. Progress photos, Wellness and Longevity kept their
+  // cluster that is neither. Progress photos and Longevity kept their
   // relevance and life-stage gates on the way in; see PLAN_REVIEW for the
   // per-surface diagnosis behind each child.
   PLAN_REVIEW,
@@ -573,7 +537,7 @@ export default function Nav({
   // False through early childhood; hides the workout-oriented Training leaf.
   trainingRelevant?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
-  // with a `relevanceKey` (Cycle/Sleep/Progress/Wellness in nav; the
+  // with a `relevanceKey` (Cycle/Sleep/Progress in nav; the
   // Vision/Dental bits gate the /records specialty sections). Defaults all-true
   // so a caller that doesn't thread it never over-hides.
   relevance?: NavRelevance;

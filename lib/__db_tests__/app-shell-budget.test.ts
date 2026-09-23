@@ -151,12 +151,12 @@ describe("app shell query budget (#5669)", () => {
   // The personas differ by household size and by whether a live workout is open —
   // never by history length.
   const BASELINES: Record<string, number> = {
-    bodybuilder: 72,
-    "marathon-runner": 79,
-    household: 79,
-    pregnant: 73,
-    "diabetic-cgm": 74,
-    biohacker: 72,
+    bodybuilder: 70,
+    "marathon-runner": 77,
+    household: 77,
+    pregnant: 71,
+    "diabetic-cgm": 72,
+    biohacker: 70,
   };
 
   it("app shell query budget: each persona matches its recorded main baseline", () => {

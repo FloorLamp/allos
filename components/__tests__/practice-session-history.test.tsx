@@ -12,7 +12,7 @@ vi.mock("@/components/ConfirmDialog", () => ({
 vi.mock("@/components/overlay/AnchoredPanel", () => ({
   default: () => null,
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   editPracticeSession: vi.fn(),
   removePracticeSession: vi.fn(),
 }));

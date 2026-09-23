@@ -48,7 +48,7 @@ function liveCandidate(profileId: number, dedupeKey: string) {
 // that the dashboard, Upcoming, and the domain's own page all render, so all of them
 // are revalidated rather than the one page the tap happened on.
 function revalidateRightSizeSurfaces(): void {
-  revalidateRoute("/wellness");
+  revalidateRoute("/history");
   revalidateRoute("/nutrition");
   revalidateRoute("/training");
   revalidateRoute("/upcoming");

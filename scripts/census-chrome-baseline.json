@@ -88,21 +88,6 @@
       }
     },
     {
-      "route": "/wellness",
-      "viewport": "desktop",
-      "why": "A plain index page under the default gutters: the shell with nothing overriding it.",
-      "landmarks": {
-        "sidebarWidth": 240,
-        "mainInsetLeft": 240,
-        "mainInsetRight": 0,
-        "contentGutterLeft": 20,
-        "contentGutterRight": 20,
-        "contentTopInset": 32,
-        "contentWidth": 1000,
-        "pageTitleHeight": 32
-      }
-    },
-    {
       "route": "/",
       "viewport": "mobile",
       "why": "Home — the shell's most-visited surface and the one every nav change lands on.",
@@ -167,21 +152,6 @@
       "viewport": "mobile",
       "censusRoute": "/trends/metric/[kind]",
       "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
-      "landmarks": {
-        "dockHeight": 57,
-        "mainInsetLeft": 0,
-        "mainInsetRight": 0,
-        "contentGutterLeft": 16,
-        "contentGutterRight": 16,
-        "contentTopInset": 16,
-        "contentWidth": 358,
-        "pageTitleHeight": 28
-      }
-    },
-    {
-      "route": "/wellness",
-      "viewport": "mobile",
-      "why": "A plain index page under the default gutters: the shell with nothing overriding it.",
       "landmarks": {
         "dockHeight": 57,
         "mainInsetLeft": 0,

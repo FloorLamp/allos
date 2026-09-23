@@ -393,8 +393,7 @@ function tallyByDate(
 // query, so /longevity's protocol list cost two queries per protocol the profile had
 // EVER created — a page that gets slower purely as a function of how long someone has
 // used the feature, recomputing windows that closed years ago. This reads each ledger
-// ONCE over the union of the windows and slices per protocol in JS, the same shape
-// getWellnessPractices already uses for its per-practice heatmaps.
+// ONCE over the union of the windows and slices per protocol in JS.
 //
 // The single-protocol reader below delegates here, so there is exactly one definition
 // of what a protocol's daily usage is.

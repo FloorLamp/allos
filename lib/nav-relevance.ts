@@ -31,9 +31,6 @@ import type { ReproductiveStatus, Sex } from "./types";
 //     and Upcoming. Pure data presence (has any recorded sleep session), exactly
 //     like vision/dental: no life-stage logic, and the page stays reachable by URL
 //     (the pillar deep-link and dashboard healthspan readout both link it) even when hidden.
-//   - `wellness` — a nav gate for the dedicated Wellness entry (#1620), beside
-//     Longevity. True when any practice target OR practice log exists; the
-//     command palette remains the always-visible first-practice creation path.
 export interface NavRelevance {
   cycle: boolean;
   vision: boolean;
@@ -44,7 +41,6 @@ export interface NavRelevance {
   // and via the command palette's "Progress photos" action (the always-visible
   // creation path, so the empty-state gate never strands creation).
   progress: boolean;
-  wellness: boolean;
 }
 
 export type NavRelevanceKey = keyof NavRelevance;
@@ -57,23 +53,7 @@ export const DEFAULT_NAV_RELEVANCE: NavRelevance = {
   dental: true,
   sleep: true,
   progress: true,
-  wellness: true,
 };
-
-export interface WellnessRelevanceInput {
-  // Any frequency_targets row with scope_kind = 'practice'.
-  hasPracticeTargets: boolean;
-  // Any practice_logs row, including a logs-only practice whose target was
-  // removed or which arrived through an import.
-  hasPracticeLogs: boolean;
-}
-
-export function wellnessTrackingRelevant({
-  hasPracticeTargets,
-  hasPracticeLogs,
-}: WellnessRelevanceInput): boolean {
-  return hasPracticeTargets || hasPracticeLogs;
-}
 
 export interface CycleRelevanceInput {
   // Any `cycles` row exists for the profile.

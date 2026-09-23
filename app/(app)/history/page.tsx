@@ -21,6 +21,7 @@ import {
   getHomeLocation,
   getProfileAge,
   getTimezone,
+  getWeekStart,
   withPrimedSettings,
 } from "@/lib/settings";
 import {
@@ -32,9 +33,14 @@ import {
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import {
+  getPracticeDays,
   getPracticeRhythms,
+  practiceDayHistory,
   getTrackedPractices,
 } from "@/lib/queries/wellness";
+import DayHistory from "@/components/DayHistory";
+import RightSizeSuggestions from "@/components/RightSizeSuggestions";
+import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
@@ -118,6 +124,9 @@ import {
 } from "@/lib/timeline-scrubber";
 
 export const dynamic = "force-dynamic";
+
+// The practice heat map's window: a trailing quarter of week columns.
+const PRACTICE_HISTORY_WEEKS = 13;
 
 // `/history` — THE APP'S RECORD (issue #3958, phase 1).
 //
@@ -529,6 +538,22 @@ async function renderHistory(
     getTimezone(actingProfileId),
     new Date()
   ).hhmm;
+  // THE PRACTICE HEAT MAP (#5668), moved here with the Wellness page's retirement:
+  // every practice on one shared day axis over the trailing quarter, above the
+  // practice rows it summarises. Its "Log for this day" opens that day's view, where
+  // the Practice chip is the backfill door. One body only, like the day's context.
+  const practiceWeekStart =
+    kind === "practice" && !day && !everyone
+      ? getWeekStart(actingProfileId)
+      : null;
+  const practiceDays =
+    practiceWeekStart == null
+      ? []
+      : getPracticeDays(
+          actingProfileId,
+          dayHistoryStart(todayStr, PRACTICE_HISTORY_WEEKS, practiceWeekStart),
+          todayStr
+        );
   const trackedPractices = offers("practice")
     ? getTrackedPractices(actingProfileId)
     : [];
@@ -1129,6 +1154,31 @@ async function renderHistory(
                 })),
             ]}
           />
+        </div>
+      ) : null}
+
+      {practiceWeekStart != null ? (
+        <div className={`mb-6 space-y-6 empty:hidden ${railGutter}`}>
+          {/* The weekly-goal check the retired Wellness page carried (#1670). */}
+          <RightSizeSuggestions profileId={actingProfileId} domain="practice" />
+          {practiceDays.length > 0 ? (
+            <section data-testid="practice-history">
+              <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+                {DAY_HISTORY_DOMAINS.practice.helperText}
+              </p>
+              <DayHistory
+                domain="practice"
+                addHref="/history"
+                {...practiceDayHistory(practiceDays)}
+                end={todayStr}
+                weeks={PRACTICE_HISTORY_WEEKS}
+                weekStart={practiceWeekStart}
+                today={todayStr}
+                formatPrefs={prefs}
+                testId="practice-day-history"
+              />
+            </section>
+          ) : null}
         </div>
       ) : null}
 

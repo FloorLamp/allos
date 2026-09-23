@@ -140,8 +140,9 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
     source: "practice-logs",
     grain: "distinct-days",
     direction: "floor",
-    // The Wellness page's practice cards (#1259) — their own pace-aware channel, with
-    // the range editor the training routine editor cannot represent.
+    // Practices (#1259) — their own pace-aware channel, edited from the quick-log
+    // sheet's practice rows (#5668) with the range the training routine editor cannot
+    // represent. `home` is the domain, not a page.
     home: "wellness",
     note: "distinct days a session was logged into practice_logs, day-distinct so a second same-day session never double-counts",
   },
@@ -298,8 +299,8 @@ export interface CadenceVerdictInput {
 }
 
 // One week's verdict, for either direction. The two branches delegate to the
-// computations their surfaces already render — `frequencyRangeState` (the /wellness
-// card, the goal/habit atoms, Upcoming, the Telegram nudge) and
+// computations their surfaces already render — `frequencyRangeState` (the quick-log
+// practice row, the goal/habit atoms, Upcoming, the Telegram nudge) and
 // `substanceCapStatus` (the substance page, the coaching finding) — so consolidating
 // the READ model changed no verdict anywhere.
 export function cadenceVerdict(input: CadenceVerdictInput): CadenceVerdict {

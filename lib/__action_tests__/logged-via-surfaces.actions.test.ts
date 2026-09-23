@@ -27,7 +27,7 @@ import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { saveSleepMoodEntry } from "@/app/(app)/sleep/actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { markTaken } from "@/app/(app)/upcoming/actions";
-import { logPractice } from "@/app/(app)/wellness/actions";
+import { logPractice } from "@/app/(app)/practice-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { practiceIdentity } from "@/lib/practice";
 import { POST as replayPost } from "@/app/api/offline-replay/route";

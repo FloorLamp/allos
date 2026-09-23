@@ -1,23 +1,12 @@
-// DB INTEGRATION TIER (issue #1632): the Trends wellness lens's read, end to end
-// against the real schema.
-//
-// What it has to get right, and why each clause is a real regression class:
-//
-//   • The weekly VERDICTS are the practice domain's own — floor met / at ceiling /
-//     under — so a week the /wellness card calls met can never read "under floor"
-//     on Trends (#221).
-//   • The in-progress week is absent. It is under its floor by construction on
-//     every day but the last.
-//   • Spellings fold onto ONE identity, exactly as every other practice read does.
-//   • The duration series averages the sessions that actually carried minutes.
-//   • An UNTRACKED practice has no range, so it is not in this lens at all.
-//   • A window that ENDS IN THE PAST reads the weeks before its own end.
+// DB INTEGRATION TIER (issue #1632): the Trends digest's practice cadence series, end
+// to end against the real schema. A moved cadence surfaces as a neutral series; an
+// UNTRACKED practice has no range, so it is not in the digest at all.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
-import { getPracticeTrends, logPracticeSession } from "@/lib/queries";
+import { logPracticeSession } from "@/lib/queries";
 import { practiceIdentity } from "@/lib/practice";
 import { buildPracticeDigestSeries } from "@/lib/trends-series";
 import { summarizeTrends } from "@/lib/trends-digest";
@@ -109,104 +98,13 @@ function seedLedger(profileId: number): void {
   logAt(profileId, PRACTICE, 1);
 }
 
-describe("the Trends wellness lens read (#1632)", () => {
+describe("the Trends practice digest (#1632)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
   });
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it("reads completed weeks oldest-first with the range verdict for each", () => {
-    const pid = makeProfile("lens-weeks");
-    seedLedger(pid);
-
-    const [practice] = getPracticeTrends(pid, 4);
-    expect(practice.name).toBe(PRACTICE);
-    expect(practice.perWeek).toBe(FLOOR);
-    expect(practice.perWeekMax).toBe(CEILING);
-    expect(practice.existedWholeWindow).toBe(true);
-
-    expect(practice.weeks.map((w) => w.count)).toEqual([0, 3, 4, 3]);
-    expect(practice.weeks.map((w) => w.verdict)).toEqual([
-      "under",
-      "met",
-      "at-ceiling",
-      "met",
-    ]);
-    // Oldest first: the strip renders left to right in this order.
-    const starts = practice.weeks.map((w) => w.start);
-    expect([...starts].sort()).toEqual(starts);
-  });
-
-  it("never counts the in-progress week into the ledger", () => {
-    const pid = makeProfile("lens-current");
-    seedLedger(pid);
-
-    const [practice] = getPracticeTrends(pid, 4);
-    // The current week's two sessions are 1 and 2 days back; the newest LEDGER
-    // week ends 7 days back, so neither day can be inside it.
-    const newestWeekStart = practice.weeks[practice.weeks.length - 1].start;
-    expect(newestWeekStart).toBe(dayBack(pid, 13));
-    // They are still real sessions, and the window-wide tally says so — every
-    // logged row in the window, including the two in the in-progress week.
-    expect(practice.sessions).toBe(13);
-  });
-
-  it("rolls the ledger up into a consistency RATE, never a run (#1966)", () => {
-    const pid = makeProfile("lens-consistency");
-    seedLedger(pid);
-
-    const [practice] = getPracticeTrends(pid, 4);
-    // Three met weeks out of four — the same figure whichever of the four fell
-    // under. The retired streak fields are gone from the shape entirely.
-    expect(practice.consistency).toEqual({
-      weeks: 4,
-      met: 3,
-      rate: 0.75,
-    });
-  });
-
-  it("averages recorded minutes over the sessions that carried them", () => {
-    const pid = makeProfile("lens-duration");
-    seedLedger(pid);
-
-    const [practice] = getPracticeTrends(pid, 4);
-    // Only the days with minutes appear — an untimed day is not a zero — and the
-    // twice-logged day is the mean of its two sessions, not of all three logs that
-    // week. The in-progress week's timed session is on the series, because a
-    // duration trend is per-session, not per completed week.
-    expect(practice.duration).toEqual([
-      { date: dayBack(pid, 9), value: 25 },
-      { date: dayBack(pid, 7), value: 15 },
-      { date: dayBack(pid, 2), value: 40 },
-    ]);
-  });
-
-  it("leaves an UNTRACKED practice out — it has no range to be in", () => {
-    const pid = makeProfile("lens-untracked");
-    seedLedger(pid);
-    logPracticeSession(pid, "Journaling", dayBack(pid, 10), "page");
-    logPracticeSession(pid, "Journaling", dayBack(pid, 17), "page");
-
-    const names = getPracticeTrends(pid, 4).map((p) => p.name);
-    expect(names).toEqual([PRACTICE]);
-  });
-
-  it("anchors a window that ENDS IN THE PAST on that window's own end", () => {
-    const pid = makeProfile("lens-anchor");
-    seedLedger(pid);
-
-    // Anchored two weeks ago, the newest completed week is the one before THAT —
-    // the at-ceiling week, which is the newest week the ledger may now end on.
-    const anchored = getPracticeTrends(pid, 2, dayBack(pid, 14))[0];
-    expect(anchored.weeks.map((w) => w.verdict)).toEqual(["under", "met"]);
-    expect(anchored.weeks[anchored.weeks.length - 1].start).toBe(
-      dayBack(pid, 27)
-    );
-    // …and the trailing read from today still sees the whole thing.
-    expect(getPracticeTrends(pid, 4)[0].weeks).toHaveLength(4);
   });
 
   it("offers a moved cadence to the digest as a NEUTRAL series", () => {

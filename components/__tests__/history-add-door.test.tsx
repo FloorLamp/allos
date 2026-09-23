@@ -66,7 +66,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
     error: "the Add door never corrects",
   }),
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   logPractice: async (fd: FormData) => {
     record("logPractice")(fd);
     return { kind: "logged" };

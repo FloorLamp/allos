@@ -1650,9 +1650,9 @@
 
      MIN-height, deliberately, and this is the whole difference between closing
      the class and re-opening a different one. `height: 100%` here would also
-     SHRINK a child that is taller than the box its card reserved, and five cards
-     are in that position on desktop today (`PracticeTrends`' two `sm:h-48` cards
-     and BodySection's three `sm:h-56` intraday point cards, each holding an
+     SHRINK a child that is taller than the box its card reserved, and three cards
+     are in that position on desktop today (BodySection's `sm:h-56` intraday
+     point cards, each holding an
      `h-64` chart). Whether a chart may exceed its card's declared plot height is
      a real question and it is NOT this one; #3574 is about a square the child
      leaves EMPTY, and its acceptance says desktop rendering is unchanged. A floor

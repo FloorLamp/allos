@@ -13,7 +13,6 @@ import BristolStoolPanel from "@/components/BristolStoolPanel";
 import CareTrailBand from "@/components/illness/CareTrailBand";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import PracticeHeatmap from "@/components/practices/PracticeHeatmap";
-import PracticeTrends from "@/components/practices/PracticeTrends";
 import WeekSpine from "@/app/(app)/training/WeekSpine";
 import StrengthStandardsLadder from "@/app/(app)/training/StrengthStandardsLadder";
 import EnduranceDepthSuite from "@/app/(app)/training/EnduranceDepthSuite";
@@ -25,7 +24,6 @@ import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
 import { buildProtocolHeatmap } from "@/lib/protocol-heatmap";
 import { buildWeekSpine, weekSpineDaySummary } from "@/lib/training-week-spine";
 import { buildZoneModel } from "@/lib/training-zones";
-import { practiceCadenceText } from "@/lib/practice";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { fmtWeight } from "@/lib/units";
 import type { Swimlane } from "@/lib/care-trail-swimlane";
@@ -33,7 +31,6 @@ import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import type { StrengthStanding } from "@/lib/strength-standards";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
 import type { SessionOverviewRollup } from "@/lib/session-overview";
-import type { PracticeTrend } from "@/lib/queries/wellness";
 
 // THE CHART CARRIES ITS OWN DATA ACCESS (#4760) — one assertion pattern, every
 // adopter. `VisualizationDetails` restated each chart in a labelled fold; the fold is
@@ -121,20 +118,6 @@ const form = {
   distanceChangePercent: 20,
   durationChangePercent: 12,
 } as unknown as SessionOverviewRollup;
-
-const practice: PracticeTrend = {
-  targetId: 1,
-  identity: "red-light",
-  name: "Red light therapy",
-  perWeek: 3,
-  perWeekMax: 5,
-  weeks: [{ start: "2026-08-17", count: 2, verdict: "under" }],
-  consistency: { weeks: 1, met: 0, rate: 0 },
-  sessions: 2,
-  existedWholeWindow: true,
-  duration: [],
-};
-const cadence = practiceCadenceText(3, 5);
 
 const weekSpine = buildWeekSpine({
   start: "2026-08-24",
@@ -440,20 +423,6 @@ describe("the chart carries its own data access (#4760)", () => {
     // And the sentence leads where its own numbers live.
     const caption = screen.getByTestId("week-spine-caption");
     expect(caption.getAttribute("href")).toBe("/training?tab=log");
-  });
-
-  it("the practice trend's week cells are their own doors and nothing lists them twice", () => {
-    const { container } = render(<PracticeTrends practice={practice} />);
-    const week = screen.getByRole("img", {
-      name: `Week of 2026-08-17 — 2 days logged of ${cadence}: Under floor`,
-    });
-    expect(week.tabIndex).toBe(0);
-    expect(within(container).queryByText(/weekly details/i)).toBeNull();
-    // The one fold left is the 26-week lens, not a values dump.
-    const summaries = Array.from(container.querySelectorAll("summary")).map(
-      (summary) => summary.textContent
-    );
-    expect(summaries).toEqual(["26-week trend"]);
   });
 });
 

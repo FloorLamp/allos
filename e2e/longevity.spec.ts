@@ -102,9 +102,6 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   await expect(protocols.getByTestId("protocol-templates")).toHaveCount(0);
   await expect(protocols.getByTestId("protocol-form")).toHaveCount(0);
   await expect(protocols.getByTestId("new-protocol-toggle")).toBeVisible();
-  await expect(
-    protocols.getByTestId("longevity-wellness-link")
-  ).toHaveAttribute("href", "/wellness");
 });
 
 // #1921 — the strength pillar is the one whose destination is DATA: it names a lift, and

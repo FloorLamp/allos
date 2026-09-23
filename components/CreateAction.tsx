@@ -22,7 +22,7 @@ export const CREATE_ACTIONS = {
   },
   practice: {
     label: "Add practice",
-    housing: ["page"],
+    housing: ["section"],
   },
   "training-activity": {
     label: "Add activity",

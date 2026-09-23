@@ -66,7 +66,7 @@ vi.mock("@/app/(app)/nutrition/actions", () => ({
   updateFoodLogEvent: unowned("food correction"),
   deleteFoodLogEvent: unowned("food delete"),
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   editPracticeSession: unowned("practice correction"),
   removePracticeSession: unowned("practice delete"),
 }));

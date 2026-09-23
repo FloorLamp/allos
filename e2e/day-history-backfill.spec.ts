@@ -3,7 +3,7 @@ import type { Locator } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { DEFAULT_FORMAT_PREFS, formatDateWithYear } from "@/lib/format-date";
 import { frozenNow } from "./worker-env";
-import { hydratedClick } from "./helpers";
+import { appContent, hydratedClick } from "./helpers";
 
 async function expectEmptyDayAddLink(
   section: Locator,
@@ -73,17 +73,17 @@ test("dated entry destinations preserve their own bounds and prefill the day (#2
       .locator('input[name="date"]')
   ).toHaveValue(yesterday);
 
-  await page.goto(`/wellness?log=${yesterday}`);
-  const practiceLauncher = page.getByTestId("practice-backfill-launcher");
+  // A practice's dated entry is the History day view's Practice chip (#5668).
+  await page.goto(`/history?day=${yesterday}`);
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("history-add-open-practice")
+  );
   await expect(
-    practiceLauncher.getByRole("heading", { name: "Log practice" })
-  ).toBeVisible();
-  await expect(
-    practiceLauncher.getByTestId("practice-backfill-picker")
-  ).toBeVisible();
-  await expect(page.getByTestId("practice-log-details")).toBeVisible();
-  await expect(
-    page.getByTestId("practice-log-details").locator('input[name="date"]')
+    page
+      .getByRole("dialog")
+      .getByTestId("practice-log-details")
+      .locator('input[name="date"]')
   ).toHaveValue(yesterday);
 
   await page.goto(`/training?tab=log&date=${yesterday}`);
@@ -107,10 +107,44 @@ test("dated Food and Practice destinations accept days beyond their former launc
     "true"
   );
 
-  await page.goto(`/wellness?log=${oldPracticeDate}`);
-  const details = page.getByTestId("practice-log-details");
+  await page.goto(`/history?day=${oldPracticeDate}`);
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("history-add-open-practice")
+  );
+  const details = page.getByRole("dialog").getByTestId("practice-log-details");
   await expect(details).toBeVisible();
   await expect(details.locator('input[name="date"]')).toHaveValue(
     oldPracticeDate
   );
+});
+
+// THE PRACTICE HEAT MAP'S ADD DOOR (#5668). It stands on History's practice view,
+// and "Log for this day" lands on that day's view, whose Practice chip opens the
+// form on the day the reader picked.
+test("the practice heat map's add door opens a past day's practice form", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/history?kind=practice");
+  const heat = appContent(page).getByTestId("practice-history");
+  await expectEmptyDayAddLink(heat, "sessions", /\/history\?day=/);
+  const add = heat.getByTestId("day-history-add-link");
+  const date = new URL(
+    (await add.getAttribute("href"))!,
+    "http://e2e.test"
+  ).searchParams.get("day")!;
+
+  await hydratedClick(page, add);
+  await expect(page).toHaveURL(new RegExp(`day=${date}`));
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("history-add-open-practice")
+  );
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByTestId("practice-log-details")
+      .locator('input[name="date"]')
+  ).toHaveValue(date);
 });

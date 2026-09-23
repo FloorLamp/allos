@@ -545,12 +545,15 @@ test.describe("the record (#3958)", () => {
     await expect(page).toHaveURL(/\/history\?kind=food/);
     await expect(page.getByTestId("history-filters")).toBeVisible();
 
-    await page.goto("/wellness");
-    await hydratedClick(page, page.getByTestId("practice-ledger-link"));
-    await expect(page).toHaveURL(/\/history\?kind=practice/);
+    // Practice history is History's own practice view since the Wellness page
+    // retired (#5668): its rows under the cross-practice heat map.
+    await page.goto("/history?kind=practice");
     await expect(
       page.getByTestId("history-row").filter({ hasText: PRACTICE })
     ).toHaveCount(1);
+    await expect(
+      page.getByTestId("practice-history").getByTestId("practice-day-history")
+    ).toBeVisible();
 
     // The substance record's FIRST door (#3958): every other logged-event surface
     // already owed the reader one.

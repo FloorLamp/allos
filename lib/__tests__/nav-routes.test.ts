@@ -174,7 +174,7 @@ describe("nav ↔ route consistency", () => {
       missing,
       `nav hrefs with no matching page under app/: ${missing.join(", ")}`
     ).toEqual([]);
-    expect(hrefs).toContain("/wellness");
+    expect(hrefs).toContain("/longevity");
   });
 
   it("every internal next.config redirect destination resolves to a real page", () => {
@@ -219,13 +219,7 @@ describe("nav ↔ route consistency", () => {
   // "/trends", not "/history": #4965 swapped the two — the day view's #4918
   // promotion earned History a top-level row, and Trends took the vacated
   // group slot. Household left the group when its page retired (#5667).
-  const GROUPED_HREFS = [
-    "/upcoming",
-    "/trends",
-    "/wellness",
-    "/longevity",
-    "/progress",
-  ];
+  const GROUPED_HREFS = ["/upcoming", "/trends", "/longevity", "/progress"];
 
   // The source text of one top-level `const <name> ... <close>;` declaration in
   // Nav.tsx, comments stripped so a route named in prose never counts as a

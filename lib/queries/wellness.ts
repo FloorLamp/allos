@@ -1,5 +1,5 @@
 // Wellness-practice read layer (#1622). It owns the finite-preimage spelling map,
-// session readers, and the page-level practice aggregate. Write cores remain in
+// session readers, and the quick surfaces' practice list. Write cores remain in
 // lib/practice-log.ts and lib/practice-store.ts.
 
 import { db, today as profileToday } from "../db";
@@ -16,14 +16,12 @@ import {
 } from "../correction-time";
 import { cache } from "../request-cache";
 import { tickCached } from "../tick-cache";
-import { buildPracticeHeatmap } from "../practice-heatmap";
 import {
   inferPracticeRhythm,
   predictedOnDay,
   rhythmMomentOpen,
   type WeeklyRhythm,
 } from "../weekly-rhythm";
-import type { ProtocolHeatmap } from "../protocol-heatmap";
 import {
   groupPracticeSpellings,
   liveSessionExpectedEnd,
@@ -39,48 +37,19 @@ import type {
 } from "../types";
 import type { FrequencyPace } from "../frequency-targets";
 import { pageCount, pageOffset } from "../pagination";
+import type { DayHistoryGroupMeta, DayHistoryValue } from "../day-history";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,
-  getFrequencyTargetWeeklyHistory,
 } from "./frequency-targets";
-import {
-  practiceWeekVerdict,
-  summarizePracticeWeeks,
-  type PracticeConsistency,
-  type PracticeWeekVerdict,
-} from "../trends-practices";
 
-const WELLNESS_CARD_SESSION_LIMIT = 200;
+const PRACTICE_SESSION_LIMIT = 200;
 
 export {
   groupPracticeSpellings,
   MAX_PRACTICE_SPELLINGS_PER_IDENTITY,
   practiceSpellingsFor,
 } from "../practice";
-
-export interface WellnessPractice {
-  identity: string;
-  name: string;
-  targetId: number | null;
-  perWeek: number | null;
-  perWeekMax: number | null;
-  countThisWeek: number;
-  met: boolean;
-  atCeiling: boolean;
-  pace: FrequencyPace;
-  sessionCount: number;
-  lastUsed: string | null;
-  previousDurationMin: number | null;
-  liveSession: LivePracticeSession | null;
-  // Whether `asOf` is one of this practice's inferred rhythm days (#2188). False
-  // whenever the inference has no pattern (#558: unknown renders NOTHING — the
-  // card's rhythm note simply doesn't exist). Predicted ≠ due (#1505): this
-  // never feeds pace or adherence, only the calm "usually a session day" note.
-  usuallyToday: boolean;
-  sessions: PracticeLog[];
-  heatmap: ProtocolHeatmap;
-}
 
 export function getPracticeSpellingsMap(
   profileId: number
@@ -394,119 +363,6 @@ export function findPracticeTarget(
   );
 }
 
-export function getWellnessPractices(
-  profileId: number,
-  asOf: string = profileToday(profileId),
-  weekStart = 0
-): WellnessPractice[] {
-  const targets = getPracticeTargets(profileId);
-  const progress = new Map(
-    getFrequencyTargetProgress(profileId)
-      .filter((item) => item.target.scope_kind === "practice")
-      .map((item) => [item.target.id, item])
-  );
-  const logs = db
-    .prepare(
-      `SELECT id, practice, date, start_time, end_time, live, derived_window,
-              correction_locked, duration_min, notes,
-              source, external_id, edited, created_at
-         FROM practice_logs
-        WHERE profile_id = ?
-        ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC`
-    )
-    .all(profileId) as PracticeLog[];
-
-  const byIdentity = new Map<
-    string,
-    { target: FrequencyTarget | null; sessions: PracticeLog[] }
-  >();
-  for (const target of targets) {
-    const identity = practiceIdentity(target.scope_value);
-    if (!identity) continue;
-    if (!byIdentity.has(identity)) {
-      byIdentity.set(identity, { target, sessions: [] });
-    }
-  }
-  for (const session of logs) {
-    const identity = practiceIdentity(session.practice);
-    if (!identity) continue;
-    const current = byIdentity.get(identity);
-    if (current) current.sessions.push(session);
-    else byIdentity.set(identity, { target: null, sessions: [session] });
-  }
-
-  return [...byIdentity.entries()]
-    .map(([identity, item]): WellnessPractice => {
-      const targetProgress = item.target ? progress.get(item.target.id) : null;
-      const latest = item.sessions[0] ?? null;
-      const countByDate = new Map<string, number>();
-      for (const session of item.sessions) {
-        countByDate.set(session.date, (countByDate.get(session.date) ?? 0) + 1);
-      }
-      return {
-        identity,
-        name: practiceDisplayName({
-          targetSpelling: item.target?.scope_value ?? null,
-          latestSpelling: latest?.practice ?? null,
-          identity,
-        }),
-        targetId: item.target?.id ?? null,
-        perWeek: item.target?.per_week ?? null,
-        perWeekMax: item.target?.per_week_max ?? null,
-        countThisWeek: targetProgress?.count ?? 0,
-        met: targetProgress?.met ?? false,
-        atCeiling: targetProgress?.atCeiling ?? false,
-        pace: targetProgress?.pace ?? "quiet",
-        sessionCount: item.sessions.length,
-        lastUsed: latest?.date ?? null,
-        previousDurationMin: getPracticeUsualDuration(
-          profileId,
-          item.target?.scope_value ?? latest?.practice ?? "",
-          item.sessions.map((session) => session.practice)
-        ),
-        // A LIVE ROW IS LIVE WHATEVER DAY IT STARTED ON. Filtering to `asOf` hid the
-        // End button from the one session that most needs it — the evening practice
-        // still running after local midnight. What retires a stale row is the
-        // abandonment sweep the page gathers run first, not this day comparison.
-        liveSession:
-          item.sessions
-            .filter(
-              (session) => session.live === 1 && session.start_time != null
-            )
-            .map((session) =>
-              liveSessionOf(profileId, {
-                id: session.id,
-                date: session.date,
-                start_time: session.start_time!,
-                duration_min: session.duration_min,
-                derived_window: session.derived_window,
-              })
-            )[0] ?? null,
-        // The rhythm over the identity's own sessions — already gathered above, so
-        // the aggregate infers in memory over the SAME rows the per-practice query
-        // wrapper (inferPracticeSchedule) scans; the pure core is the one
-        // computation either way (#2188).
-        usuallyToday:
-          predictedOnDay(
-            inferPracticeRhythm(
-              item.sessions.map((s) => ({ date: s.date, time: s.start_time })),
-              asOf
-            ),
-            asOf
-          ) === true,
-        sessions: item.sessions.slice(0, WELLNESS_CARD_SESSION_LIMIT),
-        heatmap: buildPracticeHeatmap(
-          [...countByDate].map(([date, count]) => ({ date, count })),
-          asOf,
-          weekStart
-        ),
-      };
-    })
-    .sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
-    );
-}
-
 // A live `practice_logs` row as a CLIENT sees it — the one place the shape is built, so
 // the sheet's row and the page aggregates cannot hold different opinions about when a
 // running session ends (#5431).
@@ -547,9 +403,8 @@ export function liveSessionOf(
 
 // One TRACKED practice as the quick surfaces need it (#1633): the practices the user
 // has declared a weekly cadence for, with this week's standing and today's running
-// count. Deliberately narrower than WellnessPractice — no heatmap, no session list —
-// because the overlay row and the palette's finite preimage render neither, and this
-// gathers on every sheet open / palette open.
+// count. No heatmap and no session list: the overlay row and the palette's finite
+// preimage render neither, and this gathers on every sheet open / palette open.
 export interface TrackedPractice {
   targetId: number;
   identity: string;
@@ -563,7 +418,7 @@ export interface TrackedPractice {
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
   // The quick sheet's inline duration stepper starts here (#2204) — the canonical
-  // identity-wide usual-duration vote the Wellness card and protocol row also use.
+  // identity-wide usual-duration vote the protocol row and Upcoming also use.
   // Null means blank: the sheet does not invent a duration without history.
   previousDurationMin: number | null;
   liveSession: LivePracticeSession | null;
@@ -573,15 +428,15 @@ export interface TrackedPractice {
 //
 // TRACKED, not "every practice with history": a weekly cadence is the user's own
 // declaration that this is something they mean to keep doing, which is exactly what a
-// one-tap logger should offer. An untracked practice keeps its history and its page card
-// (getWellnessPractices still folds it in); it just doesn't claim a row in a surface that
-// has to stay scannable — and an untracked practice reappearing here would quietly
-// undo the untrack. It is also the finite preimage the palette matches typed input
-// against (the #394 posture), so both quick surfaces offer exactly the same set.
+// one-tap logger should offer. An untracked practice keeps its history on History; it
+// just doesn't claim a row in a surface that has to stay scannable — and an untracked
+// practice reappearing here would quietly undo the untrack. It is also the finite
+// preimage the palette matches typed input against (the #394 posture), so both quick
+// surfaces offer exactly the same set.
 //
 // Two bounded reads regardless of how many practices exist: the shared weekly progress
 // computation (the same getFrequencyTargetProgress every cadence surface reads, so the
-// overlay can never disagree with the Wellness card) plus one grouped tally of today's
+// overlay can never disagree with Upcoming or the nudge) plus one grouped tally of today's
 // logs, folded by practiceIdentity in JS — SQL cannot call that normalizer, and today's
 // rows are a bounded set.
 export function getTrackedPractices(
@@ -609,8 +464,8 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
-  // No day filter, for the reason getWellnessPractices states: a session that crossed
-  // local midnight is still running, and the sweep is what closes an abandoned one.
+  // No day filter: a session that crossed local midnight is still running, and the
+  // sweep is what closes an abandoned one.
   const liveRows = db
     .prepare(
       `SELECT id, practice, date, start_time, duration_min, derived_window
@@ -642,7 +497,7 @@ export function getTrackedPractices(
     // The schema already forbids two practice targets on one identity per profile
     // (the unique (profile_id, scope_identity) index), so this is belt-and-braces: if
     // one ever slipped in, the first — getPracticeTargets is already ordered — wins,
-    // exactly as it does in getWellnessPractices and getPracticeSearchRows, rather
+    // exactly as it does in getPracticeSearchRows, rather
     // than the sheet offering the same write twice.
     if (!identity || seen.has(identity)) continue;
     seen.add(identity);
@@ -660,8 +515,8 @@ export function getTrackedPractices(
       atCeiling: targetProgress?.atCeiling ?? false,
       pace: targetProgress?.pace ?? "quiet",
       todayCount: todayByIdentity.get(identity) ?? 0,
-      // The SAME pure resolution the Wellness card's expanded form reads — one
-      // question, one computation. A practice with no logs at all resolves through
+      // The SAME pure resolution the protocol row reads — one question, one
+      // computation. A practice with no logs at all resolves through
       // the empty list rather than being special-cased here.
       previousDurationMin: getPracticeUsualDuration(
         profileId,
@@ -677,14 +532,9 @@ export function getTrackedPractices(
 
 // THE WEEKLY RHYTHM OF EVERY PRACTICE THIS PROFILE HAS LOGGED, by identity (#4950
 // item 4). One statement, and the pure inference is `inferPracticeRhythm` — the same
-// computation `getWellnessPractices` runs in memory over its own gather and the same
 // one `inferPracticeSchedule` wraps, so no surface can hold a different opinion about
-// when a practice usually happens.
-//
-// NOT `getWellnessPractices`, which already carries this: that aggregate also builds
-// frequency progress and a heatmap per practice, which is right for the Wellness page
-// and far too much for a door that wants one question answered. The rows here are the
-// two columns the inference reads and nothing else.
+// when a practice usually happens. The rows here are the two columns the inference
+// reads and nothing else.
 //
 // The whole history, not a window: `inferPracticeRhythm` does its own windowing, and
 // its fallback-hour ladder deliberately reads a practice's habitual hour from ANYWHERE
@@ -722,11 +572,8 @@ export function getPracticeRhythms(
 }
 
 // One practice as the global search needs it (#1595) — identity, display name, its
-// weekly cadence, and its session tally. Deliberately NOT getWellnessPractices():
-// that aggregate builds a heatmap and week-pace state per practice, which is right
-// for the page but far too much work per keystroke (and the palette renders none of
-// it). Same identity folding, same display-name decision, same cadence fields — just
-// the fields a hit shows.
+// weekly cadence, and its session tally — just the fields a hit shows, since this
+// runs per keystroke.
 export interface PracticeSearchRow {
   identity: string;
   name: string;
@@ -789,7 +636,7 @@ export function getPracticeSearchRows(profileId: number): PracticeSearchRow[] {
     if (!identity) continue;
     const row = slot(identity);
     // getPracticeTargets is already ordered, so the first target for an identity
-    // wins the spelling and cadence (matching getWellnessPractices).
+    // wins the spelling and cadence (matching getTrackedPractices).
     if (row.targetSpelling == null) {
       row.targetSpelling = target.scope_value;
       row.perWeek = target.per_week;
@@ -835,7 +682,7 @@ export function getPracticeSearchRows(profileId: number): PracticeSearchRow[] {
 export function getAllPracticeSessions(
   profileId: number,
   name: string,
-  limit = WELLNESS_CARD_SESSION_LIMIT
+  limit = PRACTICE_SESSION_LIMIT
 ): PracticeLog[] {
   return getPracticeSessions(profileId, name, limit);
 }
@@ -934,172 +781,9 @@ export function frequencyTargetLogWindowOpen(
   );
 }
 
-// ---- The Trends wellness lens (#1632) --------------------------------------
-
-// One COMPLETED week of a tracked practice: the window's inclusive start, the
-// distinct days it was logged, and the range verdict those two produce.
-export interface PracticeTrendWeek {
-  start: string;
-  count: number;
-  verdict: PracticeWeekVerdict;
-}
-
-// A tracked practice as the Trends lens renders it: its completed-week ledger,
-// the consistency that ledger rolls up to, and the per-day duration series for
-// the modalities that record one.
-export interface PracticeTrend {
-  targetId: number;
-  identity: string;
-  name: string;
-  perWeek: number;
-  perWeekMax: number | null;
-  /** Completed weeks, OLDEST FIRST — the render order of the strip and chart. */
-  weeks: PracticeTrendWeek[];
-  consistency: PracticeConsistency;
-  /** Sessions logged anywhere in the window, including the in-progress week. */
-  sessions: number;
-  /**
-   * Mean minutes per logged DAY, oldest first, for practices that record a
-   * duration. Empty for the ones that don't (a one-tap meditation log carries no
-   * minutes, and a zero-filled line would invent them).
-   */
-  duration: { date: string; value: number }[];
-  /** Whether the target itself existed for the whole window (see #1670). */
-  existedWholeWindow: boolean;
-}
-
-// The wellness lens's read (#1632): every TRACKED practice's completed-week
-// ledger over the hub's window.
-//
-// It is a FORMATTER over two existing gathers, not a third engine:
-//
-//   • The weeks come from `getFrequencyTargetWeeklyHistory` — the completed-weeks
-//     read #1670 built for the right-sizing detector. It already walks the
-//     profile's OWN weekly windows (calendar or rolling, in the profile's stored
-//     timezone), already folds practice spellings through `practiceIdentity`, and
-//     already excludes the in-progress week, which is under its floor by
-//     construction on every day but the last. Those are exactly this lens's
-//     requirements, so re-deriving them would have been a second answer to a
-//     question the app had already answered.
-//   • The verdict per week is `practiceWeekVerdict`, which is
-//     `frequencyRangeState` with the week fully elapsed — the same computation the
-//     /wellness card, the goal/habit atoms, Upcoming and the Telegram nudge
-//     key on. Trends formats those decisions; it never makes its own.
-//
-// TRACKED only: a practice with no weekly cadence has no floor and no ceiling, so
-// "weeks in range" is not a question that can be asked about it. It keeps its
-// /wellness card and its full session history.
-//
-// One extra query beyond the shared history read, regardless of how many
-// practices exist: a per-practice-per-day tally that carries both the session
-// count and the mean duration.
-export function getPracticeTrends(
-  profileId: number,
-  weeks: number,
-  asOf: string = profileToday(profileId)
-): PracticeTrend[] {
-  const history = getFrequencyTargetWeeklyHistory(
-    profileId,
-    weeks,
-    asOf
-  ).filter((item) => item.target.scope_kind === "practice");
-  if (history.length === 0) return [];
-
-  // The window the session/duration series covers: the first completed week's
-  // start through the anchor day. Deliberately WIDER at the end than the weekly
-  // ledger — a duration series is a per-session trend, not a weekly verdict, so
-  // sessions logged in the in-progress week belong on it.
-  const windowStart = history[0].weeks[0]?.start ?? asOf;
-  const rows = db
-    .prepare(
-      `SELECT practice, date,
-              COUNT(*) AS sessions,
-              COUNT(duration_min) AS timed,
-              COALESCE(SUM(duration_min), 0) AS minutes
-         FROM practice_logs
-        WHERE profile_id = ? AND date >= ? AND date <= ?
-        GROUP BY practice, date
-        ORDER BY date ASC`
-    )
-    .all(profileId, windowStart, asOf) as {
-    practice: string;
-    date: string;
-    sessions: number;
-    timed: number;
-    minutes: number;
-  }[];
-
-  // Fold the stored spellings onto the one identity (SQL cannot call the
-  // normalizer), summing sessions and averaging durations per day.
-  const byIdentity = new Map<
-    string,
-    Map<string, { sessions: number; minutes: number; withMinutes: number }>
-  >();
-  for (const row of rows) {
-    const identity = practiceIdentity(row.practice);
-    if (!identity) continue;
-    let days = byIdentity.get(identity);
-    if (!days) byIdentity.set(identity, (days = new Map()));
-    const day = days.get(row.date) ?? {
-      sessions: 0,
-      minutes: 0,
-      withMinutes: 0,
-    };
-    day.sessions += row.sessions;
-    // SUM/COUNT rather than AVG, so a day that merges two spellings — or mixes
-    // timed and untimed sessions — averages over the sessions that actually
-    // carried minutes, never over the ones that didn't.
-    day.minutes += row.minutes;
-    day.withMinutes += row.timed;
-    days.set(row.date, day);
-  }
-
-  return history
-    .map((item): PracticeTrend => {
-      const identity = practiceIdentity(item.target.scope_value);
-      const days = byIdentity.get(identity);
-      const weekRows = item.weeks.map((week) => ({
-        start: week.start,
-        count: week.count,
-        verdict: practiceWeekVerdict(
-          week.count,
-          item.target.per_week,
-          item.target.per_week_max
-        ),
-      }));
-      const duration: { date: string; value: number }[] = [];
-      let sessions = 0;
-      for (const [date, day] of days ?? []) {
-        sessions += day.sessions;
-        if (day.withMinutes > 0) {
-          duration.push({ date, value: day.minutes / day.withMinutes });
-        }
-      }
-      duration.sort((left, right) => left.date.localeCompare(right.date));
-      return {
-        targetId: item.target.id,
-        identity,
-        name: practiceDisplayName({
-          targetSpelling: item.target.scope_value,
-          identity,
-        }),
-        perWeek: item.target.per_week,
-        perWeekMax: item.target.per_week_max,
-        weeks: weekRows,
-        consistency: summarizePracticeWeeks(weekRows),
-        sessions,
-        duration,
-        existedWholeWindow: item.existedWholeWindow,
-      };
-    })
-    .sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
-    );
-}
-
 // Sessions + minutes per profile-local day AND practice, in [since, until] —
-// the gather behind the /wellness cross-practice day-history (the group×day
-// matrix over every practice, above the per-practice cards). Identity is
+// the gather behind History's cross-practice day-history (the group×day matrix
+// over every practice). Identity is
 // `practiceIdentity` — the canonical practice key every wellness surface binds
 // user-owned spellings through — with the first-seen raw spelling as the
 // display label. Rows whose name yields no identity (blank) are skipped.
@@ -1151,6 +835,31 @@ export function getPracticeDays(
     }
   }
   return [...byDayKey.values()];
+}
+
+// The cross-practice heat map's two inputs, from getPracticeDays' rows: one value per
+// day and practice, and the practices ordered by how often each was done.
+export function practiceDayHistory(days: readonly PracticeDay[]): {
+  values: DayHistoryValue[];
+  groups: DayHistoryGroupMeta[];
+} {
+  const totals = new Map<string, { label: string; total: number }>();
+  for (const d of days) {
+    const t = totals.get(d.key) ?? { label: d.label, total: 0 };
+    t.total += d.count;
+    totals.set(d.key, t);
+  }
+  return {
+    values: days.map((d) => ({
+      date: d.date,
+      group: d.key,
+      value: d.count,
+      detail: d.minutes,
+    })),
+    groups: [...totals.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([key, v]) => ({ key, label: v.label })),
+  };
 }
 
 // ---- Practice-time correction rows (issue #2875) ----------------------------
