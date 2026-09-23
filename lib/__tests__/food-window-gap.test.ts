@@ -11,6 +11,7 @@ import {
   foodWindowCloseMinute,
   isHabitualFoodWindow,
   previousFoodWindow,
+  todayFoodWindowGapRows,
   FOOD_WINDOW_HABIT_DAYS,
   FOOD_WINDOW_HABIT_MIN_DAYS,
   type LoggedFoodWindows,
@@ -25,6 +26,7 @@ import {
 import { RIGHTSIZE_WINDOW_DAYS } from "@/lib/target-rightsize";
 import { FOOD_REGULARITY_SPAN_DAYS } from "@/lib/food-regularity";
 import { shiftDateStr } from "@/lib/date";
+import { mergeMemberTimelines, type MergeableRow } from "@/lib/timeline-multi";
 import {
   foodWindowGapLine,
   renderFoodNudge,
@@ -453,5 +455,78 @@ describe("foodWindowGapLine", () => {
       { text: "Midday", bold: true },
       { text: " today." },
     ]);
+  });
+});
+
+// HOME'S RECORD (#6011): the same detector, asked for every window of today, placed
+// by the History day view's own order (#6010) at the window's close minute.
+describe("todayFoodWindowGapRows", () => {
+  const rowsAt = (minuteOfDay: number, logged: LoggedFoodWindows) =>
+    todayFoodWindowGapRows({
+      profileId: 1,
+      tz: "UTC",
+      now: { date: DATE, minuteOfDay },
+      boundaries: B,
+      logged,
+    });
+  const record = (id: string, sortTime: string | null): MergeableRow => ({
+    id,
+    date: DATE,
+    sortTime,
+    profileId: 1,
+  });
+
+  it("sorts a closed-empty habitual window in at its close minute", () => {
+    const gaps = rowsAt(
+      LATE.minuteOfDay,
+      ledger(DATE, { window: "Morning", windowDays: 10 })
+    );
+    expect(gaps.map((row) => [row.title, row.detail, row.edit])).toEqual([
+      ["Morning", "nothing logged", null],
+    ]);
+    const [day] = mergeMemberTimelines<MergeableRow>([
+      {
+        profileId: 1,
+        today: DATE,
+        events: [
+          record("dose:untimed", null),
+          record("food:1030", "10:30"),
+          ...gaps,
+          record("practice:1130", "11:30"),
+        ],
+      },
+    ]);
+    expect(day.events.map((row) => row.id)).toEqual([
+      "practice:1130",
+      "food-gap:Morning",
+      "food:1030",
+      "dose:untimed",
+    ]);
+  });
+
+  it("states a window only once it has closed on today", () => {
+    const logged = ledger(DATE, { window: "Midday", windowDays: 10 });
+    expect(rowsAt(B.evening - 1, logged)).toEqual([]);
+    expect(rowsAt(B.evening, logged).map((row) => row.sortTime)).toEqual([
+      "15:00",
+    ]);
+  });
+
+  it("says nothing of a window the profile does not habitually log", () => {
+    expect(
+      rowsAt(
+        LATE.minuteOfDay,
+        ledger(DATE, { window: "Morning", windowDays: 3 })
+      )
+    ).toEqual([]);
+  });
+
+  it("leaves yesterday's Evening to yesterday", () => {
+    const yesterday = shiftDateStr(DATE, -1);
+    // The Morning window's own report is yesterday's Evening, which the nudge states
+    // and Home's today does not.
+    expect(
+      rowsAt(7 * 60, ledger(yesterday, { window: "Evening", windowDays: 10 }))
+    ).toEqual([]);
   });
 });

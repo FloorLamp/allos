@@ -134,7 +134,9 @@ export default function LogPracticeButton({
   // only formats. No pattern → the caller passes false and the note renders NOWHERE
   // (#558). Data, not dueness (#1505) — it never changes the button or the counts.
   usualSessionDay?: boolean;
-  // Dashboard protocol rows collapse the redundant TODAY / no-sessions chrome.
+  // A dense row (Home's Now band, Upcoming) whose own detail already states the
+  // week's count ("1/3–5 this week"), so the control drops its count line and keeps
+  // only the buttons (#6009). On a 390px phone that line took the row's title width.
   compact?: boolean;
   // #5431's ruled row for the quick-log sheet: `label · facts · one trailing slot`.
   // The HOST row states the day's and the week's facts, so this control renders the
@@ -555,17 +557,15 @@ export default function LogPracticeButton({
       }`}
       data-testid="practice-log-control"
     >
-      {!chipRow && (!compact || count > 0 || usualSessionDay || atCeiling) ? (
+      {!chipRow && !compact ? (
         <div className="min-w-0">
-          {!compact ? <div className="section-label">Today</div> : null}
+          <div className="section-label">Today</div>
           <div
-            className={`${compact ? "" : "mt-1 "}text-sm font-medium text-slate-700 dark:text-slate-200`}
+            className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200"
             data-testid="practice-today-count"
           >
             {count === 0
-              ? compact
-                ? null
-                : "No sessions yet"
+              ? "No sessions yet"
               : count === 1
                 ? "1 session logged"
                 : `${count} sessions logged`}

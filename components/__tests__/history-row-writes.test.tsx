@@ -70,6 +70,10 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   },
 }));
 vi.mock("@/app/(app)/nutrition/actions", () => ({
+  logFoodServing: async (fd: FormData) => {
+    record("logFoodServing")(fd);
+    return { ok: true, eventId: 1, servings: 1 };
+  },
   updateFoodLogEvent: async (fd: FormData) => {
     record("updateFoodLogEvent")(fd);
     return { ok: true };
@@ -329,6 +333,42 @@ describe("the record's correction opens over its row, never in place of it", () 
     ]);
     expect(screen.getByRole("dialog", { name: "Type 4 — 07:41" })).toBeTruthy();
   });
+});
+
+// HOME'S MISSED-MEAL ROW (#6011) is the add door for its window: the title opens the
+// food form in place and the serving posts to the domain's own add action.
+it("opens the food form for a gap row's window and logs into it", async () => {
+  const gap = {
+    ...row({ id: "food-gap:Midday", kind: "food", title: "Midday" }),
+    date: ACTING_TODAY,
+    window: "Midday" as const,
+    boundaries: { midday: 660, evening: 900 },
+  };
+  cleanup();
+  render(
+    <HistoryRows
+      rows={[gap]}
+      writableProfileIds={[ACTING]}
+      doseItems={[]}
+      maxDates={{ [ACTING]: ACTING_TODAY }}
+      defaultTime="09:00"
+      subjectNames={{}}
+      foodGaps={[gap]}
+    />
+  );
+  await act(async () =>
+    fireEvent.click(screen.getByTestId("history-row-title"))
+  );
+  expect(screen.getByRole("dialog", { name: "Log food" })).toBeTruthy();
+  await act(async () =>
+    fireEvent.click(screen.getByTestId("history-row-food-gap-save"))
+  );
+  const fd = only("logFoodServing");
+  expect([fd.meal_slot, fd.date, fd.profile_id]).toEqual([
+    "Midday",
+    ACTING_TODAY,
+    String(ACTING),
+  ]);
 });
 
 describe("the record's ⋯ posts to the domain's own action", () => {

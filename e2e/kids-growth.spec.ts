@@ -193,7 +193,7 @@ test.describe.serial("kids growth trends", () => {
     rileyHeightBeforeWrite = captureRileyHeight();
     await heightInput.fill("82.5");
     await form.getByRole("button", { name: "Save measurements" }).click();
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
     await expect(form).toHaveCount(0);
 
     // The height still charts after the write (growth card remains populated).
