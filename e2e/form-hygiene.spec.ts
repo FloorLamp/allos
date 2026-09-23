@@ -165,10 +165,10 @@ test("the notification schedule select renders its default label unclipped (#145
   await select.selectOption("");
 });
 
-test("the longevity adherence select renders its default label unclipped (#1450 A)", async ({
+test("the protocol adherence select renders its default label unclipped (#1450 A)", async ({
   page,
 }) => {
-  await page.goto("/longevity");
+  await page.goto("/protocols");
   await page.getByTestId("new-protocol-toggle").click();
 
   // The select is behind the practice chip since #3219, so the clipping question is

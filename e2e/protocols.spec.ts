@@ -155,7 +155,7 @@ test.describe("protocols create → compare (issue #161)", () => {
       .toISOString()
       .slice(0, 10);
 
-    await page.goto("/longevity#protocols");
+    await page.goto("/protocols");
     const main = page.getByRole("main");
     const desktopViewport = page.viewportSize();
     expect(
@@ -218,7 +218,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     await dismissToast(page, "Protocol created");
     await expect(
       detailMain.getByRole("link", { name: "Protocols" })
-    ).toHaveAttribute("href", "/longevity#protocols");
+    ).toHaveAttribute("href", "/protocols");
     await expect(
       detailMain
         .getByRole("heading", { name: uniqueName })
@@ -488,7 +488,7 @@ test.describe("protocols create → compare (issue #161)", () => {
         .getByTestId("confirm-dialog")
         .getByRole("button", { name: "Delete protocol" })
     );
-    await page.waitForURL(/\/longevity(?:#|$)/);
+    await page.waitForURL(/\/protocols$/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 
@@ -504,7 +504,7 @@ test.describe("protocols create → compare (issue #161)", () => {
       .toISOString()
       .slice(0, 10);
 
-    await page.goto("/longevity#protocols");
+    await page.goto("/protocols");
     const main = page.getByRole("main");
     await main.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
@@ -561,7 +561,7 @@ test.describe("protocols create → compare (issue #161)", () => {
           .getByTestId("confirm-dialog")
           .getByRole("button", { name: "Delete protocol" })
       );
-      await page.waitForURL(/\/longevity(?:#|$)/);
+      await page.waitForURL(/\/protocols$/);
     }
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
@@ -577,7 +577,7 @@ test.describe("protocols recovery-gear filter (#592)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/longevity#protocols");
+    await page.goto("/protocols");
     await page.getByTestId("new-protocol-toggle").click();
     // The gear select is behind the row's `link` fact since #3219, and with nothing
     // linked yet that fact has no chip — it is reached through the one trailing

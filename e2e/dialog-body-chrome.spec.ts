@@ -231,7 +231,7 @@ test.describe("a dialog body renders content, never chrome (#3361)", () => {
     }) => {
       test.slow(); // next compiles this route on first hit
 
-      await page.goto("/longevity#protocols");
+      await page.goto("/protocols");
       await hydratedClick(
         page,
         page.getByRole("main").getByTestId("new-protocol-toggle")

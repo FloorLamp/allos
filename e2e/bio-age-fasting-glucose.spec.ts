@@ -11,9 +11,8 @@ import { frozenNow, workerDbPath } from "./worker-env";
 // What the hero must now show: the number, the fasting entry as the glucose input it
 // was built from, the reported "<0.2" beside the value it stood in for, and — because
 // a single number has no hollow dot to draw — the censoring said in words, naming the
-// input and the direction of the bias the substitution introduces. Since #2367 the
-// hero renders on /longevity; the Clinical results page keeps the input panel, which this
-// file also covers because it owns the draw that makes both states meaningful.
+// input and the direction of the bias the substitution introduces. The card renders
+// on Clinical results (#5556).
 //
 // Fixture ownership (#868): the spec plants ONE draw on a date no seeded reading
 // occupies (the newest seeded lab draw is 30 days back), so it owns the hero's latest
@@ -78,10 +77,10 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   page,
 }) => {
   test.slow();
-  // The hero renders on Longevity and nowhere else since #2367.
-  await page.goto("/longevity");
+  await page.goto("/results");
 
-  const hero = page.getByRole("main").getByTestId("bio-age-hero");
+  const card = page.getByRole("main").getByTestId("bio-age-inputs-card");
+  const hero = card.getByTestId("bio-age-hero");
   await expect(hero).toBeVisible();
   // A number, not a missing-inputs panel: the draw is complete.
   await expect(hero.getByTestId("bio-age-value")).toBeVisible();
@@ -94,7 +93,7 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   await expect(censored).toContainText("can only be too high");
 
   // The per-input list names the entry the glucose value actually came from…
-  const inputs = hero.getByTestId("bio-age-input");
+  const inputs = card.getByTestId("bio-age-input");
   await expect(inputs.filter({ hasText: "Glucose, Fasting" })).toHaveCount(1);
   // …and keeps the lab's "<" beside the substituted limit, never a laundered 0.2.
   const crpRow = inputs.filter({ hasText: CRP });
@@ -114,21 +113,5 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   // band; the unqualified one deliberately does not), so it states one.
   await expect(inputs.filter({ hasText: "Glucose, Fasting" })).toContainText(
     "(optimal)"
-  );
-});
-
-// The results page's half of the split (#2367): a complete panel, so nothing is
-// missing — but the input panel still renders, says so, and points at the hero.
-test("Clinical results keeps the inputs and links to the hero", async ({
-  page,
-}) => {
-  await page.goto("/results");
-  const main = page.getByRole("main");
-  const card = main.getByTestId("bio-age-inputs-card");
-  await expect(card).toBeVisible();
-  await expect(card.getByTestId("bio-age-input")).toHaveCount(9);
-  await expect(card.getByTestId("bio-age-hero-link")).toHaveAttribute(
-    "href",
-    "/longevity#bio-age"
   );
 });

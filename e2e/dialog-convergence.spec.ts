@@ -41,7 +41,7 @@ test("a wheel over the page behind an open dialog moves nothing until it closes"
   page,
 }) => {
   test.slow();
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
 
   // CONTROL: this page scrolls under exactly this wheel. The assertion below is
@@ -87,7 +87,7 @@ test("a dialog's declared size decides how wide it renders", async ({
   ).toBeVisible();
   const small = await panelWidth(page, "Add practice");
 
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   await hydratedClick(
     page,
     page.getByRole("main").getByTestId("new-protocol-toggle")

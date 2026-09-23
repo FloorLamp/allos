@@ -61,17 +61,17 @@ test.describe("a recorded pregnancy suspends the cycle state (#2801)", () => {
 });
 
 test.describe("life-stage gates past substance use (#2807)", () => {
-  // #3065 gated the Longevity surfaces; #3133 drew the finer line #3067's ruling
+  // #3065 gated the protocol hub; #3133 drew the finer line #3067's ruling
   // requires on the case #3065 did not anticipate — a protocol record the profile
   // OWNS (the supersede-in-prose pattern #3092 used on #2264). The HUB half of
-  // #3065 stands: Longevity is adult-only CONTENT, so the route and its nav entry
+  // #3065 stands: Protocols is adult-only CONTENT, so the hub and its nav entry
   // stay unreachable at any ineligible age. But the profile's own recorded
   // experiment is a data fact, never filtered from that profile — its detail page
   // renders READ-ONLY plus end/delete (#2993's fasting line: closing or removing
   // one's own record is always allowed; creating, editing, and resuming are
   // adult-gated, so their affordances are withheld rather than rendering forms
   // the server refuses).
-  test("a toddler cannot reach the Longevity hub, but its own protocol record renders (#3065/#3133)", async ({
+  test("a toddler cannot reach the Protocols hub, but its own protocol record renders (#3065/#3133)", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -79,11 +79,11 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      // The hub: redirected away, no fitness section, no nav entry.
-      await page.goto("/longevity");
+      // The hub: redirected away, no nav entry.
+      await page.goto("/protocols");
       await expect(page).toHaveURL(/\/$/);
-      await expect(page.getByTestId("longevity-fitness")).toHaveCount(0);
-      // #3079 made Longevity a child of the collapsed "Plan & review" group. Expand
+      await expect(page.getByTestId("protocols-index")).toHaveCount(0);
+      // #3079 made Protocols a child of the collapsed "Plan & review" group. Expand
       // it — and prove the expansion with an ungated sibling — so this absence is
       // still the ADULT-ONLY gate being observed and not a closed disclosure.
       // Trends (#4965), not History — History left this group for a top-level row.
@@ -92,7 +92,7 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       await expect(
         sidebarNav.getByRole("link", { name: "Trends" })
       ).toBeVisible();
-      await expect(page.getByRole("link", { name: "Longevity" })).toHaveCount(
+      await expect(page.getByRole("link", { name: "Protocols" })).toHaveCount(
         0
       );
 

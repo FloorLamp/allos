@@ -84,7 +84,7 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
 
   // Create a protocol that adopts the "Shellfish" food habit as its practice — the
   // #580 protocol↔target link. This also creates the shellfish habit target.
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
@@ -143,7 +143,7 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete protocol" })
   );
-  await page.waitForURL(/\/longevity(?:#|$)/);
+  await page.waitForURL(/\/protocols$/);
 });
 
 test("a food-group habit that conflicts with an active medication carries the interaction note (#661)", async ({

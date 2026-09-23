@@ -232,7 +232,7 @@ test.describe("tap-target rendered census (#3562)", () => {
 
   test("protocol, goal and injury detail menus", async ({ page }) => {
     test.setTimeout(120_000);
-    await page.goto("/longevity#protocols");
+    await page.goto("/protocols");
     await hydratedClick(
       page,
       page.getByRole("main").getByTestId("new-protocol-toggle")

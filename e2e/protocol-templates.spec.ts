@@ -6,7 +6,7 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
 
   await expect(main.getByTestId("protocol-form")).toHaveCount(0);
@@ -57,7 +57,7 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
   await expectNoClippedContent(page);
 
   // Durable template links still expand and seed the form on arrival.
-  await page.goto("/longevity?template=sun-exposure#protocols");
+  await page.goto("/protocols?template=sun-exposure");
   const linkedForm = page.getByTestId("protocol-form");
   await expect(linkedForm).toBeVisible();
   await expect(linkedForm.getByTestId("protocol-template-picker")).toHaveValue(
@@ -73,7 +73,7 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const uniqueName = `E2E outcome picker ${frozenNow().getTime()}`;
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
@@ -123,7 +123,7 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete protocol" })
   );
-  await page.waitForURL(/\/longevity(?:#|$)/);
+  await page.waitForURL(/\/protocols$/);
 });
 
 // THE FORM BLEEDS EXACTLY WHERE ITS HOST LETS IT (#4534).
@@ -140,7 +140,7 @@ test("the actions bar spans the panel from md, and no wider than it below (#4534
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 900 });
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   await page.getByRole("main").getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
   await expect(form).toBeVisible();

@@ -26,11 +26,8 @@ import { E2E_LOGIN_PANELINDEX, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // full variants. Read-only — only client-side disclosure is driven — so it is
 // repeat-safe with no reset.
 //
-// #2367 SPLIT the bio-age hero off this page: what sits in the glance slot here is
-// now the INPUT PANEL (which does not fold — nine checklist rows below the index cost
-// the first screen nothing), and the tall per-input hero moved to Longevity, where
-// its fold still has to hold. The hero's fold test therefore travels to /longevity
-// inside this file rather than into a new spec of its own.
+// The bio-age card (#5556) sits in the glance slot below the index: with a complete
+// draw it carries the estimate and folds its per-input effects on a phone.
 
 const CLINICAL_RESULTS = "/results/clinical-results";
 const PHONE = { width: 390, height: 844 };
@@ -186,35 +183,12 @@ test("the starred card folds its overflow tiles on a phone (#1578)", async ({
   await page.context().close();
 });
 
-test("the bio-age panel here is the INPUT list, not the hero (#2367)", async ({
+test("the bio-age card folds its inputs but never its estimate caveat (#1578)", async ({
   browser,
 }) => {
   const page = await openPhone(browser);
   const card = page.getByTestId("bio-age-inputs-card");
-
-  // The headline block is not on this page at all — that is the whole point of the
-  // split, and it is what the phone stack no longer has to carry.
-  await expect(page.getByTestId("bio-age-hero")).toHaveCount(0);
-  await expect(page.getByTestId("bio-age-value")).toHaveCount(0);
-
-  // What is here is the catalog question and its answer, laid out whole: nine rows,
-  // no fold, because below the index its height costs the first screen nothing.
-  await expect(card.getByTestId("bio-age-input")).toHaveCount(9);
-  for (const input of await card.getByTestId("bio-age-input").all())
-    await expect(input).toBeVisible();
-  await expect(page.getByTestId("bio-age-inputs-fold-toggle")).toHaveCount(0);
-  await expect(card.getByTestId("bio-age-hero-link")).toBeVisible();
-
-  await page.context().close();
-});
-
-test("the bio-age hero folds its inputs but never its estimate caveat (#1578)", async ({
-  browser,
-}) => {
-  // The hero's home since #2367 — same fold, same rule, one page over.
-  const page = await openPhone(browser);
-  await page.goto("/longevity");
-  const hero = page.getByTestId("bio-age-hero");
+  const hero = card.getByTestId("bio-age-hero");
 
   // The answer stays: the number, the delta, the pace.
   await expect(hero.getByTestId("bio-age-value")).toBeVisible();
@@ -222,19 +196,19 @@ test("the bio-age hero folds its inputs but never its estimate caveat (#1578)", 
   await expect(hero.getByTestId("bio-age-pace")).toBeVisible();
   // And so does the caveat — it qualifies the number itself, so it travels with it at
   // every width and is never behind a tap.
-  await expect(hero.getByTestId("bio-age-estimate")).toBeVisible();
+  await expect(card.getByTestId("bio-age-estimate")).toBeVisible();
 
   // The per-input list is what folds: present in the DOM, not laid out. Ten rows now
   // — the nine analytes plus chronological age (#2366).
-  await expect(hero.getByTestId("bio-age-input")).toHaveCount(10);
+  await expect(card.getByTestId("bio-age-input")).toHaveCount(10);
   await expect(
-    hero.getByTestId("bio-age-input").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; any one folded input proves the list is not laid out
+    card.getByTestId("bio-age-input").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; any one folded input proves the list is not laid out
   ).toBeHidden();
 
   const toggle = page.getByTestId("bio-age-inputs-fold-toggle");
   await expect(toggle).toHaveText("Show what moves it (10 inputs)");
   await hydratedClick(page, toggle);
-  for (const input of await hero.getByTestId("bio-age-input").all())
+  for (const input of await card.getByTestId("bio-age-input").all())
     await expect(input).toBeVisible();
 
   await page.context().close();
@@ -248,7 +222,7 @@ test("desktop renders every card whole, above the index, with no fold controls (
 
   // From `sm` up the folded slots are `display: contents`, so their children are laid
   // out by the parent exactly as before this change — one grid of six starred tiles,
-  // one nine-item input list, the trajectory rows inline — and the toggles are gone
+  // the ten-row bio-age input list, the trajectory rows inline — and the toggles are gone
   // because nothing is folded.
   await expect(page.getByTestId("starred-fold-toggle")).toBeHidden();
   await expect(page.getByTestId("trajectory-rows-fold-toggle")).toBeHidden();
@@ -286,7 +260,7 @@ test("desktop renders every card whole, above the index, with no fold controls (
   expect(new Set(lefts).size).toBe(3);
 
   const inputsCard = page.getByTestId("bio-age-inputs-card");
-  await expect(inputsCard.getByTestId("bio-age-input")).toHaveCount(9);
+  await expect(inputsCard.getByTestId("bio-age-input")).toHaveCount(10);
   for (const input of await inputsCard.getByTestId("bio-age-input").all())
     await expect(input).toBeVisible();
 

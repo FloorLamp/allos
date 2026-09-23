@@ -42,7 +42,7 @@ async function tapScrimCorner(page: import("@playwright/test").Page) {
 }
 
 async function openNewProtocol(page: import("@playwright/test").Page) {
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
   await hydratedClick(page, main.getByTestId("new-protocol-toggle"));
   const form = page.getByTestId("protocol-form");
@@ -54,7 +54,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
   test("a fact typed behind a closed panel still reaches the action", async ({
     page,
   }) => {
-    test.slow(); // next dev compiles the longevity + protocol routes on first hit
+    test.slow(); // next dev compiles the protocol routes on first hit
 
     const uniqueName = `E2E Fact Carry ${frozenNow().getTime()}`;
     const noteText = "five grams with breakfast";
@@ -123,7 +123,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
         .getByTestId("confirm-dialog")
         .getByRole("button", { name: "Delete protocol" })
     );
-    await page.waitForURL(/\/longevity(?:#|$)/);
+    await page.waitForURL(/\/protocols$/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 
@@ -430,7 +430,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
         .getByTestId("confirm-dialog")
         .getByRole("button", { name: "Delete protocol" })
     );
-    await page.waitForURL(/\/longevity(?:#|$)/);
+    await page.waitForURL(/\/protocols$/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 });

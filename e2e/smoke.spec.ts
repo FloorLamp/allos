@@ -73,68 +73,47 @@ test("Clinical results surfaces the derived PhenoAge biological age (#157)", asy
   await expect(note).toContainText("Levine PhenoAge");
 });
 
-// #209 as split by #2367: PhenoAge is surfaced as a headline biological-age HERO —
-// on EXACTLY ONE page. Biological age is a longevity index, so the hero is Longevity
-// §1; Results › Clinical results keeps the part of it that is about the analyte catalog (the
-// input panel and its link to the hero) because that is the page where the missing
-// analytes are added. For the seeded ADULT profile (a full nine-analyte panel + a
-// known age) both halves render. Read-only — no mutation.
-test("the biological-age hero renders on Longevity, and Clinical results keeps the inputs (#209/#2367)", async ({
+// #209: PhenoAge is surfaced as a headline biological-age estimate on Results ›
+// Clinical results (#5556), the page where its nine analytes are added. For the
+// seeded ADULT profile (a full nine-analyte panel + a known age) the number, its
+// delta, the input status and the estimate caveat render together. Read-only.
+test("the biological-age estimate renders on Clinical results with its inputs (#209/#5556)", async ({
   page,
 }) => {
   await page.goto("/results");
-  const results = page.getByRole("main");
-  // Not twice on two pages: the headline block is gone from here…
-  await expect(results.getByTestId("bio-age-hero")).toHaveCount(0);
-  // …and what remains is the catalog half, with the door to the hero.
-  const card = results.getByTestId("bio-age-inputs-card");
+  const card = page.getByRole("main").getByTestId("bio-age-inputs-card");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("bio-age-inputs-status")).toContainText(
     "inputs present"
   );
-  await expect(card.getByTestId("bio-age-hero-link")).toHaveAttribute(
-    "href",
-    "/longevity#bio-age"
-  );
-
-  await page.goto("/longevity");
-  const hero = page.getByRole("main").getByTestId("bio-age-hero");
-  await expect(hero).toBeVisible();
+  const hero = card.getByTestId("bio-age-hero");
   // The headline number and its delta to chronological age.
   await expect(hero.getByTestId("bio-age-value")).toBeVisible();
   await expect(hero.getByTestId("bio-age-delta")).toContainText("calendar age");
   // Estimate framing with the model citation (never a precise verdict).
-  const estimate = hero.getByTestId("bio-age-estimate");
+  const estimate = card.getByTestId("bio-age-estimate");
   await expect(estimate).toContainText("estimate");
   await expect(estimate).toContainText("Levine PhenoAge");
   await expect(estimate).toContainText("not a precise verdict");
 });
 
-// #209: the hero is ADULT-GATED exactly as the computation is — hidden entirely for a
+// #209: the card is ADULT-GATED exactly as the computation is — hidden entirely for a
 // child profile (PhenoAge is an adult population model). Signs in as the dedicated
 // Riley-only member in an isolated context with its own fresh session, so
 // it never disturbs the shared admin session other specs depend on.
-test("biological-age hero is absent for a child profile (#209)", async ({
+test("biological-age card is absent for a child profile (#209)", async ({
   browser,
 }) => {
-  // Four server renders on this one path — login, the dashboard, Clinical results and now
-  // Longevity, since #2367 put the two halves of the gate on two pages — each a
-  // first hit for this context. That is past the default budget on a loaded runner.
-  test.slow();
   const page = await loginAs(browser, {
     username: E2E_LOGIN_CHILD,
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    // On the child's Clinical results page NOTHING bio-age renders — not the hero (which
-    // now lives on Longevity) and not the input panel that replaced it here.
     await page.goto("/results");
+    // Positive control: the page itself rendered for the child.
+    await expect(page.getByRole("main")).toBeVisible();
     await expect(
       page.getByRole("main").getByTestId("bio-age-inputs-card")
-    ).toHaveCount(0);
-    await page.goto("/longevity");
-    await expect(
-      page.getByRole("main").getByTestId("bio-age-hero")
     ).toHaveCount(0);
   } finally {
     await page.context().close();

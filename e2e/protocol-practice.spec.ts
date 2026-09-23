@@ -40,7 +40,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
     .toISOString()
     .slice(0, 10);
 
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
@@ -125,7 +125,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete protocol" })
   );
-  await page.waitForURL(/\/longevity(?:#|$)/);
+  await page.waitForURL(/\/protocols$/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });
 
@@ -163,7 +163,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
     .toISOString()
     .slice(0, 10);
 
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
@@ -277,7 +277,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   // protocol remains contained at the narrow acceptance viewport, and the logged
   // event keeps its count intensity.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   const row = page
     .getByTestId("protocol-list")
     .locator("li")
@@ -349,7 +349,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete protocol" })
   );
-  await page.waitForURL(/\/longevity(?:#|$)/);
+  await page.waitForURL(/\/protocols$/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });
 
@@ -366,7 +366,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     name: string,
     practiceValue: "cardio" | "food_group:fatty_fish"
   ) {
-    await page.goto("/longevity#protocols");
+    await page.goto("/protocols");
     await page.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name", { exact: true }).fill(name);
@@ -406,7 +406,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
         .getByTestId("confirm-dialog")
         .getByRole("button", { name: "Delete protocol" })
     );
-    await page.waitForURL(/\/longevity(?:#|$)/);
+    await page.waitForURL(/\/protocols$/);
   }
 
   const activityName = `E2E Cardio Protocol ${iteration}`;
@@ -500,9 +500,9 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
 test("the cadence editor offers a Maximum only for a scope that stores one (#3353)", async ({
   page,
 }) => {
-  test.slow(); // next dev compiles /longevity on first hit
+  test.slow(); // next dev compiles /protocols on first hit
 
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   await page.getByRole("main").getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
   await expect(form).toBeVisible();

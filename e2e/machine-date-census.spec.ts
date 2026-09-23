@@ -404,15 +404,10 @@ const ROUTES: CensusRoute[] = [
     unitSubject: (page) => page.getByTestId("biomarker-latest-value"),
   },
   {
-    path: "/longevity",
+    path: "/results/clinical-results",
     why: "The biological-age input list's stored lab values and units.",
     minTextNodes: 40,
-    // This route joins the census for its micro-unit fixture. Its existing raw
-    // dates are #3492 follow-up scope, not a reason to omit the unit surface.
-    // Measured while widening the collector (2026-09-10), the date rule finds them
-    // in `[data-testid="longevity-fitness-coverage"]` and in every
-    // `[data-testid="longevity-biomarker-date"]` — all inside `<main>`, so they are
-    // this exception's declared cost and not fallout from #5104.
+    // Asked only about the bio-age card's micro-unit row.
     kinds: ["lab-unit"],
     unitSubject: (page) =>
       page.getByTestId("bio-age-input").filter({

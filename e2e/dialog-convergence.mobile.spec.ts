@@ -331,7 +331,7 @@ test("a drag begun in a nested form scroller stays native for its whole touch", 
   page,
 }) => {
   test.slow();
-  await page.goto("/longevity#protocols");
+  await page.goto("/protocols");
   await hydratedClick(
     page,
     page.getByRole("main").getByTestId("new-protocol-toggle")
