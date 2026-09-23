@@ -59,7 +59,7 @@ import {
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 import type { AppRoute } from "@/lib/hrefs";
-import Link from "next/link";
+import { DestinationActionLink } from "@/components/DestinationLink";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
 import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import Button from "@/components/Button";
@@ -831,14 +831,13 @@ export default function SymptomLogBar({
           </button>
         )}
         {analysisHref && (
-          <Link
+          <DestinationActionLink
             href={analysisHref}
             data-testid="symptom-analysis-link"
-            className="btn-ghost btn-sm"
           >
             <IconChartBar className="h-3.5 w-3.5" />
             Symptom trends
-          </Link>
+          </DestinationActionLink>
         )}
       </div>
 

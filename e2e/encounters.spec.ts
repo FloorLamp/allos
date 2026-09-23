@@ -263,7 +263,8 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
       /\/encounters\/\d+$/
     );
     const edit = page.getByTestId("edit-encounter");
-    await expect(edit).toHaveClass(/\bbtn\b/);
+    await expect(edit).toHaveAttribute("data-button-control", "");
+    await expect(edit).not.toHaveClass(/\bbutton-control-primary\b/);
     await edit.click();
     const dialog = page.getByRole("dialog", { name: "Edit visit" });
     await expect(dialog).toBeVisible();

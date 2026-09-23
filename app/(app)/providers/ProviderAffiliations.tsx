@@ -190,6 +190,7 @@ export default function ProviderAffiliations({
       {canEdit ? (
         <div className="mt-3">
           <Button
+            variant="primary"
             data-testid="affiliation-add-toggle"
             onClick={() => {
               setError(null);
