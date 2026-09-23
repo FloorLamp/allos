@@ -371,6 +371,9 @@ export interface FoodPayload {
   // OPTIONAL: absent on an intent queued before this shipped, and absent —
   // overwhelmingly — whenever the user simply didn't state a time.
   eatenAt?: string | null;
+  // The `This meal` marks pressed for the tap (#5865), checked against the closed
+  // vocabulary at replay. Absent on older intents and unmarked taps.
+  properties?: string[];
 }
 
 // Mobility move tapped ON while offline (#2130 — the coverage record's newest

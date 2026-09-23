@@ -36,7 +36,11 @@ export default function CatalogRow<Props, Item>({
   inactive: boolean;
   kind: string;
   inactiveLabel: string;
-  editor: CatalogEditorProps<Props, Item>;
+  /**
+   * The row's Edit. Absent for a session that may only read: with no delete either,
+   * the row carries no ⋯ menu at all.
+   */
+  editor?: CatalogEditorProps<Props, Item>;
   /**
    * The row's delete, when the catalog offers one. A bound Server Action, so the
    * CONFIRM and the toast stay here rather than being written again at each catalog:
@@ -84,76 +88,80 @@ export default function CatalogRow<Props, Item>({
       </div>
       <div className="flex items-center gap-3">
         {control}
-        <OverflowMenu
-          itemName={name}
-          kind={kind}
-          open={menu}
-          onOpenChange={setMenu}
-        >
-          {({ close, runAction }) => (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM}
-                onClick={() => {
-                  close();
-                  setEditing(true);
-                }}
-              >
-                Edit
-              </button>
-              {deleteAction && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM_DANGER}
-                  onClick={async () => {
-                    // FAIL CLOSED. A question nobody can be asked is not a question
-                    // that was answered yes, and the refusal is SAID rather than
-                    // silent: a delete that quietly does nothing is the same mystery
-                    // as a delete that quietly happens. It rides the menu's own
-                    // outcome channel (#2133), which is what renders every other
-                    // typed refusal here — and `no-alert` rules out the browser's
-                    // dialog as a stand-in, correctly.
-                    if (!confirm) {
+        {(editor || deleteAction) && (
+          <OverflowMenu
+            itemName={name}
+            kind={kind}
+            open={menu}
+            onOpenChange={setMenu}
+          >
+            {({ close, runAction }) => (
+              <>
+                {editor && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      close();
+                      setEditing(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {deleteAction && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM_DANGER}
+                    onClick={async () => {
+                      // FAIL CLOSED. A question nobody can be asked is not a question
+                      // that was answered yes, and the refusal is SAID rather than
+                      // silent: a delete that quietly does nothing is the same mystery
+                      // as a delete that quietly happens. It rides the menu's own
+                      // outcome channel (#2133), which is what renders every other
+                      // typed refusal here — and `no-alert` rules out the browser's
+                      // dialog as a stand-in, correctly.
+                      if (!confirm) {
+                        await runAction(
+                          async () => ({
+                            ok: false as const,
+                            error: `Couldn't ask you to confirm deleting ${name}, so nothing was deleted.`,
+                          }),
+                          new FormData(),
+                          ""
+                        );
+                        return;
+                      }
+                      // The menu stands down the moment the decision opens over it
+                      // (#2599, handled by OverflowMenu itself), so a cancelled delete
+                      // leaves no backdrop behind to eat the next tap.
+                      if (
+                        !(await confirm({
+                          title: `Delete ${kind.toLowerCase()}`,
+                          message: `Delete ${name}? This cannot be undone.`,
+                          confirmLabel: "Delete",
+                          danger: true,
+                        }))
+                      )
+                        return;
                       await runAction(
-                        async () => ({
-                          ok: false as const,
-                          error: `Couldn't ask you to confirm deleting ${name}, so nothing was deleted.`,
-                        }),
+                        deleteAction,
                         new FormData(),
-                        ""
+                        `Deleted ${name}`
                       );
-                      return;
-                    }
-                    // The menu stands down the moment the decision opens over it
-                    // (#2599, handled by OverflowMenu itself), so a cancelled delete
-                    // leaves no backdrop behind to eat the next tap.
-                    if (
-                      !(await confirm({
-                        title: `Delete ${kind.toLowerCase()}`,
-                        message: `Delete ${name}? This cannot be undone.`,
-                        confirmLabel: "Delete",
-                        danger: true,
-                      }))
-                    )
-                      return;
-                    await runAction(
-                      deleteAction,
-                      new FormData(),
-                      `Deleted ${name}`
-                    );
-                  }}
-                >
-                  Delete
-                </button>
-              )}
-            </>
-          )}
-        </OverflowMenu>
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </>
+            )}
+          </OverflowMenu>
+        )}
       </div>
-      {editing && (
+      {editor && editing && (
         <CatalogFormDialog {...editor} onClose={() => setEditing(false)} />
       )}
     </li>
