@@ -10,7 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { syncInstantBefore } from "./sync-instants";
 import { pinnedTimezone } from "./pinned-timezone";
-import { dateStrInTz, shiftDateStr, type LocalDay } from "../lib/date";
+import { dateStrInTz, shiftDateStr } from "../lib/date";
+import type { LocalDay } from "../lib/temporal-types";
 
 // DB-per-worker addressing (issue #1538) — the ONE place that answers "which DB,
 // which port, which directory belongs to THIS Playwright worker".
@@ -179,7 +180,7 @@ export function frozenToday(
  * rather than a previous year's card: a fixed offset leaves the year whenever the
  * frozen clock sits early in one, as a forward-clock run often does (#6015).
  */
-export function frozenDayThisYear(offsetDays: number): LocalDay {
+export function frozenDayThisYear(offsetDays: number): string {
   const today = frozenToday();
   const day = shiftDateStr(today, offsetDays);
   const floor = `${today.slice(0, 4)}-01-02`;

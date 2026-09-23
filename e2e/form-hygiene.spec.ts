@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { appContent, hydratedClick } from "./helpers";
 import { openProtocolFact } from "./protocol-form-helpers";
 import { openVisitFact } from "./visit-form-helpers";
+import { frozenToday } from "./worker-env";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
 // Three things the census found and this pins:
@@ -210,10 +211,14 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
   // filled string STAYS the DOM value). Retry the fill so a pre-hydration one that
   // React reverts is re-applied, and settle on the formatted result.
   // eslint-disable-next-line no-restricted-properties -- topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
+  // The next Dec 24 after the frozen day, so the visit stays upcoming (#6015).
+  const today = frozenToday();
+  let year = Number(today.slice(0, 4));
+  if (today >= `${year}-12-24`) year += 1;
   await expect(async () => {
-    await dateField.fill("2026-12-24");
+    await dateField.fill(`${year}-12-24`);
     // The year-bearing short form, not the year-less long one it used to render.
-    await expect(dateField).toHaveValue("Dec 24, 2026", { timeout: 2_000 });
+    await expect(dateField).toHaveValue(`Dec 24, ${year}`, { timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
   const clipped = await dateField.evaluate(
     (el) => el.scrollWidth > el.clientWidth + 1
