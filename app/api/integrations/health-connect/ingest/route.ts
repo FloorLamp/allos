@@ -29,6 +29,7 @@ import {
   ingestHealthConnectPayload,
 } from "@/lib/integrations/health-connect-ingest";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
+import { parseUtcSql } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
 import { writeRawPayload } from "@/lib/integrations/raw-log";
@@ -293,13 +294,20 @@ export async function POST(req: Request) {
     // shared orchestrator re-derives the finding from the OPEN episode's LATEST
     // reading — so a rolling-window re-push of an older reading, or a batch with no
     // open episode, sends nothing — and the per-finding marker + suppression bus own
-    // dedup. The cheap pre-check inside the helper keeps ordinary batches free of
-    // notification work; the hottest reading in the batch is the trigger candidate.
-    const batchTemps = parsed.vitals
+    // dedup. Only the batch's latest reading can be that LATEST, so it is the one
+    // passed, with its own instant: a crossing from before midnight synced late
+    // still pushes (#6024). A normal one settles the marker of a finding it ended
+    // (#6018).
+    const latestTemp = parsed.vitals
       .filter((v) => v.canonical === "Body Temperature")
-      .map((v) => v.value_num);
-    if (batchTemps.length) {
-      queueTempRedFlagDispatch(INGEST_PROFILE_ID, Math.max(...batchTemps));
+      .sort((a, b) => (a.occurred_at ?? "").localeCompare(b.occurred_at ?? ""))
+      .at(-1);
+    if (latestTemp) {
+      queueTempRedFlagDispatch(
+        INGEST_PROFILE_ID,
+        latestTemp.value_num,
+        parseUtcSql(latestTemp.occurred_at) ?? undefined
+      );
     }
   }
 

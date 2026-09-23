@@ -29,6 +29,7 @@ import {
   profileAgeMonths,
 } from "../settings";
 import { db, nowTime, today } from "../db";
+import { now } from "../clock";
 import { hhmmToMinutes, shiftDateStr } from "../date";
 import { episodeHref } from "../hrefs";
 import { dispatch } from "./index";
@@ -207,10 +208,15 @@ export async function runTempRedFlag(
 // reading synced at 00:05 pushes. Ten minutes covers a sync a few minutes late and
 // nothing a morning re-carry or a backfill reaches.
 const MIDNIGHT_GRACE_MINUTES = 10;
+// A synced reading states when it was taken, so the door can go further for it: one
+// from before midnight still pushes if it arrived within this lag of its own instant
+// (#6024), e.g. a phone that was offline overnight. A later arrival is a re-carry.
+const SYNC_LAG_MINUTES = 120;
 
 export async function dispatchTempRedFlagForReading(
   profileId: number,
-  degF: number
+  degF: number,
+  takenAt?: Date
 ): Promise<{ failed: boolean }> {
   // Captured before any await, so the reading judges against the day it arrived.
   const date = today(profileId);
@@ -221,8 +227,13 @@ export async function dispatchTempRedFlagForReading(
     settleTempRedFlag(profileId, date);
     return { failed: false };
   }
+  const takenRecently =
+    takenAt != null &&
+    now().getTime() - takenAt.getTime() <= SYNC_LAG_MINUTES * 60_000;
   const staleBefore =
-    minuteOfDay < MIDNIGHT_GRACE_MINUTES ? shiftDateStr(date, -1) : date;
+    minuteOfDay < MIDNIGHT_GRACE_MINUTES || takenRecently
+      ? shiftDateStr(date, -1)
+      : date;
   return assessTempRedFlagNow(profileId, { staleBefore, retryOwed: false });
 }
 
@@ -281,9 +292,10 @@ async function assessTempRedFlagNow(
 // caller's response.
 export function queueTempRedFlagDispatch(
   profileId: number,
-  degF: number
+  degF: number,
+  takenAt?: Date
 ): void {
-  void dispatchTempRedFlagForReading(profileId, degF).catch((e) => {
+  void dispatchTempRedFlagForReading(profileId, degF, takenAt).catch((e) => {
     log.error("temp-red-flag write-path dispatch failed", {
       profile: profileId,
       err: e instanceof Error ? e : String(e),

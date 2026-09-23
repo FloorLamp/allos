@@ -45,6 +45,8 @@ import {
   setActiveSituations,
 } from "@/lib/settings/profile-attrs";
 import { snoozeFinding } from "@/lib/queries/upcoming/suppressions";
+import { POST } from "@/app/api/integrations/health-connect/ingest/route";
+import { generateHealthConnectToken } from "@/lib/integrations/connections";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -628,6 +630,68 @@ describe("a second crossing on the same day (#6018)", () => {
     // A normal reading backfilled before the crossing, which stays the latest.
     logTemperatureCore(p, 99.1, "F", day, "page", "13:00");
     await dispatchTempRedFlagForReading(p, 99.1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// A fever reading from before midnight that Health Connect syncs after it (#6024): the
+// reading carries its own instant, so the door accepts it within a bounded lag of that
+// instant, and refuses it after, as before.
+describe("a synced reading from before midnight (#6024)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+
+  function syncedFeverProfile(name: string) {
+    const p = newProfile(name);
+    setTimezone(p, TZ);
+    configureHA(p);
+    makeSick(p, 1);
+    const token = generateHealthConnectToken(p);
+    const day = today(p);
+    const takenAt = zonedWallTimeToUtc(TZ, day, "23:50")!.toISOString();
+    // Resolves once the fire-and-forget dispatch has run to its end.
+    const ingest = async () => {
+      await POST(
+        new Request("http://x/api/integrations/health-connect/ingest", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            app_version: "test",
+            body_temperature: [{ time: takenAt, celsius: 40.3 }],
+          }),
+        })
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+    return { p, day, ingest };
+  }
+
+  it("a 23:50 crossing synced at 00:40 pushes once; a re-carry does not push again", async () => {
+    const { p, day, ingest } = syncedFeverProfile("TrfLateSync");
+    const fetchMock = stubFetch();
+
+    at(shiftDateStr(day, 1), "00:40");
+    await ingest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    at(shiftDateStr(day, 1), "01:10");
+    await ingest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+  });
+
+  it("the same reading synced at 03:00 does not push", async () => {
+    const { day, ingest } = syncedFeverProfile("TrfLateSyncStale");
+    const fetchMock = stubFetch();
+
+    at(shiftDateStr(day, 1), "03:00");
+    await ingest();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
