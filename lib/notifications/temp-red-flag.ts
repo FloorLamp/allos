@@ -18,13 +18,15 @@ import { planIllnessCareNudges } from "../illness-care";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
+  getProfileSetting,
   setProfileSetting,
   deleteProfileSetting,
   getProfileSettingKeysWithPrefix,
   getPublicUrl,
   profileAgeMonths,
 } from "../settings";
-import { db, today } from "../db";
+import { db, nowTime, today } from "../db";
+import { hhmmToMinutes, shiftDateStr } from "../date";
 import { episodeHref } from "../hrefs";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -36,6 +38,10 @@ const log = createLogger("notify");
 const MARKER_PREFIX = "notify_last_tempredflag_";
 const markerKey = (dedupeKey: string) => `${MARKER_PREFIX}${dedupeKey}`;
 const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
+// A live finding whose send failed. The marker is the "sent" token, so it cannot say
+// this; the owed record lets the tick retry across a day roll (#5984).
+const OWED_PREFIX = "notify_owed_tempredflag_";
+const owedKey = (dedupeKey: string) => `${OWED_PREFIX}${dedupeKey}`;
 
 // Render the nudge from the finding's title, cited line, and source. A "View episode"
 // deep-link is the only affordance (nothing idempotent to toggle), following the two-way
@@ -70,35 +76,36 @@ export function renderTempRedFlagMessage(
   };
 }
 
+// Who asked for a run, and which day it judges staleness against. The tick judges
+// against its own day and retries a finding an earlier run judged live but failed to
+// deliver. An event door judges against the day its event happened and leaves the
+// owed record to the tick, so the two cannot both deliver it.
+export interface TempRedFlagAsk {
+  staleBefore: string;
+  retryOwed: boolean;
+}
+
 // Send the temperature red-flag nudge for one profile when a NEW crossing comes due.
 // Returns whether a send failed. `date` is the profile-local date (the dedup value).
 export async function runTempRedFlag(
   profileId: number,
-  date: string
+  date: string,
+  ask: TempRedFlagAsk = { staleBefore: date, retryOwed: true }
 ): Promise<{ failed: boolean }> {
   // "dual" display (#1019): the nudge has no login-unit context (prefs are
   // per-login, notifications per-profile), and a mixed-preference household must
   // read a fever red-flag correctly either way — so the safety message carries
   // BOTH scales ("38.5 °C / 101.3 °F"). The dedupeKey is display-independent, so
   // the bus gating below still matches the web surfaces' keys exactly.
-  const found = tempRedFlagFindingFor(profileId, date, "dual");
-  // REFUSED HERE: a finding whose day precedes `date`, the run's day (#5969, owner
-  // ruling 2026-09-18). It is not sent and no per-finding marker is written for it;
-  // the run continues as if there were no finding, so a marker that is no longer
-  // actionable is still cleared. The reading itself stays on the episode's web
-  // surfaces. The episode-open door, the reading door and the hourly tick all pass
-  // through this line.
-  const finding = found && found.date < date ? null : found;
+  const finding = tempRedFlagFindingFor(profileId, date, "dual");
   const actionableKeys = finding ? [finding.dedupeKey] : [];
 
   // Route through the shared findings-suppression bus (#227).
   const suppressions = getFindingSuppressions(profileId);
-  const suppressedKeys = finding
-    ? actionableKeys.filter((k) => {
-        const rec = suppressions.get(k);
-        return rec != null && isSuppressed(rec, date);
-      })
-    : [];
+  const suppressedKeys = actionableKeys.filter((k) => {
+    const rec = suppressions.get(k);
+    return rec != null && isSuppressed(rec, date);
+  });
 
   const markedKeys = getProfileSettingKeysWithPrefix(
     profileId,
@@ -115,8 +122,28 @@ export async function runTempRedFlag(
     deleteProfileSetting(profileId, markerKey(dedupeKey));
     log.info("temp-red-flag cleared", { profile: profileId, key: dedupeKey });
   }
+  // An owed retry ends with its finding, or when the finding is snoozed or dismissed:
+  // a snooze that lapses days later must not push a finding that old.
+  for (const key of getProfileSettingKeysWithPrefix(profileId, OWED_PREFIX)) {
+    const dedupeKey = key.slice(OWED_PREFIX.length);
+    if (
+      !actionableKeys.includes(dedupeKey) ||
+      suppressedKeys.includes(dedupeKey)
+    ) {
+      deleteProfileSetting(profileId, key);
+    }
+  }
 
   if (toSend.length === 0 || !finding) return { failed: false };
+
+  // REFUSED HERE: a finding that was already stale when the run started (#5969, #5984):
+  // its day precedes `ask.staleBefore`, and no earlier live run left it owed. Only the
+  // send is refused. The finding is still actionable, so its marker, if any, stays and
+  // the web surfaces keep showing it; a backdated episode open pushes nothing.
+  const owed =
+    ask.retryOwed &&
+    getProfileSetting(profileId, owedKey(finding.dedupeKey)) != null;
+  if (finding.date < ask.staleBefore && !owed) return { failed: false };
 
   const base = getPublicUrl();
   const episodeId = episodeForProfileDate(profileId, date)?.id ?? null;
@@ -136,10 +163,13 @@ export async function runTempRedFlag(
   const failed = results.some((r) => !r.ok);
   if (results.some((r) => r.ok)) {
     setProfileSetting(profileId, markerKey(finding.dedupeKey), date);
+    deleteProfileSetting(profileId, owedKey(finding.dedupeKey));
     log.info("temp-red-flag nudge sent", {
       profile: profileId,
       key: finding.dedupeKey,
     });
+  } else {
+    setProfileSetting(profileId, owedKey(finding.dedupeKey), date);
   }
   return { failed };
 }
@@ -159,15 +189,25 @@ export async function runTempRedFlag(
 // one): a 2 AM 106 °F reading is the overnight-emergency case, and the reading only
 // exists because a caregiver is awake logging it. The tick path keeps its waking
 // window; only this event-driven send skips it.
+//
+// Just after local midnight the reading door still accepts the day before, so a 23:50
+// reading synced at 00:05 pushes. Ten minutes covers a sync a few minutes late and
+// nothing a morning re-carry or a backfill reaches.
+const MIDNIGHT_GRACE_MINUTES = 10;
+
 export async function dispatchTempRedFlagForReading(
   profileId: number,
   degF: number
 ): Promise<{ failed: boolean }> {
+  // Captured before any await, so the reading judges against the day it arrived.
   const date = today(profileId);
+  const minuteOfDay = hhmmToMinutes(nowTime(profileId));
   if (!detectTempRedFlag(degF, profileAgeMonths(profileId, date))) {
     return { failed: false };
   }
-  return assessTempRedFlagNow(profileId);
+  const staleBefore =
+    minuteOfDay < MIDNIGHT_GRACE_MINUTES ? shiftDateStr(date, -1) : date;
+  return assessTempRedFlagNow(profileId, { staleBefore, retryOwed: false });
 }
 
 // The same immediate assessment with NO reading in hand.
@@ -191,28 +231,32 @@ export async function dispatchTempRedFlagForReading(
 // produces no finding. Since #5969 the symptom bar's door can open the row on the day
 // the bar was showing, so the reading that walked the door is inside the window on
 // whichever day it was logged for. What keeps that from pushing a day late is the
-// refusal in `runTempRedFlag`: a finding whose day precedes the run's day is not sent
-// and gets no marker. This door runs for the profile's today, so it meets that refusal
-// like the reading door and the hourly tick do.
+// refusal in `runTempRedFlag`: this door judges against the profile's today, so a
+// finding from before it is not sent and gets no marker, and the hourly tick refuses it
+// the same way.
 //
 // The per-finding marker and the suppression bus are unchanged, so this can no more
 // double-send than the reading path can — the two share one orchestrator and one key.
 export async function dispatchTempRedFlagForEpisodeOpen(
   profileId: number
 ): Promise<{ failed: boolean }> {
-  return assessTempRedFlagNow(profileId);
+  return assessTempRedFlagNow(profileId, {
+    staleBefore: today(profileId),
+    retryOwed: false,
+  });
 }
 
 // The shared tail of both event-driven doors: confirm the profile still exists, then
 // hand the question to the ONE orchestrator the hourly tick also runs.
 async function assessTempRedFlagNow(
-  profileId: number
+  profileId: number,
+  ask: TempRedFlagAsk
 ): Promise<{ failed: boolean }> {
   const profile = db
     .prepare("SELECT id FROM profiles WHERE id = ?")
     .get(profileId) as { id: number } | undefined;
   if (!profile) return { failed: false };
-  return runTempRedFlag(profileId, today(profileId));
+  return runTempRedFlag(profileId, today(profileId), ask);
 }
 
 // Fire-and-forget wrapper for request-path callers (the temperature Server Action,

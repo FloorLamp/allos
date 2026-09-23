@@ -14,9 +14,9 @@ import { createLogger } from "./log";
 
 const log = createLogger("ai-probe");
 
-// A 1×1 transparent PNG — the smallest valid image, for the vision-capability probe.
+// A 32×32 red PNG for the image-acceptance probe.
 const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg==";
 
 export interface TierProbeResult {
   ok: boolean;
@@ -123,7 +123,7 @@ export async function probeTier(tier: TierName): Promise<TierProbeResult> {
       tier,
       model,
       visionCapable: false,
-      message: `${model} answered text but rejected an image — document extraction will fail. Choose a vision-capable model for the Heavy tier.`,
+      message: `${model} answered text, but the image test failed: ${detail}`,
     };
   }
 }
