@@ -3,6 +3,7 @@ import {
   MEDICATIONS_HREF,
   type AppRoute,
   dataSectionHref,
+  historyHref,
 } from "./hrefs";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
@@ -151,8 +152,8 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     id: "caregiving",
     label: "Help care for a family member",
     description: "Set up or review the people this login can help manage.",
-    actionLabel: "View the household",
-    actionHref: "/household",
+    actionLabel: "See everyone's record",
+    actionHref: historyHref({ everyone: true }),
   },
   {
     id: "explore",

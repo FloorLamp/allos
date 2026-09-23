@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Button from "@/components/Button";
 import { changeOwnPassword } from "./actions";
+import SectionHeading from "@/components/SectionHeading";
 
 // Self-service password change for the signed-in login. Verifies the current
 // password server-side, then signs out the login's other sessions.
@@ -35,9 +36,7 @@ export default function ChangePasswordSettings({
   return (
     <div className="card space-y-4">
       <div>
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Password
-        </h2>
+        <SectionHeading level={2}>Password</SectionHeading>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Change the password for your login ({username}). Your other signed-in
           devices are logged out.

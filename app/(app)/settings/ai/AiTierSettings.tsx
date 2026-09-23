@@ -5,6 +5,7 @@ import type { TierConfigView } from "@/lib/settings/ai-tiers";
 import type { ApiShape, TierName } from "@/lib/ai-tiers";
 import Button from "@/components/Button";
 import { saveAiTierConfig, testAiTier } from "./actions";
+import SectionHeading from "@/components/SectionHeading";
 
 // The GLOBAL AI provider tiers (issue #875): two independent provider configs, admin
 // only. Heavy runs document extraction (vision + long context); Light runs
@@ -22,9 +23,7 @@ export default function AiTierSettings({
   return (
     <div className="card space-y-6" data-testid="ai-tier-settings">
       <div>
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          AI providers
-        </h2>
+        <SectionHeading level={2}>AI providers</SectionHeading>
         <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Two tiers, each its own provider. <strong>Heavy</strong> handles
           document extraction and sees your uploaded records — pin it to a local

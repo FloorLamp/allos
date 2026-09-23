@@ -14,8 +14,8 @@
 //   • a builder that attaches a #656 Reason whose `code` it didn't declare here fails CI
 //     (the reason-source binding).
 //
-// The teeth mirror the source-scan guard precedents (telegram-chokepoint / profile-
-// scoping / immediate-tx): the registry is data, the enforcement is a reflection test.
+// The teeth mirror the source-scan guard precedents (profile-scoping /
+// immediate-tx): the registry is data, the enforcement is a reflection test.
 // A new findings engine adds ONE entry here (prefix + tier + declared reason codes) and
 // its own fixture test — it cannot ship a finding without declaring how far it reaches.
 //
@@ -58,7 +58,6 @@ import { TTC_WORKUP_PREFIX } from "./ttc";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import { DIGEST_TIME_PREFIX } from "./digest-time-suggestion";
 import { SYNC_REQUEST_PREFIX } from "./sync-requests";
-import { HOUSEHOLD_SETUP_PREFIX } from "./household-setup";
 import { RECORDS_RECENCY_PREFIX } from "./records-recency";
 import type { ReasonCode } from "./reasons";
 
@@ -513,33 +512,6 @@ export const RULE_FINDING_REGISTRY = [
     prefix: DIGEST_TIME_PREFIX,
     tier: "coaching",
     builder: "activeDigestTimeSuggestion (lib/digest-time-suggestion.ts)",
-    reach: "not-aggregated",
-    reasons: [],
-  },
-  {
-    // Per-member SETUP HEALTH on the Household board (#2173): unroutable reminders,
-    // never-started onboarding, undosed active items, unactioned preventive nudges, and
-    // the SUGGEST-only all-inactive roster question.
-    //
-    // COACHING tier, and the ceiling is a hard contract: this is a CONFIGURATION finding
-    // rendered on a board someone opened — class 2, never a send, never an Upcoming row
-    // (an Upcoming row IS a digest line), never the hero, never an escalation. The digest
-    // is about the profile's health, not the household's configuration.
-    //
-    // The key is EPISODE-scoped on the FAILING CHECK SET
-    // (`household-setup:<id>+<id>…`), so a dismissal means "not this set of problems" and
-    // a newly failing check type surfaces the row again under a new key. The UNROUTABLE
-    // check additionally makes the row NON-dismissible (lib/household-setup.ts
-    // `dismissible`): a standing "this profile is unroutable" dismissal would recreate
-    // exactly the silence the issue removes.
-    //
-    // NOT a rule-findings builder: the row is resolved per member by
-    // `householdSetupForProfile`, so the collectCoachingFindings reflection guards never
-    // see it — registered here for the same reason the portal sync ask and the poor-sleep
-    // override are: the KEY must be guardable and the tier must be declared.
-    prefix: HOUSEHOLD_SETUP_PREFIX,
-    tier: "coaching",
-    builder: "householdSetupForProfile (lib/queries/household-setup.ts)",
     reach: "not-aggregated",
     reasons: [],
   },

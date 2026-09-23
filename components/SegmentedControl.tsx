@@ -39,8 +39,8 @@ import { useHaptics } from "@/components/useHaptics";
 // is worse than neither. #2546's pager links took the same decision. If segments
 // ever earn a pending state, both halves arrive together.
 //
-// `lib/__tests__/link-aria-pressed-scan.test.ts` fails `aria-pressed` on a link
-// anywhere under app/ or components/, so the next URL-state selector cannot repeat
+// `LINK_ARIA_PRESSED_BAN` in eslint.config.mjs fails `aria-pressed` on a link in
+// production code, so the next URL-state selector cannot repeat
 // the defect by hand-rolling around this component again.
 
 export interface SegmentedControlOption<T extends string | number> {

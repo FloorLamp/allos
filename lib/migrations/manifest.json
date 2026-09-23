@@ -246,5 +246,6 @@
   "20260912-food-sensitivities.ts": "a6d03b5d19df2af6a04be09d7da5c020e71ba01b554b80d5ff8169e050b099e7",
   "20260916-shared-supply-last-fill.ts": "c9d47f9708d29dfbfce60fc62c1a3d299b37842bb5eb529a6e54c28b0593eabb",
   "20260911-breathing-rate-sleep-samples.ts": "9f13d14e48b89d084623594e5b7ff9e927267ca566e6bddf36beffef8e406b18",
-  "20260916-care-plan-metric-sample-links.ts": "1d52322946ca2befcdb6079fec1a8beca18f6ece07dc648e7e065442c23da1c3"
+  "20260916-care-plan-metric-sample-links.ts": "1d52322946ca2befcdb6079fec1a8beca18f6ece07dc648e7e065442c23da1c3",
+  "20260922-food-log-event-properties.ts": "09e03c159ef03760bf8576e43024d2d23eb32bd7692c59054553b568f8b5954b"
 }

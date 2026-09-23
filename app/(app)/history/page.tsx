@@ -790,8 +790,7 @@ async function renderHistory(
       {day == null ? (
         <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
           {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
-            its geometry belong to the primitive (lib/__tests__/destination-link-primitive
-            .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
+            its geometry belong to the primitive. Its `ml-auto` costs nothing here
             because the link is `inline-flex` and sized to its own content — the cue
             sits IN the text cluster, and nothing is right-floated. */}
           <DestinationLink

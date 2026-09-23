@@ -483,9 +483,10 @@ function usualBundleSource(
 // explicit date; its results establish relevance, never add correction members.
 type CorrectionSlotReader = typeof import("./intake").slotSessionForKeyboard;
 
-// One message's candidate set, before the shared own-first/two-row seating. The
-// legacy recent readers still supply unbundled taps; they cannot truncate an act.
-export function messageCorrectionBursts(
+// One message's fresh bound bursts, before the shared own-first/two-row seating. The
+// legacy recent readers still supply unbundled taps; they cannot truncate an act. The
+// food keyboard marks its tapped buttons from this pre-cap set (#5613).
+export function messageBoundBursts(
   profileId: number,
   domain: CorrectionDomain,
   taps: readonly TapEvent[],
@@ -516,7 +517,14 @@ export function messageCorrectionBursts(
           )
           .map((bundle) => bundle.burst)
       : [];
-  return seatCorrectionBursts([...unbundled, ...bundles]);
+  return [...unbundled, ...bundles];
+}
+
+// The correction rows one message carries: its bound bursts, seated.
+export function messageCorrectionBursts(
+  ...args: Parameters<typeof messageBoundBursts>
+): CorrectionBurst[] {
+  return seatCorrectionBursts(messageBoundBursts(...args));
 }
 
 function bundleHostMatches(

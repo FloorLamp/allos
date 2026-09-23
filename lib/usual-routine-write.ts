@@ -132,6 +132,7 @@
 // minted, no cadence row is touched. Adherence moves exactly where dueness already
 // existed, as if each row had been tapped by hand.
 
+import type { MealPropertySlug } from "./food-sensitivities";
 import { today } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
@@ -308,7 +309,9 @@ export function logUsualRoutineCore(
   // on the reading that a stated hour is a fact about a SERVING — true of the field's
   // first surface (the nutrition bar's eating hour), and not of the record's act window,
   // which is what the owner's ruling is about.
-  statedAt?: FoodEatingTime
+  statedAt?: FoodEatingTime,
+  // The `This meal` marks (#5865), carried by every serving this bundle writes.
+  properties?: readonly MealPropertySlug[]
 ): UsualRoutineOutcome {
   const t = today(profileId);
   // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
@@ -350,7 +353,8 @@ export function logUsualRoutineCore(
           loggedVia,
           undefined,
           { notifyMessageId, bundleId },
-          statedAt
+          statedAt,
+          properties
         )
       : ({ kind: "nothing-to-log" } as const);
   const groups = food.kind === "logged" ? food.groups : [];

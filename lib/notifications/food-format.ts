@@ -319,6 +319,9 @@ export interface FoodNudgeRenderOpts {
   // Grams for the protein button label (#1073) — the profile's last-used scoop
   // preset. Only used when the reserved __protein__ key falls within the visible window.
   proteinPresetGrams?: number;
+  // The keys this message has just tapped (#5613), each marked with a trailing check:
+  // state, not a count, so a second tap adds nothing (#5107).
+  tapped?: ReadonlySet<string>;
   // The eating-time correction rows (#2019), already derived from ledger state by the
   // gather. A RIDE-ALONG: no nudge is ever sent because a burst is correctable, and the
   // rows simply appear on whichever food keyboard is live while the taps are fresh.
@@ -391,11 +394,13 @@ export function renderFoodNudge(
   const presetGrams = opts.proteinPresetGrams ?? DEFAULT_PROTEIN_PRESET_GRAMS;
 
   const actions: NotificationAction[] = [];
+  const mark = (key: string, label: string) =>
+    opts.tapped?.has(key) ? `${label} ${GLYPH.done}` : label;
   visible.forEach((key, i) => {
     // Protein has its own token and write core; its label names the offered grams.
     if (isProteinNudgeKey(key)) {
       actions.push({
-        label: proteinNudgeButtonLabel(presetGrams),
+        label: mark(key, proteinNudgeButtonLabel(presetGrams)),
         data: foodProteinCallbackData(profileId, window, date, presetGrams),
         row: rowFor(i),
       });
@@ -411,7 +416,7 @@ export function renderFoodNudge(
     const short = foodGroupShortName(key);
     const name = emoji ? `${emoji} ${short}` : short;
     actions.push({
-      label: name,
+      label: mark(key, name),
       data: foodLogCallbackData(profileId, window, date, key),
       row: rowFor(i),
     });

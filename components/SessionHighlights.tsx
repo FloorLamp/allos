@@ -3,10 +3,10 @@ import Link from "next/link";
 
 // A LEFT-ACCENT TINTED BLOCK — a border edge plus a 60%-opacity wash, which is
 // none of the three roles the verdict palette owns (text, badge, fill). The
-// vocabulary is now the shared VerdictTone (#5187), but the classes stay local
-// and this file is named in the palette-membership guard's allowlist with that
-// reason; converging the role itself needs a `verdictBlock` the app does not
-// have yet (Notice's tinted-block family is the other holder).
+// vocabulary is now the shared VerdictTone (#5187), so a new tone fails
+// typecheck until this map colours it, but the classes stay local; converging
+// the role itself needs a `verdictBlock` the app does not have yet (Notice's
+// tinted-block family is the other holder).
 const TONE_CLASS: Record<SessionHighlight["tone"], string> = {
   neutral:
     "border-slate-300 bg-slate-50/60 dark:border-slate-600 dark:bg-ink-800",

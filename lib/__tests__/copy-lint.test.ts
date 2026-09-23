@@ -10,12 +10,10 @@ const SCAN_FILES = ["lib/disclaimers.ts"];
 const EXCLUDE_SUBPATH = ["app/api/"];
 
 const CROSS_PROFILE_PREFIXES = [
-  "app/(app)/household/",
   "app/(app)/settings/family/",
   "components/household/",
 ];
 const CROSS_PROFILE_FILES = new Set([
-  "components/HouseholdCard.tsx",
   "components/ProfileSwitcherChip.tsx",
   "components/SubjectChip.tsx",
 ]);
