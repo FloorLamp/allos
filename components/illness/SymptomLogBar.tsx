@@ -55,6 +55,7 @@ import {
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { dateStrInTz } from "@/lib/date";
+import { countDayWord } from "@/lib/day-word";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatClockValue } from "@/lib/format-date";
 import {
@@ -721,22 +722,23 @@ export default function SymptomLogBar({
 
   // A SYMPTOM WRITE LANDED (#5663 ruling 1, #5900). The toast confirms it in the one
   // grammar, the receipt line states it, and that line settles once. Symptoms are
-  // filed by DAY and nothing here states a minute, so the toast's time slot drops, as
-  // it does on the stool and measurements bodies for an unstated minute. The receipt
-  // names the minute it was logged, and only on today, where that minute is one of
-  // the day's.
+  // filed by DAY, so the toast's slot is the day switcher's word for the day written
+  // (ruling 1's "Good mood logged · today", ruling 5's word), never a minute. The
+  // receipt names the minute it was logged, and only on today, where that minute is
+  // one of the day's.
   //
   // NO UNDO. `logSymptom` keeps the day's worst severity and answers only the result,
   // so the bar cannot tell a new row from a raised one, and `removeSymptom` deletes the
   // day's row whatever it holds by then. Neither is a complete inverse
   // (lib/undo-offer.ts); the row's × and its own Undo stay the way back.
   function confirmLanded(message: string, day: string): void {
-    toast(message);
     const tz = timeZone ?? tempZone;
+    const today = dateStrInTz(tz);
+    toast(`${message} · ${countDayWord(day, today, formatPrefs)}`);
     setReceipt({
       scope: `${profileId ?? ""}:${day}`,
       clock:
-        day === dateStrInTz(tz)
+        day === today
           ? formatClockValue(
               statedHhmm(new Date().toISOString(), tz),
               formatPrefs.timeFormat,

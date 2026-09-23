@@ -582,7 +582,7 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-picker-save"))
     );
-    expect(toasts).toEqual(["Cough logged"]);
+    expect(toasts).toEqual(["Cough logged · today"]);
     const receipt = screen.getByTestId("symptom-log-receipt");
     expect(receipt.textContent).toMatch(/^Logged 1 · \d{1,2}:\d{2}/);
     expect(receipt.className).toContain("motion-settle");
@@ -838,7 +838,9 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     expect(temp.date).toBe(FOUND_DAY);
     expect(temp.time).toBeUndefined();
     // Confirmed in the one grammar, and the landed row joins yesterday's list.
-    expect(toasts).toEqual(["Headache logged"]);
+    // FOUND_DAY is an earlier weekday, so the slot takes the switcher's date word.
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toMatch(/^Headache logged · on \w{3}, /);
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
@@ -927,7 +929,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId("symptom-text-confirm"))
     );
     expect(toasts).toEqual([
-      "Cough logged",
+      "Cough logged · today",
       "Couldn't log the temperature. Try again.",
       "Couldn't log 1 symptom. Try again.",
     ]);
