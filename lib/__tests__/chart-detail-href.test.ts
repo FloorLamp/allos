@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The tap-through guard (issue #1488), in the repo's source-scan idiom
-// (`chart-scaffold-scan.test.ts`, `telegram-chokepoint.test.ts`, `e2e-hygiene.test.ts`):
+// (`e2e-hygiene.test.ts`):
 // read the app's own TSX as TEXT — no DB, no network, so it stays "pure" in the vitest
 // sense — and fail the build when a chart ships as a dead end.
 //
