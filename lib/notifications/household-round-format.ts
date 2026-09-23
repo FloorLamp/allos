@@ -3,10 +3,8 @@
 // which hands this module pre-gathered per-member lists. Unit-tested in
 // lib/__tests__/household-round-format.test.ts.
 //
-// WHAT THIS IS. Household dose confirmation existed only as a DESTINATION: the
-// Household page has per-member confirm buttons, but the dose moment happens at the
-// breakfast table, and the Telegram reminder that reaches a caregiver there carries
-// exactly ONE profile. This message is the moment-side twin — one slot message listing
+// WHAT THIS IS. The dose moment happens at the breakfast table, and the Telegram
+// reminder that reaches a caregiver there carries exactly ONE profile. This message is the moment-side twin — one slot message listing
 // each selected member's due-unconfirmed doses, each with its own confirm button.
 //
 // SAFETY CLASS. The round carries `kind: "dose"` deliberately (the #924 precedent):
@@ -18,7 +16,6 @@
 // critical signal must not be softened into a convenience digest (§4 of the issue).
 
 import type { NotificationAction, NotificationMessage } from "./types";
-import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
 import { intakeShortLabels } from "../intake-short-name";
 import type { IntakeItemKind } from "../types";
@@ -55,8 +52,8 @@ export interface HouseholdRoundSection {
 
 // Keyboard cap for one round. Telegram's own ceiling is 100 buttons, but a wall of
 // confirm taps is not a usable breakfast-table surface — past this many due doses the
-// round drops its buttons entirely and offers the Household page instead, which is the
-// better tool for a large round. Kept well under the transport cap on purpose.
+// round drops its buttons entirely and stays a list. Kept well under the transport cap
+// on purpose.
 export const HOUSEHOLD_ROUND_MAX_BUTTONS = 12;
 
 // "Vitamin D3 · 2000 IU", or just the name when no amount is stored.
@@ -80,13 +77,10 @@ export function householdRoundDoseCount(
 //
 // `receiverProfileId` is the SUBSCRIBING profile (whose chat this lands in); it is
 // baked into every callback token so a tap can be cross-checked against the chat that
-// received it. `base` is the public app URL for the overflow deep link ("" when none
-// is configured — the overflow then simply carries no button).
+// received it.
 export function renderHouseholdRoundMessage(input: {
   receiverProfileId: number;
   sections: readonly HouseholdRoundSection[];
-  base: string;
-  householdHref: AppRoute;
 }): NotificationMessage | null {
   const sections = input.sections.filter((s) => s.doses.length > 0);
   if (sections.length === 0) return null;
@@ -117,19 +111,11 @@ export function renderHouseholdRoundMessage(input: {
     notes: [`${total} due across ${sections.length} ${memberNoun}`],
   });
 
-  // Under the cap the round carries its confirm buttons — and, since #1718, the deep
-  // link ALONGSIDE them. Web Push and Home Assistant strip the buttons, so those
-  // copies used to arrive naming members and items with no way to confirm or even
-  // open the page; the over-cap path already degraded to exactly this link. A
-  // url-bearing action also becomes the push notification's click-through target
-  // (pushClickThroughUrl), so the push finally opens where it should.
+  // Under the cap the round carries its confirm buttons; past it, none.
   const actions =
     total > HOUSEHOLD_ROUND_MAX_BUTTONS
-      ? overflowActions(input.base, input.householdHref)
-      : [
-          ...confirmActions(input.receiverProfileId, sections),
-          ...overflowActions(input.base, input.householdHref),
-        ];
+      ? []
+      : confirmActions(input.receiverProfileId, sections);
 
   return {
     title,
@@ -190,17 +176,6 @@ function confirmActions(
     }
   }
   return actions;
-}
-
-// Past the cap the round degrades to a deep link rather than a wall of buttons — the
-// two-way principle's own escape hatch (a button is earned only where the response is
-// ONE low-risk state change; twelve-plus taps is a page, not a message).
-function overflowActions(
-  base: string,
-  householdHref: AppRoute
-): NotificationAction[] {
-  if (!base) return [];
-  return [{ label: "Open Household →", url: `${base}${householdHref}` }];
 }
 
 // ---- Stored member selection (profile_settings) ----------------------------------

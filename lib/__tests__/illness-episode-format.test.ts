@@ -12,9 +12,7 @@ import {
   episodeHeadline,
   readingClockWithRelativeAge,
   episodeCollapsedStatus,
-  householdSickLine,
   episodeLatestDose,
-  episodeLastDoseClause,
   orderIllnessCockpits,
   isOpenEpisode,
   episodeConditionExternalId,
@@ -292,22 +290,20 @@ function med(
   };
 }
 
-describe("episodeLastDoseClause", () => {
+describe("episodeLatestDose", () => {
   it("is null when nothing was administered", () => {
-    expect(episodeLastDoseClause(ep())).toBeNull();
+    expect(episodeLatestDose(ep())).toBeNull();
   });
-  it("formats the most-recent administration, lowercasing the med name", () => {
+  it("picks the globally latest administration across meds", () => {
     const e = ep({
       medications: [
-        med("Ibuprofen", [
-          { date: "2026-06-02", time: "2:00pm" },
-          { date: "2026-06-03", time: "4:02pm" },
-        ]),
+        med("Ibuprofen", [{ date: "2026-06-03", time: "1:00pm" }]),
+        med("Tylenol", [{ date: "2026-06-03", time: "6:30pm" }]),
       ],
     });
-    expect(episodeLastDoseClause(e, "12h")).toBe("last ibuprofen 4:02 PM");
+    expect(episodeLatestDose(e)?.name).toBe("Tylenol");
   });
-  it("includes the saved formulation with the latest dose", () => {
+  it("carries the saved formulation onto the timeline", () => {
     const e = ep({
       medications: [
         med(
@@ -317,9 +313,6 @@ describe("episodeLastDoseClause", () => {
         ),
       ],
     });
-    expect(episodeLastDoseClause(e, "12h")).toBe(
-      "last acetaminophen (160 mg / 5 mL) 4:02 PM"
-    );
     expect(illnessTimelineEvents(e)[0]).toMatchObject({
       detail: "160 mg / 5 mL",
     });
@@ -352,21 +345,6 @@ describe("episodeLastDoseClause", () => {
       "160 mg · Chewable tablet (160 mg)",
     ]);
   });
-  it("picks the globally latest administration across meds", () => {
-    const e = ep({
-      medications: [
-        med("Ibuprofen", [{ date: "2026-06-03", time: "1:00pm" }]),
-        med("Tylenol", [{ date: "2026-06-03", time: "6:30pm" }]),
-      ],
-    });
-    expect(episodeLastDoseClause(e, "12h")).toBe("last tylenol 6:30 PM");
-  });
-  it("degrades to just the name when the clock is unknown", () => {
-    const e = ep({
-      medications: [med("Ibuprofen", [{ date: "2026-06-03", time: null }])],
-    });
-    expect(episodeLastDoseClause(e)).toBe("last ibuprofen");
-  });
   it("returns the full latest dose and sorts display clocks by their 24-hour value", () => {
     const e = ep({
       medications: [
@@ -393,26 +371,6 @@ describe("episodeLastDoseClause", () => {
       time: "9:00pm",
       amount: "400 mg",
     });
-  });
-});
-
-describe("householdSickLine", () => {
-  it("prefixes the name and appends the latest temp", () => {
-    const e = ep({ latestTemp: temp(101.3, "high") });
-    expect(householdSickLine("Mia", e)).toBe("Mia · sick day 4 · 101.3 °F");
-  });
-  it("drops the day clause when the start is unknown", () => {
-    const e = ep({ start: null, latestTemp: null });
-    expect(householdSickLine("Mia", e)).toBe("Mia · sick");
-  });
-  it("appends the last-dose clause (the co-caregiver double-dose guard, #858)", () => {
-    const e = ep({
-      latestTemp: temp(101.3, "high"),
-      medications: [med("Ibuprofen", [{ date: "2026-06-03", time: "4:02pm" }])],
-    });
-    expect(householdSickLine("Mia", e, "F", null, "12h")).toBe(
-      "Mia · sick day 4 · 101.3 °F · last ibuprofen 4:02 PM"
-    );
   });
 });
 

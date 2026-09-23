@@ -44,6 +44,7 @@ import {
   getTimezone,
   resolveSituationId,
   setActiveSituations,
+  setTimezone,
   setWeekMode,
 } from "@/lib/settings";
 import { perTestCeiling } from "../../vitest.timeouts";
@@ -203,9 +204,9 @@ let readOnlyRefillRowIds: string[] = [];
  * fully active sole consumer whose remembered fill was never a fill of this bottle.
  *
  * ONE BOTTLE PER SHAPE, ALL ON ONE PROFILE, so the whole table is read off ONE render
- * rather than six. The same profile also keeps a PRIVATE run-out item, which is the
- * negative control: without it "no pooled cue reuses a fill" would also be true of a
- * page that had stopped mounting the affordance at all.
+ * rather than one per shape. The same profile also keeps a PRIVATE run-out item, which
+ * is the negative control: without it "no pooled cue reuses a fill" would also be true
+ * of a page that had stopped mounting the affordance at all.
  */
 const POOL_REFILL_FIXTURE = "pooled low-supply fixture";
 let poolRefillElements: Record<string, unknown>[] = [];
@@ -237,6 +238,13 @@ type PoolMemberShape = {
    * active, dosing and alone, which is what no predicate over the carrier can catch.
    */
   privatelyRefilledAt?: number;
+  /**
+   * Refilled THROUGH THE BOTTLE at this size once every member is linked, by the real
+   * refill core, so the bottle remembers its own usual refill (#5121 owner ruling
+   * 2026-09-16). One unit, under a day of the bottle's use, so its cue stays due
+   * today and keeps its control.
+   */
+  bottleRefilledAt?: number;
 };
 
 /** Every carrier shape the acceptance criterion names, one bottle each. */
@@ -247,6 +255,11 @@ const POOL_CARRIER_SHAPES: readonly PoolMemberShape[] = [
   { label: "never dosed", dosed: false },
   { label: "may", obligation: "may" },
   { label: "linked with a stale fill", privatelyRefilledAt: 30 },
+  {
+    label: "bottle remembers its own fill",
+    privatelyRefilledAt: 30,
+    bottleRefilledAt: 1,
+  },
 ];
 
 /**
@@ -306,6 +319,8 @@ function seedShapedPools(profileId: number): void {
     seedPoolMember(profileId, supplyId, `New D3 (${shape.label})`, 90, {
       label: "consumer",
     });
+    if (shape.bottleRefilledAt != null)
+      refillSupply(profileId, carrierItemId, shape.bottleRefilledAt);
     poolShapes.set(shape.label, { supplyId, carrierItemId });
   }
   setActiveSituations(profileId, [POOL_HOLD_SITUATION]);
@@ -570,6 +585,8 @@ describe("Home's one list, rendered", () => {
     // ── THE POOLED LOW-SUPPLY RENDER, on its own profile for the same reasons.
     const poolBefore = new Set(allProfileIds());
     const poolProfileId = newProfile(`dashboard:${POOL_REFILL_FIXTURE}`);
+    // Pin the zone so `today()` for the fixture's relative days and Home's day agree.
+    setTimezone(poolProfileId, "UTC");
     seedShapedPools(poolProfileId);
     // THE NEGATIVE CONTROL ON THE SAME RENDER: one PRIVATE run-out item, which keeps
     // its remembered fill and its one-tap. Every pooled assertion below is an absence,
@@ -999,7 +1016,7 @@ describe("Home's one list, rendered", () => {
     });
   });
 
-  it("asks EVERY pooled cue for a size, whatever shape its carrier is", () => {
+  it("offers a pooled cue only the BOTTLE's own remembered fill, whatever its carrier", () => {
     // THE HARM IS A SILENT WRITE ONTO A SHARED BOTTLE, under a row that names the
     // BOTTLE — with `hasLastFill` true the affordance never reveals the size input, so
     // nothing on screen says whose fill was reused.
@@ -1010,8 +1027,12 @@ describe("Home's one list, rendered", () => {
     // refilled at 30 while it was still private and linked only afterwards is active,
     // dosing and the bottle's sole consumer, yet its remembered 30 was never a fill of
     // this jar, because `linkItemToPool` drops the private count and keeps the size.
-    // So the page carries no member's remembered fill onto a pooled cue at all, and
-    // this table is the statement that there is no longer an input that can vary.
+    // So no member's remembered fill is an input to a pooled cue at all.
+    //
+    // THE BOTTLE'S OWN FILL IS (#5121 owner ruling 2026-09-16). A bottle refilled
+    // through the pool remembers that size and the cue offers it as a one-tap; its
+    // carrier also remembers a private 30, which must not be what the cue offers. Every
+    // other bottle remembers nothing, so its first tap asks.
     const controls = refillControlsByRow(poolRefillElements);
     const pooled = poolRefillRowIds.filter((id) =>
       id.startsWith("attention.fact:pool-refill:")
@@ -1033,8 +1054,8 @@ describe("Home's one list, rendered", () => {
       ).toMatchObject({
         itemId: fixture.carrierItemId,
         supplyId: fixture.supplyId,
-        hasLastFill: false,
-        lastFillSize: null,
+        hasLastFill: shape.bottleRefilledAt != null,
+        lastFillSize: shape.bottleRefilledAt ?? null,
       });
     }
   });

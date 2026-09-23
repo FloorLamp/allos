@@ -3,7 +3,10 @@
 import DoseStatusControl, {
   type DoseVariant,
 } from "@/components/DoseStatusControl";
-import { useTimeStatement } from "@/components/TimeStatement";
+import {
+  useTimeStatement,
+  type TimeStatement,
+} from "@/components/TimeStatement";
 import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 
 // A dose row that stands on a STATED day, and asks for the minute when that day has
@@ -47,6 +50,7 @@ export default function DatedDoseControl({
   rowLeaves,
   profileId,
   onSettled,
+  slot,
 }: {
   doseId: number;
   /** The row's day; absent means the profile's today. */
@@ -69,19 +73,30 @@ export default function DatedDoseControl({
   rowLeaves?: boolean;
   profileId?: number;
   onSettled?: (result: DoseStatusResult) => void;
+  /**
+   * The time its slot states for the whole act (#5813). Once the slot has one, this
+   * row's own prompt steps back to a door and its Take posts the slot's minute, unless
+   * the row's own statement is open with one of its own.
+   */
+  slot?: Pick<TimeStatement, "at" | "instant">;
 }) {
   const day = date ?? profileToday;
   const pastDay = date != null && date !== profileToday;
-  const statement = useTimeStatement({
+  const slotStated = slot?.at != null;
+  const own = useTimeStatement({
     // Only an unresolved dose is being stated about: once a row is taken or skipped,
     // changing what the record says is the dose-history panel's audited door.
     shown: pastDay && !taken && !skipped,
     day,
-    required: pastDay,
+    required: pastDay && !slotStated,
     unknownLabel: "Don’t know",
     timeLabel: `Time ${itemName || "this dose"} was taken`,
     testId: `dated-dose-when-${doseId}`,
   });
+  const statement: TimeStatement =
+    slotStated && !(own.open && own.at)
+      ? { ...own, at: slot.at, instant: slot.instant }
+      : own;
   return (
     <>
       <DoseStatusControl

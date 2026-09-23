@@ -13,8 +13,8 @@ import { MAX_VIDEO_BYTES } from "../video/policy";
 // ingestMedicalUpload ever runs, silently reintroducing the "large upload
 // truncated" bug f9926a0 fixed. Nothing guarded it. This test reads next.config.js
 // as TEXT (no build, no network, so it stays "pure" in the vitest sense) and pins
-// both caps against MAX_HEALTH_BYTES, the same idiom as the immediate-tx /
-// telegram-chokepoint guards. It imports the byte ceilings from the PURE
+// both caps against MAX_HEALTH_BYTES, the same idiom as the immediate-tx
+// guard. It imports the byte ceilings from the PURE
 // lib/upload-gate module (which lib/medical-pipeline re-exports) so it can stay in
 // the DB-free unit tier.
 

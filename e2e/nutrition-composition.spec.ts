@@ -36,13 +36,18 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
 
     const quick = page.getByTestId("food-quick-log");
     await expect(quick).toBeVisible({ timeout: WAIT });
+    // The open door is the layer's close, not "✕ Add" (#5098).
+    await expect(quick.getByTestId("food-add-door")).toHaveAccessibleName(
+      "Close"
+    );
     const initialSnapshot = page.getByTestId("nutrition-mobile-snapshot");
     await expect(initialSnapshot).toBeVisible();
     await expect(initialSnapshot).not.toContainText("At a glance");
     await expect(initialSnapshot).not.toContainText("Details below");
+    // Today's protein verdict judges the week, so it says so (#5099).
     await expect(
       initialSnapshot.getByTestId("nutrition-snapshot-protein-status")
-    ).toHaveText("Below");
+    ).toHaveText("This week below");
     await expect(
       initialSnapshot.getByTestId("nutrition-snapshot-fiber-status")
     ).toHaveText("Below");

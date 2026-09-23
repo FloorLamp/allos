@@ -20,7 +20,6 @@ import {
 } from "@/lib/illness-episode";
 import {
   episodeHeadline,
-  householdSickLine,
   isLoggedSymptomSeries,
 } from "@/lib/illness-episode-format";
 import {
@@ -507,9 +506,7 @@ describe("currentEpisodeForProfile + household access", () => {
     const ep = currentEpisodeForProfile(sick);
     expect(ep).not.toBeNull();
     expect(ep!.ongoing).toBe(true);
-    expect(householdSickLine("Mia", ep!)).toMatch(
-      /^Mia · sick day \d+ · 101\.3 °F$/
-    );
+    expect(ep!.latestTemp?.degF).toBe(101.3);
 
     const well = newProfile("well-now");
     expect(currentEpisodeForProfile(well)).toBeNull();

@@ -11,7 +11,7 @@
 //     failure chain this issue removes);
 //   • a backfilled historical reading does not fire (latest-reading framing), and a
 //     crossing value with NO open episode sends nothing;
-//   • an ordinary reading never reaches the notification path (the cheap pre-check).
+//   • an ordinary reading sends nothing.
 //
 // Every value is synthetic (a fake HA webhook URL; no phones, no PHI).
 
@@ -45,6 +45,9 @@ import {
   setActiveSituations,
 } from "@/lib/settings/profile-attrs";
 import { snoozeFinding } from "@/lib/queries/upcoming/suppressions";
+import { POST } from "@/app/api/integrations/health-connect/ingest/route";
+import { generateHealthConnectToken } from "@/lib/integrations/connections";
+import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -220,7 +223,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("an ordinary reading never reaches the notification path (cheap pre-check)", async () => {
+  it("an ordinary reading sends nothing and sets no marker", async () => {
     const p = newProfile("TrfOrdinary");
     makeSick(p, 1);
     configureHA(p);
@@ -577,5 +580,199 @@ describe("a live reading across local midnight (#5984)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(getProfileSettingKeysWithPrefix(p, OWED)).toEqual([]);
     expect(getProfileSettingKeysWithPrefix(p, MARKER)).toHaveLength(1);
+  });
+});
+
+// A fever that falls and rises again on the same day is two pushes (#6018). Both
+// crossings share one marker key, so the normal reading between them must clear it
+// even when no tick runs in between.
+describe("a second crossing on the same day (#6018)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+
+  it("a crossing, a normal reading, then a crossing again gives two pushes", async () => {
+    const p = newProfile("TrfSecondCrossing");
+    setTimezone(p, TZ);
+    configureHA(p);
+    makeSick(p, 1);
+    const fetchMock = stubFetch();
+    const day = today(p);
+
+    for (const [hhmm, degF] of [
+      ["14:00", 104.5],
+      ["14:20", 99.1],
+      ["14:40", 104.5],
+    ] as const) {
+      at(day, hhmm);
+      logTemperatureCore(p, degF, "F", day, "page", hhmm);
+      await dispatchTempRedFlagForReading(p, degF);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    at(day, "15:00");
+    await runTempRedFlag(p, today(p));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a normal reading sends nothing, even for an unsent crossing still in force", async () => {
+    const p = newProfile("TrfNormalNoSend");
+    setTimezone(p, TZ);
+    makeSick(p, 1);
+    const day = today(p);
+    at(day, "14:00");
+    // No channel yet, so the crossing is never sent.
+    logTemperatureCore(p, 104.5, "F", day, "page", "14:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    configureHA(p);
+    const fetchMock = stubFetch();
+    at(day, "14:20");
+    // A normal reading backfilled before the crossing, which stays the latest.
+    logTemperatureCore(p, 99.1, "F", day, "page", "13:00");
+    await dispatchTempRedFlagForReading(p, 99.1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// A fever reading from before midnight that Health Connect syncs after it (#6024): the
+// reading carries its own instant, so the door accepts it within a bounded lag of that
+// instant, and refuses it after, as before.
+describe("a synced reading from before midnight (#6024)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+  const iso = (day: string, hhmm: string) =>
+    zonedWallTimeToUtc(TZ, day, hhmm)!.toISOString();
+
+  function syncedProfile(name: string, startDaysAgo = 1) {
+    const p = newProfile(name);
+    setTimezone(p, TZ);
+    configureHA(p);
+    makeSick(p, startDaysAgo);
+    const token = generateHealthConnectToken(p);
+    // Resolves once the fire-and-forget dispatch has run to its end.
+    const ingest = async (temps: { time: string; celsius: number }[]) => {
+      await POST(
+        new Request("http://x/api/integrations/health-connect/ingest", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            app_version: "test",
+            body_temperature: temps,
+          }),
+        })
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+    return { p, day: today(p), ingest };
+  }
+
+  it("a 23:50 crossing synced at 00:40 pushes once; a re-carry does not push again", async () => {
+    const { p, day, ingest } = syncedProfile("TrfLateSync");
+    const fetchMock = stubFetch();
+    const fever = [{ time: iso(day, "23:50"), celsius: 40.3 }];
+
+    at(shiftDateStr(day, 1), "00:40");
+    await ingest(fever);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    at(shiftDateStr(day, 1), "01:10");
+    await ingest(fever);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+  });
+
+  it("the same reading synced at 03:00 does not push", async () => {
+    const { day, ingest } = syncedProfile("TrfLateSyncStale");
+    const fetchMock = stubFetch();
+
+    at(shiftDateStr(day, 1), "03:00");
+    await ingest([{ time: iso(day, "23:50"), celsius: 40.3 }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("the lag is 120 minutes: a sync at 01:50 pushes, at 01:51 does not", async () => {
+    const fetchMock = stubFetch();
+    for (const [name, hhmm, sends] of [
+      ["TrfLag120", "01:50", 1],
+      ["TrfLag121", "01:51", 0],
+    ] as const) {
+      const { day, ingest } = syncedProfile(name);
+      fetchMock.mockClear();
+      at(shiftDateStr(day, 1), hhmm);
+      await ingest([{ time: iso(day, "23:50"), celsius: 40.3 }]);
+      expect(fetchMock).toHaveBeenCalledTimes(sends);
+    }
+  });
+
+  it("the lag counts real minutes across a DST change, not wall-clock ones", async () => {
+    const fetchMock = stubFetch();
+    // Spring forward: 23:50 to 01:45 CST is 115 minutes; to 03:05 CDT is 135.
+    for (const [name, hhmm, sends] of [
+      ["TrfDst115", "01:45", 1],
+      ["TrfDst135", "03:05", 0],
+    ] as const) {
+      vi.setSystemTime(new Date("2027-03-13T18:00:00Z"));
+      const { ingest } = syncedProfile(name);
+      fetchMock.mockClear();
+      at("2027-03-14", hhmm);
+      await ingest([{ time: iso("2027-03-13", "23:50"), celsius: 40.3 }]);
+      expect(fetchMock).toHaveBeenCalledTimes(sends);
+    }
+  });
+
+  // The batch's hottest value is the trigger, not its latest reading: the latest may
+  // never be stored (tombstoned) or may sit outside the episode (a skewed clock).
+  it("a crossing still pushes when the batch's later normal reading was deleted", async () => {
+    const { p, day, ingest } = syncedProfile("TrfTombstonedNormal");
+    const fetchMock = stubFetch();
+    const batch = [
+      { time: iso(day, "22:00"), celsius: 40.3 },
+      { time: iso(day, "22:30"), celsius: 37.0 },
+    ];
+    at(day, "22:35");
+    await ingest(batch);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const normal = db
+      .prepare(
+        "SELECT * FROM medical_records WHERE profile_id = ? AND value_num < 100"
+      )
+      .get(p) as Record<string, unknown>;
+    writeImportTombstoneForRow(p, "medical_records", normal);
+    db.prepare("DELETE FROM medical_records WHERE id = ?").run(normal.id);
+
+    at(day, "22:50");
+    await ingest(batch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a crossing pushes beside a normal reading stamped tomorrow by a skewed clock", async () => {
+    const { day, ingest } = syncedProfile("TrfSkewedNormal");
+    const fetchMock = stubFetch();
+    at(day, "14:05");
+    await ingest([
+      { time: iso(day, "14:00"), celsius: 40.3 },
+      { time: iso(shiftDateStr(day, 1), "10:00"), celsius: 37.0 },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a crossing stamped in the future does not push yesterday's hand-entered one", async () => {
+    const { p, day, ingest } = syncedProfile("TrfFutureStamp", 2);
+    const fetchMock = stubFetch();
+    at(day, "09:00");
+    logTemperatureCore(p, 104.5, "F", shiftDateStr(day, -1), "page", "20:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    at(day, "09:30");
+    await ingest([{ time: iso(shiftDateStr(day, 1), "09:00"), celsius: 40.3 }]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

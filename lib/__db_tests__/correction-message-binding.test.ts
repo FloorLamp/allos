@@ -118,6 +118,13 @@ function foodtimeTokens(msg: {
   );
 }
 
+// The buttons wearing the "just tapped" check (#5613).
+function markedLabels(msg: { actions?: { label: string }[] }): string[] {
+  return (msg.actions ?? [])
+    .map((a) => a.label)
+    .filter((label) => label.endsWith(" ✅"));
+}
+
 function dosetimeTokens(msg: {
   actions?: { data?: string }[] | undefined;
 }): string[] {
@@ -241,6 +248,7 @@ describe("a food correction row renders only on the message that produced it (#2
       ref: { chatId, messageId: morning.messageId },
     })!;
     expect(foodtimeTokens(morningRebuilt)).toEqual([]);
+    expect(markedLabels(morningRebuilt)).toEqual([]);
 
     // The Midday message carries exactly its own burst.
     const middayRebuilt = buildFoodNudge(pid, "Midday", date, undefined, {
@@ -251,6 +259,7 @@ describe("a food correction row renders only on the message that produced it (#2
       `foodtime:${pid}:${middayBurstAnchor}:30`,
       `foodtime:${pid}:${middayBurstAnchor}:60`,
     ]);
+    expect(markedLabels(middayRebuilt)).toEqual(["🫐 Berries ✅"]);
   });
 
   it("the sweep reconciles the same way: the old message strips, the new one keeps its rows", async () => {
@@ -309,7 +318,62 @@ describe("a food correction row renders only on the message that produced it (#2
       ref: { chatId: "5664005", messageId: pointer.messageId },
     })!;
     expect(foodtimeTokens(rebuilt)).toEqual([]);
+    expect(markedLabels(rebuilt)).toEqual([]);
     expect(plainBody(rebuilt.body)).not.toContain("Recorded:");
+  });
+});
+
+// ---- the "just tapped" check (#5613) -----------------------------------------
+
+describe("a food button tapped from this message wears a check while its burst lives (#5613)", () => {
+  it("marks each tapped group once, keeps a dropped burst's check, and clears with the rows", async () => {
+    const pid = newProfile("Check Chen");
+    const chatId = "5664006";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    await dispatch(pid, buildFoodNudge(pid, "Morning", date)!);
+    const { messageId } = liveMessagePointers(pid)[0];
+    const ref = { chatId, messageId };
+    const tapAt = async (iso: string, key: string) => {
+      setNow(iso);
+      await handleCallbackQuery(
+        cqAt(
+          chatId,
+          messageId,
+          `food:${pid}:Morning:${date}:${key}`,
+          liveMessagePointers(pid)[0].keyboard
+        )
+      );
+    };
+    await tapAt("2026-08-05T05:31:00Z", "berries");
+    await tapAt("2026-08-05T05:32:00Z", "leafy_greens");
+    await tapAt("2026-08-05T05:33:00Z", "berries");
+    const two = buildFoodNudge(pid, "Morning", date, undefined, { ref })!;
+    expect(markedLabels(two)).toEqual(["🫐 Berries ✅", "🥬 Greens ✅"]);
+    expect(plainBody(two.body)).toContain("🫐 Berries ×2 · 🥬 Greens ×1");
+
+    // Two more bursts: the oldest drops off the two correction rows, not its checks.
+    await tapAt("2026-08-05T05:50:00Z", "eggs");
+    await tapAt("2026-08-05T06:10:00Z", "fatty_fish");
+    const three = buildFoodNudge(pid, "Morning", date, undefined, { ref })!;
+    expect(new Set(foodtimeTokens(three).map((t) => t.split(":")[2]))).toEqual(
+      new Set(
+        foodEvents(pid)
+          .slice(3)
+          .map((e) => String(e.id))
+      )
+    );
+    expect(markedLabels(three)).toHaveLength(4);
+    expect(markedLabels(three)).toContain("🫐 Berries ✅");
+
+    // An hour after the last tap the sweep strips the rows and the checks together.
+    setNow("2026-08-05T07:11:00Z");
+    await reconcileProfileMessages(pid);
+    const swept = liveMessagePointers(pid)[0]
+      .keyboard.flat()
+      .map((b) => b.text);
+    expect(swept.some((t) => t.endsWith(" ✅"))).toBe(false);
+    expect(swept.some((t) => t.startsWith("🫐"))).toBe(true);
   });
 });
 

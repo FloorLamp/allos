@@ -247,6 +247,41 @@ function liveRowIdForUniqueKey(
   return found ? found.id : null;
 }
 
+// Null the surviving rows' links to a root the kind declares as `repoint` children
+// (equipment's sets, sessions, protocols and goals): the rows stay and lose the link.
+// captureDelete passes the rows it captured, so restore can re-point exactly those;
+// Data → Manage's Delete all takes no capture and passes none, so each child's rows
+// are read by the same `childWhere` the capture would have used.
+export function detachRepointedLinks(
+  kind: string,
+  profileId: number,
+  rootId: number,
+  rows?: Record<string, Row[]>
+): void {
+  for (const child of getKindSpec(kind).entities.slice(1)) {
+    if (!child.repoint) continue;
+    const { column } = child.repoint;
+    const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
+    const linked =
+      rows?.[child.entity] ??
+      (db
+        .prepare(`SELECT id FROM ${child.table} WHERE ${child.childWhere}`)
+        .all(...binds) as Row[]);
+    const detach =
+      child.table === "exercise_sets"
+        ? db.prepare(
+            `UPDATE exercise_sets SET ${column} = NULL
+            WHERE id = ? AND ${column} = ?
+              AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+          )
+        : db.prepare(
+            `UPDATE ${child.table} SET ${column} = NULL
+            WHERE id = ? AND ${column} = ? AND profile_id = ?`
+          );
+    for (const row of linked) detach.run(row.id, rootId, profileId);
+  }
+}
+
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -287,23 +322,7 @@ export function captureDelete(
           .all(...binds) as Row[]);
     }
 
-    for (const child of spec.entities.slice(1)) {
-      if (!child.repoint) continue;
-      const { column } = child.repoint;
-      const detach =
-        child.table === "exercise_sets"
-          ? db.prepare(
-              `UPDATE exercise_sets SET ${column} = NULL
-            WHERE id = ? AND ${column} = ?
-              AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
-            )
-          : db.prepare(
-              `UPDATE ${child.table} SET ${column} = NULL
-            WHERE id = ? AND ${column} = ? AND profile_id = ?`
-            );
-      for (const row of rows[child.entity])
-        detach.run(row.id, rootId, profileId);
-    }
+    detachRepointedLinks(kind, profileId, rootId, rows);
 
     // Detach INBOUND references before the root delete (row-ops null-out rule): a
     // protocol can link an intake item as its intervention (protocols.intake_item_id,
@@ -376,10 +395,6 @@ export function captureDelete(
       // foreign_keys = ON aborts it. Centralized here for the reason the conditions
       // block above states: the bulk path must inherit the same detach, and before
       // this it did not (a bulk delete of a linked visit threw on the FK).
-      db.prepare(
-        `UPDATE appointments SET encounter_id = NULL
-          WHERE encounter_id = ? AND profile_id = ?`
-      ).run(rootId, profileId);
       nullEncounterLinks(profileId, rootId);
     }
     if (spec.ownedTable === "skin_lesions") {
@@ -776,9 +791,9 @@ export function sweepDeletedRows(
     const files = capturedFilesOf(
       db
         .prepare(
-          `SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
+          `SELECT profile_id, payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
         )
-        .all(cutoff) as { payload: string }[]
+        .all(cutoff) as CaptureRow[]
     );
 
     const changes = db
@@ -814,11 +829,11 @@ export function purgeDeletedRow(
   const files = writeTx((): CapturedFiles | null => {
     const row = db
       .prepare(
-        `SELECT payload FROM deleted_rows
+        `SELECT profile_id, payload FROM deleted_rows
           WHERE id = ? AND profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
       )
       .get(undoId, profileId, ...TRASH_EXCLUDED_KINDS) as
-      { payload: string } | undefined;
+      CaptureRow | undefined;
     if (!row) return null;
     const captured = capturedFilesOf([row]);
     db.prepare(
@@ -843,9 +858,9 @@ export function emptyTrash(profileId: WriteAuthorizedProfileId): number {
     const captured = capturedFilesOf(
       db
         .prepare(
-          `SELECT payload FROM deleted_rows WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
+          `SELECT profile_id, payload FROM deleted_rows WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
         )
-        .all(profileId, ...TRASH_EXCLUDED_KINDS) as { payload: string }[]
+        .all(profileId, ...TRASH_EXCLUDED_KINDS) as CaptureRow[]
     );
     const changes = db
       .prepare(
@@ -870,20 +885,31 @@ export function emptyTrash(profileId: WriteAuthorizedProfileId): number {
 // its other path-collecting queries, before the sweep, then unlinks once the
 // transaction has committed — the same two moments the purges above run in, from a
 // module that must not re-derive the domain roots or the still-live probe by hand.
-interface CapturedFiles {
-  video: CapturedVideoFile[];
-  photo: CapturedPhotoFile[];
+//
+// Each file carries the profile of the capture that named it (#5997): the unlink is
+// contained to THAT profile's directory, so a payload naming another profile's path
+// can never destroy it. The expiry sweep spans profiles, so the profile comes from
+// each capture row rather than from the caller's scope.
+export interface CaptureRow {
+  profile_id: number;
+  payload: string;
 }
 
-export function capturedFilesOf(
-  rows: readonly { payload: string }[]
-): CapturedFiles {
+type Owned<T> = T & { profileId: number };
+
+interface CapturedFiles {
+  video: Owned<CapturedVideoFile>[];
+  photo: Owned<CapturedPhotoFile>[];
+}
+
+export function capturedFilesOf(rows: readonly CaptureRow[]): CapturedFiles {
   const out: CapturedFiles = { video: [], photo: [] };
   for (const r of rows) {
     try {
       const payload = parsePayload(r.payload);
-      out.video.push(...capturedVideoFiles(payload));
-      out.photo.push(...capturedPhotoFiles(payload));
+      const own = <T>(f: T): Owned<T> => ({ ...f, profileId: r.profile_id });
+      out.video.push(...capturedVideoFiles(payload).map(own));
+      out.photo.push(...capturedPhotoFiles(payload).map(own));
     } catch {
       // an unparseable / non-registry payload carries no reclaimable media files
     }
@@ -900,9 +926,12 @@ export function unlinkPurgedFiles(files: CapturedFiles): void {
 // activity_videos / symptom_videos row still references — content-hash dedup means a
 // re-upload of the identical clip after the delete re-created a live row pointing at
 // the SAME on-disk file (stored_path is content-named), so unlinking it would break a
-// live clip. The actual unlink is path-contained per domain root (unlinkVideoFiles),
-// best-effort, and never throws (the row deletes already committed). (#1290)
-function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
+// live clip. The actual unlink is contained to the capture's own profile directory
+// (unlinkVideoFiles, #5997), best-effort, and never throws (the row deletes already
+// committed). (#1290)
+function unlinkPurgedVideoFiles(
+  files: readonly Owned<CapturedVideoFile>[]
+): void {
   for (const f of files) {
     const table: OwnedTable =
       f.domain === "activity" ? "activity_videos" : "symptom_videos";
@@ -914,7 +943,7 @@ function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
       if (!p) continue;
       if (stillLive.get(p, p) === undefined) toUnlink.push(p);
     }
-    if (toUnlink.length) unlinkVideoFiles(f.domain, toUnlink);
+    if (toUnlink.length) unlinkVideoFiles(f.domain, f.profileId, toUnlink);
   }
 }
 
@@ -938,7 +967,9 @@ const PHOTO_TABLE_FOR_DOMAIN: Record<CapturedPhotoDomain, OwnedTable> = {
 //  • The liveness probe is on stored_path only: the thumbnail's justification is its
 //    photo's, so if a re-upload re-created a live row at this content-named path, both
 //    files are still in use and neither is touched.
-function unlinkPurgedPhotoFiles(files: readonly CapturedPhotoFile[]): void {
+function unlinkPurgedPhotoFiles(
+  files: readonly Owned<CapturedPhotoFile>[]
+): void {
   for (const f of files) {
     if (!f.storedPath) continue;
     const table = PHOTO_TABLE_FOR_DOMAIN[f.domain];
@@ -946,7 +977,7 @@ function unlinkPurgedPhotoFiles(files: readonly CapturedPhotoFile[]): void {
       .prepare(`SELECT 1 FROM ${table} WHERE stored_path = ?`)
       .get(f.storedPath);
     if (stillLive !== undefined) continue;
-    unlinkPhotoFiles(f.domain, [
+    unlinkPhotoFiles(f.domain, f.profileId, [
       f.storedPath,
       f.thumbPath ?? thumbSiblingPath(f.storedPath),
     ]);

@@ -106,9 +106,9 @@ export default function MobileNav({
   adultContentAvailable?: boolean;
   // False through early childhood; hides workout logging and navigation.
   trainingRelevant?: boolean;
-  // Reveals the admin-only nav entries (the household overview) in the drawer.
+  // Reveals the admin-only nav entries in the drawer.
   isAdmin?: boolean;
-  // True when the instance has >1 profile; gates the Household overview.
+  // True when the caller has >1 ACCESSIBLE profile; decides the drawer's identity chrome.
   multiProfile?: boolean;
   // True unless the active profile is an infant (< 1 y); gates Nutrition (#591).
   foodLoggingRelevant?: boolean;

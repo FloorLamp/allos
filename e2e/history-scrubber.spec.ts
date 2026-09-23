@@ -2,9 +2,10 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenNow, frozenToday } from "./worker-env";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { daysBetweenDateStr } from "@/lib/date";
 
 // THE TIMELINE JUMP RAIL (issue #2657 item 4).
 //
@@ -58,11 +59,23 @@ function shiftedDay(days: number): string {
 
 // Distances chosen so no profile timezone can move any of them across the "after
 // today" edge, the 14-day recent edge, a month boundary or a 1 January.
+// The three older goals must stay inside the frozen year, since only this year's
+// months are rail stops. When −220 would leave it (a forward clock early in a year,
+// #6015), they spread from 20 days back to 2 January instead, keeping three months
+// where the year has them.
+const OLDEST_BACK = Math.min(
+  220,
+  daysBetweenDateStr(`${frozenToday().slice(0, 4)}-01-02`, frozenToday()) ?? 0
+);
+const SPREAD =
+  OLDEST_BACK === 220
+    ? [100, 160, 220]
+    : [20, (20 + OLDEST_BACK) >> 1, OLDEST_BACK];
 const DATES = {
   ahead: shiftedDay(45),
-  mid: shiftedDay(-100),
-  older: shiftedDay(-160),
-  oldest: shiftedDay(-220),
+  mid: shiftedDay(-SPREAD[0]),
+  older: shiftedDay(-SPREAD[1]),
+  oldest: shiftedDay(-SPREAD[2]),
   lastYear: shiftedDay(-400),
 } as const;
 

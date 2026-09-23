@@ -4,6 +4,7 @@ import { WEEKDAYS_LONG } from "@/lib/date";
 import { saveFreeDays } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // Free-days card (issue #1241) — the PROFILE-scoped set of off-days (0=Sun … 6=Sat)
 // that the Sleep Regularity card's social-jetlag figure splits on. The weekend guess
@@ -37,9 +38,7 @@ export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
   return (
     <div className="card space-y-4" data-testid="free-days-form">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Free days
-        </h2>
+        <SectionHeading level={2}>Free days</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

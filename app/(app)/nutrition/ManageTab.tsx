@@ -1050,7 +1050,10 @@ export default async function ManageTab({
                 as the preferences card — the food-group catalog the trigger list is
                 drawn from is meaningless for an infant (#975/#1462). */}
               {foodPreferencesRelevant && (
-                <SensitivitiesSection sensitivities={foodSensitivities} />
+                <SensitivitiesSection
+                  sensitivities={foodSensitivities}
+                  canWrite={access === "write"}
+                />
               )}
             </div>
             <aside

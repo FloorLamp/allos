@@ -9,6 +9,7 @@ import type {
   UnitPrefs,
   WeightUnit,
 } from "@/lib/settings";
+import SectionHeading from "@/components/SectionHeading";
 
 // Unit display preferences — a LOGIN-scoped setting (the signed-in login's
 // display choice), not a property of the active profile.
@@ -28,9 +29,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
   return (
     <div className="card space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Units
-        </h2>
+        <SectionHeading level={2}>Units</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

@@ -5,6 +5,7 @@ import Button from "@/components/Button";
 import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // The externally reachable base URL of the app — one shared setting consumed by
 // everything that hands a URL to a third party (Telegram webhook, Strava OAuth
@@ -46,9 +47,7 @@ export default function PublicUrlSettings({
   return (
     <div className="card space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Public app URL
-        </h2>
+        <SectionHeading level={2}>Public app URL</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

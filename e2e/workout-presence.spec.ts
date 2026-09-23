@@ -4,20 +4,15 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { hashPasswordSync } from "../lib/password";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
-import {
-  E2E_LOGIN_PRESENCE,
-  E2E_MEMBER_PASSWORD,
-  PRESENCE_PROFILE,
-} from "./fixture-logins";
+import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { comboboxRows, deleteActivityFromForm, hydratedClick } from "./helpers";
 
-// Derived workout presence (issue #921), driven end-to-end:
-//   • the household presence chip (grants-scoped, active-only),
-//   • the app-wide minimized workout dock — hydration on load, reopen, training log
-//     suppression, minimize round-trip, and discard-removes.
+// Derived workout presence (issue #921), driven end-to-end: the app-wide minimized
+// workout dock — hydration on load, reopen, training log suppression, minimize
+// round-trip, and discard-removes.
 //
-// The seeded PRESENCE_PROFILE carries a LIVE session (a strength activity today
+// The seeded presence profile carries a LIVE session (a strength activity today
 // with a start_time, no end_time, a fresh auto-save timestamp), so its presence
 // reads `active`. The read-only tests use that fixture; the interactive test
 // creates its own session on the admin profile and cleans it up (repeat-safe).
@@ -29,23 +24,6 @@ async function pickActivity(page: Page, name: string) {
   // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
   await comboboxRows(page).filter({ hasText: name }).first().click();
 }
-
-test("household shows a live-workout presence chip, grants-scoped and active-only", async ({
-  page,
-}) => {
-  test.slow();
-  // Admin sees every profile, so the seeded live session surfaces on its card.
-  await page.goto("/household");
-  await expect(page.getByRole("heading", { name: "Household" })).toBeVisible();
-
-  const card = page
-    .getByTestId("household-card")
-    .filter({ hasText: PRESENCE_PROFILE });
-  await expect(card).toHaveCount(1);
-  const chip = card.getByTestId("household-presence-chip");
-  await expect(chip).toBeVisible();
-  await expect(chip).toContainText(/mid-workout · \d+ min/);
-});
 
 test("the workout dock hydrates for an in-progress session, suppressed on the training log", async ({
   browser,

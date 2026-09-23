@@ -1,21 +1,14 @@
-// DB INTEGRATION TIER — per-member setup health over the real schema (issue #2173).
+// DB INTEGRATION TIER — whether a member's reminders reach anyone, over the real schema
+// (issue #2173).
 //
-// The fixture is the REAL four-profile household the expanded scope was audited on,
-// reproduced in shape:
+// The fixture is the REAL four-profile household the scope was audited on, reproduced
+// in shape:
 //
-//   • the admin's own profile — routable through `own_profile_id` + a channel, nothing
-//     wrong with it;
+//   • the admin's own profile — routable through `own_profile_id` + a channel;
 //   • an adult member — a dosed `should` supplement, UNROUTABLE (no grant, no
-//     own-profile link, and the admin ROLE deliberately is not a source), plus an
-//     overdue preventive item;
-//   • a child — five active dosed MEDICATIONS, also unroutable (the stronger case), and
-//     one active item with NO dose row;
-//   • a toddler — the entire intake roster inactive, including obligated items.
-//
-// It then pins the two fixes as SURGICAL: adding a `login_profiles` grant clears the
-// UNROUTABLE line and nothing else, and adding a dose clears the UNDOSED line and
-// nothing else. That is the whole regression surface — a check that clears something it
-// does not own is how a derived setup row starts lying.
+//     own-profile link, and the admin ROLE deliberately is not a source);
+//   • a child — five active dosed MEDICATIONS, also unroutable;
+//   • a toddler — the entire intake roster inactive, so nothing would send.
 //
 // Every value is synthetic: obviously fictional names, a reserved-range fake chat id.
 
@@ -25,22 +18,14 @@ import {
   setTelegramBotConfig,
   setTimezone,
   setLoginTelegram,
-  setOnboardingState,
   setProfileHomeAssistant,
 } from "@/lib/settings";
-import { initialOnboardingState } from "@/lib/onboarding";
 import { getChannels } from "@/lib/notifications";
 import {
   instanceHasAnyChannel,
   profileRoutingFacts,
 } from "@/lib/notifications/routing";
-import { dismissFinding } from "@/lib/queries";
-import {
-  gatherHouseholdSetupFacts,
-  householdSetupForProfile,
-  profileUnroutableReason,
-} from "@/lib/queries/household-setup";
-import type { HouseholdSetupCheckId } from "@/lib/household-setup";
+import { profileUnroutableReason } from "@/lib/queries/household-setup";
 
 const CAREGIVER_CHAT = "5550101";
 const TODAY = "2026-08-09";
@@ -61,9 +46,8 @@ function addItem(
     kind?: "supplement" | "medication";
     obligation?: "must" | "should" | "may";
     active?: 0 | 1;
-    dosed?: boolean;
   } = {}
-): number {
+): void {
   const itemId = Number(
     db
       .prepare(
@@ -79,30 +63,18 @@ function addItem(
         opts.obligation ?? "should"
       ).lastInsertRowid
   );
-  if (opts.dosed !== false) addDose(itemId);
-  return itemId;
-}
-
-function addDose(itemId: number): void {
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, '1 cap', 'morning', 'any', 0)`
   ).run(itemId);
 }
 
-function checkIds(profileId: number): HouseholdSetupCheckId[] {
-  return (householdSetupForProfile(profileId, TODAY)?.checks ?? []).map(
-    (c) => c.id
-  );
-}
-
-describe("the four-profile household's setup rows (#2173)", () => {
+describe("the four-profile household's routing (#2173)", () => {
   let adminLoginId: number;
   let adminSelf: number;
   let adult: number;
   let child: number;
   let toddler: number;
-  let undosedChildItem: number;
 
   beforeEach(() => {
     setTelegramBotConfig({
@@ -139,11 +111,6 @@ describe("the four-profile household's setup rows (#2173)", () => {
       telegramChatId: CAREGIVER_CHAT,
     });
 
-    // Every profile has been through onboarding EXCEPT the toddler, so the
-    // never-onboarded check is isolated to one member.
-    for (const p of [adminSelf, adult, child])
-      setOnboardingState(p, initialOnboardingState());
-
     addItem(adminSelf, "Admin D3 (fixture)");
     addItem(adult, "Adult Magnesium (fixture)", { obligation: "should" });
     for (let i = 0; i < 5; i++)
@@ -151,102 +118,42 @@ describe("the four-profile household's setup rows (#2173)", () => {
         kind: "medication",
         obligation: "must",
       });
-    undosedChildItem = addItem(child, "Child Undosed (fixture)", {
-      kind: "medication",
-      obligation: "must",
-      dosed: false,
-    });
-    // The toddler's whole roster is inactive, including obligated items — plausibly a
-    // bulk sweep, invisible either way. Supplements ONLY, deliberately: the shared
-    // onboarding presence reader counts an intake row of kind `medication` (active or
-    // not) as a first value, so a toddler with an inactive inhaler is NOT "thin
-    // presence" and would not carry the never-onboarded line. Keeping this roster
-    // supplement-only lets one member exercise both checks at once.
     addItem(toddler, "Toddler Multivitamin (fixture)", {
-      obligation: "should",
-      active: 0,
-    });
-    addItem(toddler, "Toddler Fluoride (fixture)", {
       obligation: "should",
       active: 0,
     });
   });
 
-  it("the admin's OWN profile is healthy — a routable member renders no row", () => {
-    expect(householdSetupForProfile(adminSelf, TODAY)).toBe(null);
+  it("the admin's OWN profile is routable", () => {
+    expect(profileUnroutableReason(adminSelf, TODAY)).toBe(null);
   });
 
   it("the adult member is unroutable — a dosed `should` item, an EMPTY edge set", () => {
     expect(profileRoutingFacts(adult).managingLoginIds).toEqual([]);
     expect(profileUnroutableReason(adult, TODAY)).toBe("no-managing-login");
-    expect(checkIds(adult)).toContain("unroutable");
-    const row = householdSetupForProfile(adult, TODAY)!;
-    // IntakeItem-only content bands at `action`; the child's medications band above it.
-    expect(row.tone).toBe("action");
-    // Constraint 3: no dismiss may ever be offered while unroutable is in the set.
-    expect(row.dismissible).toBe(false);
-    // The CTA lands on the GRANT UI — the form `setGrants` can finally act on for an
-    // admin since #2345, which is what makes this deep link worth offering.
-    expect(row.checks[0].cta).toEqual({
-      scope: "login",
-      href: "/settings/family",
-      label: "Grant a login",
-    });
   });
 
-  it("a granted-but-channel-less member points at the channel form instead", () => {
+  it("a granted-but-channel-less member is unroutable for want of a channel", () => {
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
     ).run(adminLoginId, adult);
-    // The admin's own Telegram chat is enabled, but the LOGIN is now a recipient of a
-    // profile it has a channel for, so nothing fires. Drop the chat to reach case 2.
     setLoginTelegram(adminLoginId, {
       telegramEnabled: false,
       telegramChatId: "",
     });
     expect(profileUnroutableReason(adult, TODAY)).toBe("no-channel");
-    expect(householdSetupForProfile(adult, TODAY)!.checks[0].cta?.href).toBe(
-      "/settings/notifications"
-    );
   });
 
-  it("the child's five MEDICATIONS band above the adult's supplement, and the undosed item is its own line", () => {
-    const row = householdSetupForProfile(child, TODAY)!;
-    expect(row.tone).toBe("caution");
-    expect(row.checks.map((c) => c.id)).toEqual([
-      "unroutable",
-      "undosed-items",
-    ]);
-    const undosed = row.checks.find((c) => c.id === "undosed-items")!;
-    expect(undosed.cta?.href).toBe(
-      `/medications/${undosedChildItem}?action=edit`
-    );
-  });
-
-  it("the toddler shows never-onboarded and the SUGGEST-only roster question, and is NOT unroutable", () => {
-    // Every item is inactive, so nothing would send — a profile with nothing to say is
-    // quiet, correctly, even with an empty edge set.
+  it("an all-inactive roster has nothing to say, so it is NOT unroutable", () => {
     expect(profileUnroutableReason(toddler, TODAY)).toBe(null);
-    expect(checkIds(toddler)).toEqual(["never-onboarded", "roster-inactive"]);
-    const roster = householdSetupForProfile(toddler, TODAY)!.checks.find(
-      (c) => c.id === "roster-inactive"
-    )!;
-    // SUGGEST-only: it asks, it offers no write.
-    expect(roster.cta).toBe(null);
   });
 
-  it("a `login_profiles` grant clears the UNROUTABLE line ONLY", () => {
-    const before = checkIds(child);
-    expect(before).toEqual(["unroutable", "undosed-items"]);
+  it("a `login_profiles` grant makes a member routable", () => {
+    expect(profileUnroutableReason(child, TODAY)).toBe("no-managing-login");
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
     ).run(adminLoginId, child);
-    expect(checkIds(child)).toEqual(["undosed-items"]);
-  });
-
-  it("adding a dose clears the UNDOSED line ONLY", () => {
-    addDose(undosedChildItem);
-    expect(checkIds(child)).toEqual(["unroutable"]);
+    expect(profileUnroutableReason(child, TODAY)).toBe(null);
   });
 
   it("the PROFILE-scoped Home Assistant webhook alone makes a member routable", () => {
@@ -257,13 +164,12 @@ describe("the four-profile household's setup rows (#2173)", () => {
       disabledKinds: [],
     });
     expect(profileUnroutableReason(adult, TODAY)).toBe(null);
-    expect(householdSetupForProfile(adult, TODAY)).toBe(null);
   });
 
   // Anti-drift: the routing reader is NOT `getChannels().some(isConfigured)` (it needs
   // the shape of the gap, and it deliberately ignores mute), but with no mute in play
-  // the two must agree about whether ANY route exists — or the household board and the
-  // tick would disagree about the same profile.
+  // the two must agree about whether ANY route exists — or Settings and the tick would
+  // disagree about the same profile.
   it("agrees with the real channel registry about whether a route exists", () => {
     for (const p of [adminSelf, adult, child, toddler]) {
       const facts = profileRoutingFacts(p);
@@ -297,10 +203,6 @@ describe("the four-profile household's setup rows (#2173)", () => {
     it("silences unroutable for EVERY member on a bare instance", () => {
       for (const p of [adult, child])
         expect(profileUnroutableReason(p, TODAY)).toBe(null);
-      // Only the unroutable line goes; the checks that are not about delivery stay.
-      expect(checkIds(adult)).toEqual([]);
-      expect(checkIds(child)).toEqual(["undosed-items"]);
-      expect(checkIds(toddler)).toEqual(["never-onboarded", "roster-inactive"]);
     });
 
     it("comes back when any ONE technology is configured again", () => {
@@ -347,55 +249,18 @@ describe("the four-profile household's setup rows (#2173)", () => {
     });
   });
 
-  it("a dismissal hides the row until a NEW check type fails", () => {
-    // The toddler's row is dismissible (no unroutable in the set).
-    const row = householdSetupForProfile(toddler, TODAY)!;
-    expect(row.dismissible).toBe(true);
-    dismissFinding(toddler, row.dedupeKey);
-    expect(householdSetupForProfile(toddler, TODAY)).toBe(null);
-
-    // A newly failing check TYPE re-keys the episode, so the row is offered again.
-    addItem(toddler, "Toddler New Undosed (fixture)", {
-      obligation: "should",
-      dosed: false,
-    });
-    const after = householdSetupForProfile(toddler, TODAY)!;
-    expect(after.checks.map((c) => c.id)).toContain("undosed-items");
-    expect(after.dedupeKey).not.toBe(row.dedupeKey);
-  });
-
-  it("a dismissal can never silence an unroutable member", () => {
-    const row = householdSetupForProfile(adult, TODAY)!;
-    // Even with a suppression row hand-written under the current key, the member's
-    // unroutable line still renders — the reader never consults the bus for it.
-    dismissFinding(adult, row.dedupeKey);
-    expect(checkIds(adult)).toContain("unroutable");
-  });
-
   it("a quiet profile with no send source is never unroutable", () => {
     const quiet = newProfile("Quiet Quilla (fixture)");
-    setOnboardingState(quiet, initialOnboardingState());
-    const facts = gatherHouseholdSetupFacts(quiet, TODAY);
-    expect(facts.routing.managingLoginIds).toEqual([]);
-    expect(facts.sendSources.scheduledMedications).toBe(0);
-    expect(facts.sendSources.scheduledSupplements).toBe(0);
+    expect(profileRoutingFacts(quiet).managingLoginIds).toEqual([]);
     expect(profileUnroutableReason(quiet, TODAY)).toBe(null);
   });
 
   it("a `may`-only roster is not a send source, so it is never unroutable", () => {
     const prn = newProfile("PRN Perrine (fixture)");
-    setOnboardingState(prn, initialOnboardingState());
     addItem(prn, "PRN Ibuprofen (fixture)", {
       kind: "medication",
       obligation: "may",
     });
     expect(profileUnroutableReason(prn, TODAY)).toBe(null);
-    // …and its undosed sibling is not a defect either: `may` has no dueness at all.
-    addItem(prn, "PRN Undosed (fixture)", {
-      kind: "medication",
-      obligation: "may",
-      dosed: false,
-    });
-    expect(checkIds(prn)).not.toContain("undosed-items");
   });
 });

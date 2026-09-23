@@ -9,7 +9,8 @@ import {
   FITNESS_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenToday, workerDbPath } from "./worker-env";
+import { shiftDateStr } from "@/lib/date";
 
 const DB_PATH = workerDbPath();
 
@@ -38,18 +39,19 @@ function fitnessProfileId(db: InstanceType<typeof Database>): number {
 // recent fitness_assessments (+ their entries). The seeded old check (the delta anchor)
 // and the natural-store readings are untouched.
 function resetRecentChecks(): void {
+  const since = shiftDateStr(frozenToday(), -30);
   withDb((db) => {
     const pid = fitnessProfileId(db);
     db.prepare(
       `DELETE FROM fitness_assessment_entries
         WHERE assessment_id IN (
           SELECT id FROM fitness_assessments
-           WHERE profile_id = ? AND date >= date('now','-30 days'))`
-    ).run(pid);
+           WHERE profile_id = ? AND date >= ?)`
+    ).run(pid, since);
     db.prepare(
       `DELETE FROM fitness_assessments
-        WHERE profile_id = ? AND date >= date('now','-30 days')`
-    ).run(pid);
+        WHERE profile_id = ? AND date >= ?`
+    ).run(pid, since);
   });
 }
 
@@ -110,9 +112,9 @@ function seedNearComplete(exceptKey: string): void {
     const assessmentId = Number(
       db
         .prepare(
-          "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, date('now'))"
+          "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
         )
-        .run(pid).lastInsertRowid
+        .run(pid, frozenToday()).lastInsertRowid
     );
     const ins = db.prepare(
       `INSERT INTO fitness_assessment_entries
