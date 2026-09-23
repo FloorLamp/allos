@@ -42,6 +42,12 @@ import {
 } from "@/lib/symptom-photo-write";
 import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import type { ProcessedPhoto } from "@/lib/photo/ingest";
+import { photoDomainRoot } from "@/lib/photo/store";
+import { videoDomainRoot } from "@/lib/video/store";
+import { ingestVideo } from "@/lib/video/ingest";
+import { buildMp4Fixture } from "@/e2e/video-fixture";
+import { addActivityVideoCore } from "@/lib/activity-video-write";
+import { addTrainingPhotoCore } from "@/lib/training-photo-write";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -1076,4 +1082,128 @@ describe("Delete all frees the links a condition, med, target, record or symptom
       expect(mine.read()).toEqual(mine.linked);
     }
   );
+});
+
+// Owner ruling on #5990: Delete all also removes the media files its wipe leaves
+// without a row, after the wipe commits. Each file is written by its production core.
+describe("Delete all removes the media files it leaves without a row (#5990)", () => {
+  const DAY = "2026-05-01";
+  const touched: number[] = [];
+
+  const DIRS = {
+    symptom: (id: number) => path.join(photoDomainRoot("symptom"), String(id)),
+    training: (id: number) =>
+      path.join(photoDomainRoot("training"), String(id)),
+    clip: (id: number) => path.join(videoDomainRoot("activity"), String(id)),
+  };
+
+  afterAll(() => {
+    for (const id of touched)
+      for (const dir of Object.values(DIRS))
+        fs.rmSync(dir(id), { recursive: true, force: true });
+  });
+
+  function filesIn(dir: string): string[] {
+    return fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+  }
+
+  function photo(seed: string): ProcessedPhoto {
+    const bytes = Buffer.from(`synthetic-media-${seed}`);
+    return {
+      bytes,
+      thumbBytes: bytes,
+      mime: "image/jpeg",
+      width: 4,
+      height: 3,
+      sizeBytes: bytes.length,
+      contentHash: crypto.createHash("sha256").update(bytes).digest("hex"),
+      captureDate: null,
+    };
+  }
+
+  // A symptom day with a photo, and a session with a clip and a training photo.
+  function seedMedia(profileId: number) {
+    touched.push(profileId);
+    logSymptomCore(profileId, "rash", 2, DAY, "page");
+    attachSymptomPhotoCore(
+      profileId as WriteAuthorizedProfileId,
+      DAY,
+      photo(`${profileId}-rash`),
+      "rash"
+    );
+    const activityId = Number(
+      db
+        .prepare(
+          "INSERT INTO activities (profile_id, date, type, title) VALUES (?, ?, 'strength', 'Squats')"
+        )
+        .run(profileId, DAY).lastInsertRowid
+    );
+    const clip = ingestVideo(
+      buildMp4Fixture({ durationSec: 6, creationDate: DAY })
+    );
+    if (clip.kind !== "ingested") throw new Error(clip.kind);
+    expect(
+      addActivityVideoCore(
+        profileId,
+        { activityId, exercise: null, caption: null },
+        clip.video,
+        Buffer.from("poster")
+      ).kind
+    ).toBe("added");
+    expect(
+      addTrainingPhotoCore(
+        profileId,
+        { kind: "activity", activityId },
+        photo(`${profileId}-squat`)
+      ).kind
+    ).toBe("added");
+  }
+
+  it.each([
+    { key: "symptom_logs", dirs: [DIRS.symptom] },
+    { key: "activities", dirs: [DIRS.clip, DIRS.training] },
+  ])(
+    "$key: the wipe removes this profile's files and no one else's",
+    async ({ key, dirs }) => {
+      const { login, profile } = seedActor();
+      const other = createProfile("Other media", login.id);
+      seedMedia(profile.id);
+      seedMedia(other.id);
+      for (const dir of dirs) expect(filesIn(dir(profile.id))).not.toEqual([]);
+
+      expect(await deleteAllDatasetRows(key)).toEqual({
+        ok: true,
+        deleted: 1,
+        undoIds: [],
+      });
+      for (const dir of dirs) {
+        expect(filesIn(dir(profile.id))).toEqual([]);
+        expect(filesIn(dir(other.id))).not.toEqual([]);
+      }
+    }
+  );
+
+  it("a wipe that rolls back keeps its files", async () => {
+    const { login, profile } = seedActor();
+    const other = createProfile("Other media", login.id);
+    seedMedia(profile.id);
+    // Planted: another profile's photo naming this profile's symptom day. No seam
+    // reaches across profiles, so the wipe's DELETE throws and rolls back.
+    const logId = (
+      db
+        .prepare("SELECT id FROM symptom_logs WHERE profile_id = ?")
+        .get(profile.id) as { id: number }
+    ).id;
+    db.prepare(
+      `INSERT INTO symptom_photos (profile_id, date, symptom_log_id, stored_path, content_hash)
+       VALUES (?, ?, ?, 'data/uploads/none.jpg', 'planted')`
+    ).run(other.id, DAY, logId);
+    const before = filesIn(DIRS.symptom(profile.id));
+    expect(before).not.toEqual([]);
+
+    await expect(deleteAllDatasetRows("symptom_logs")).rejects.toThrow(
+      /FOREIGN KEY constraint failed/
+    );
+    expect(filesIn(DIRS.symptom(profile.id))).toEqual(before);
+  });
 });

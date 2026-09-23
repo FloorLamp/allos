@@ -17,11 +17,15 @@ import {
 import { DATASET_UNDO_KIND, undoKindForTable } from "@/lib/dataset-undo";
 import {
   captureDelete,
+  captureRowsOf,
+  capturedFilesOf,
   deleteExplicitChildren,
   detachRepointedLinks,
   unlinkIntakeItemsFromRecord,
   unlinkProtocolsFromIntakeItem,
+  unlinkPurgedFiles,
 } from "@/lib/undo-delete-db";
+import { serializePayload } from "@/lib/undo-delete";
 import { nullEncounterLinks } from "@/lib/queries/visit-links";
 import { detachConditionIntakeLinks } from "@/lib/condition-delete";
 import { unlinkProtocolsFromTargets } from "@/lib/frequency-target-delete";
@@ -193,6 +197,24 @@ function freeRowLinks(table: DeletableDatasetKey, profileId: number): void {
     .prepare(`SELECT id FROM ${table} WHERE profile_id = ?`)
     .all(profileId) as { id: number }[];
   for (const { id } of rows) seam(profileId, id);
+}
+
+// The media files Delete all leaves without a row (owner ruling on #5990): each row
+// is read as the per-row capture would hold it, and its files are collected the way
+// the Trash purge collects a capture's. A symptom day's photos, an activity's clips
+// and training photos. Read before the wipe; unlinked only after it commits.
+function wipedMediaFiles(table: DeletableDatasetKey, profileId: number) {
+  const kind = undoKindForTable(table);
+  if (!kind) return capturedFilesOf([]);
+  const rows = db
+    .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
+    .all(profileId) as Record<string, unknown>[];
+  return capturedFilesOf(
+    rows.map((row) => ({
+      profile_id: profileId,
+      payload: serializePayload(kind, captureRowsOf(kind, row)),
+    }))
+  );
 }
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
@@ -374,7 +396,7 @@ export async function deleteAllDatasetRows(
 
   // One transaction from the first pre-image to the last tombstone: a seam that
   // freed links for a wipe that then failed would otherwise leave them freed.
-  const { deleted, removedVaccines } = writeTx(() => {
+  const { deleted, removedVaccines, files } = writeTx(() => {
     // Capture the vaccine codes about to be un-backed before wiping the table (#376).
     const removedVaccines = resolved.policy.cleanupImmunizations
       ? (
@@ -399,6 +421,7 @@ export async function deleteAllDatasetRows(
     // wipe raises SQLITE_CONSTRAINT_FOREIGNKEY and rolls back — a person who tracked one
     // follow-up could not bulk-delete the dataset at all (#5966).
     freeFollowUpLinks(resolved.table, profile.id, null);
+    const files = wipedMediaFiles(resolved.table, profile.id);
     // Every other blocking link captureDelete frees per row (#5990).
     freeRowLinks(resolved.table, profile.id);
     // "Delete all" is still scoped to this profile — never wipe another profile's
@@ -409,8 +432,10 @@ export async function deleteAllDatasetRows(
       .run(profile.id);
     for (const row of tombstoneRows)
       writeImportTombstoneForRow(profile.id, resolved.table, row);
-    return { deleted: info.changes, removedVaccines };
+    return { deleted: info.changes, removedVaccines, files };
   });
+  // After the commit, as the Trash purge does: a wipe that rolled back keeps its files.
+  unlinkPurgedFiles(files);
 
   afterDelete(key, resolved.policy, profile.id, removedVaccines);
   return { ok: true, deleted, undoIds: [] };
