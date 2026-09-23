@@ -63,8 +63,12 @@ describe("getDaylightOutdoorMinutesSeries (#1171)", () => {
     expect(series.length).toBe(3);
     for (const point of series) {
       expect(point.value).toBe(byDay.get(point.date));
-      expect(point.value).toBeGreaterThan(0);
     }
+    // Each day's minutes are its whole seeded walk, so a window clipped by the
+    // daylight bounds fails here rather than only a window dropped entirely.
+    expect(byDay.get(d1)).toBe(60);
+    expect(byDay.get(d2)).toBe(30);
+    expect(byDay.get(d3)).toBe(90);
     // Ascending by date.
     const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date));
     expect(series.map((s) => s.date)).toEqual(sorted.map((s) => s.date));
