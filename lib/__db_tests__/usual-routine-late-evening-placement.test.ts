@@ -21,13 +21,18 @@
 // The 22:30 pin is the whole fixture: inside a meal window the two windows agree, which
 // is why the defect stood. A midday render cannot see it.
 //
+// The second block pins #6013, the converse seam: past the Morning food window's
+// midpoint the clock says Midday, but the seated slot is still Morning, and the offer is
+// asked for the seated slot.
+//
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
 import type { ReactElement } from "react";
 import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import { setProfileSetting, setTimezone } from "@/lib/settings";
+import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
 import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
@@ -108,7 +113,7 @@ const LATE_EVENING = "2026-08-19T22:30:00.000Z";
 function seedDose(
   profileId: number,
   name: string,
-  timeOfDay: "evening" | "morning"
+  timeOfDay: "evening" | "morning" | "midday"
 ): void {
   const createdAt = `${shiftDateStr(today(profileId), -14)} 00:00:00`;
   const itemId = Number(
@@ -139,17 +144,40 @@ function tap(profileId: number, group: string, date: string, hhmmss: string) {
 /** Every row the render produced, by the row contract's id (#5435 §5.1). */
 let rows = new Map<string, Record<string, unknown>>();
 
+async function renderRows(): Promise<Map<string, Record<string, unknown>>> {
+  const { default: Dashboard } = await import("../../app/(app)/page");
+  const resolved = await resolveAsyncTree((await Dashboard()) as ReactElement);
+  // Keyed on the ROW component's own `id` prop rather than on the `<li>`'s rendered
+  // attribute, because the control this file is about is a prop and not markup.
+  return new Map(
+    resolved.elements
+      .filter((props) => typeof props.id === "string" && "control" in props)
+      .map((props) => [String(props.id), props])
+  );
+}
+
+function adminLoginId(): number {
+  return (
+    db
+      .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+      .get() as { id: number }
+  ).id;
+}
+
+function actAs(profileId: number): void {
+  session.accessible = db
+    .prepare(
+      `SELECT id, name, photo_path, photo_version FROM profiles WHERE id = ?`
+    )
+    .all(profileId) as SessionProfile[];
+  session.profile = session.accessible[0];
+}
+
 describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
   beforeEach(() => vi.setSystemTime(new Date(LATE_EVENING)));
   beforeAll(async () => {
     vi.setSystemTime(new Date(LATE_EVENING));
-    session.loginId = (
-      db
-        .prepare(
-          "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
-        )
-        .get() as { id: number }
-    ).id;
+    session.loginId = adminLoginId();
     const profileId = Number(
       db
         .prepare("INSERT INTO profiles (name) VALUES (?)")
@@ -177,17 +205,7 @@ describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
       .all(profileId) as SessionProfile[];
     session.profile = session.accessible[0];
 
-    const { default: Dashboard } = await import("../../app/(app)/page");
-    const resolved = await resolveAsyncTree(
-      (await Dashboard()) as ReactElement
-    );
-    // Keyed on the ROW component's own `id` prop rather than on the `<li>`'s rendered
-    // attribute, because the control this file is about is a prop and not markup.
-    rows = new Map(
-      resolved.elements
-        .filter((props) => typeof props.id === "string" && "control" in props)
-        .map((props) => [String(props.id), props])
-    );
+    rows = await renderRows();
   }, 120_000);
 
   it("makes the Evening usual routine the seated slot's control at 22:30", () => {
@@ -210,13 +228,134 @@ describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
   // THE CONVERSE, so the assertion above cannot pass by "every slot gets the routine
   // control". The Morning slot is owed at 22:30 too — nothing was taken — and the
   // routine's window is Evening, so Morning carries the plain Take all. Without this,
-  // dropping the `routineControl.window === bucket` match in the page would move the
-  // offer onto every seated slot and nothing would red.
+  // putting the one control on every seated slot would pass unnoticed.
   it("leaves a slot outside the routine's window on plain Take all", () => {
     const slot = rows.get("attention.fact:dose-slot:Morning");
     expect(slot, [...rows.keys()].join(", ")).toBeDefined();
     const control = slot!.control as ReactElement | null;
     expect(control, "the Morning slot carried no control").toBeTruthy();
     expect(control!.type).toBe(DoseSlotTakeAll);
+  });
+});
+
+// ── #6013: THE SEATED SLOT, NOT THE CLOCK'S FOOD WINDOW ──────────────────────────
+//
+// Slot hours 07:30 / 12:00 / 18:00 put the Morning/Midday food boundary at 09:45. At
+// 10:10 the clock's food window is Midday, but the Midday doses are not due yet, so the
+// seated slot is Morning, and the offer must be asked for Morning. At 12:05 Midday is
+// due and the latest seated slot takes the control; Morning, still owed, keeps Take all.
+const PAST_MIDPOINT = "2026-08-19T10:10:00.000Z";
+const MIDDAY_DUE = "2026-08-19T12:05:00.000Z";
+
+// Two profiles, because the 10:10 tap takes the Morning doses the 12:05 case needs owed.
+function seedSlotHoursProfile(name: string): number {
+  const profileId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
+  );
+  setTimezone(profileId, "UTC");
+  setProfileSetting(profileId, "notify_supp_morning_hour", "07:30");
+  setProfileSetting(profileId, "notify_supp_midday_hour", "12:00");
+  setProfileSetting(profileId, "notify_supp_evening_hour", "18:00");
+  const anchor = today(profileId);
+  for (let d = 1; d <= 12; d++) {
+    const date = shiftDateStr(anchor, -d);
+    tap(profileId, "fermented", date, "08:00:00");
+    tap(profileId, "berries", date, "08:05:00");
+    tap(profileId, "legumes", date, "12:30:00");
+    tap(profileId, "leafy_greens", date, "12:35:00");
+  }
+  seedDose(profileId, `${name} Creatine`, "morning");
+  seedDose(profileId, `${name} Vitamin D`, "morning");
+  seedDose(profileId, `${name} Zinc`, "midday");
+  seedDose(profileId, `${name} Iron`, "midday");
+  return profileId;
+}
+
+function slotControl(
+  seated: Map<string, Record<string, unknown>>,
+  bucket: string
+): ReactElement {
+  const slot = seated.get(`attention.fact:dose-slot:${bucket}`);
+  expect(slot, [...seated.keys()].join(", ")).toBeDefined();
+  return slot!.control as ReactElement;
+}
+
+describe("the usual routine follows the seated dose slot (#6013)", () => {
+  beforeAll(() => {
+    session.loginId = adminLoginId();
+  });
+
+  it("offers the usual Morning on the Morning row at 10:10, and the tap files Morning", async () => {
+    vi.setSystemTime(new Date(PAST_MIDPOINT));
+    const profileId = seedSlotHoursProfile("Past midpoint");
+    actAs(profileId);
+    const seated = await renderRows();
+    expect(seated.has("attention.fact:dose-slot:Midday")).toBe(false);
+    const control = slotControl(seated, "Morning");
+    expect(control.type).toBe(UsualRoutineControl);
+    const props = control.props as React.ComponentProps<
+      typeof UsualRoutineControl
+    >;
+    expect(props.window).toBe("Morning");
+
+    const on = today(profileId);
+    const outcome = logUsualRoutineCore(
+      profileId,
+      "Morning",
+      on,
+      props.food.map((member) => member.slug),
+      props.doses.map((dose) => dose.id),
+      "dashboard-widget"
+    );
+    expect(outcome.kind).toBe("logged");
+    expect(
+      outcome.kind === "logged"
+        ? outcome.doses.map((dose) => [dose.name, dose.outcome])
+        : []
+    ).toEqual([
+      ["Past midpoint Creatine", "logged"],
+      ["Past midpoint Vitamin D", "logged"],
+    ]);
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT meal_slot FROM food_log_events WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, on)
+    ).toEqual([{ meal_slot: "Morning" }]);
+  });
+
+  it("moves the control to the Midday row once Midday is due at 12:05", async () => {
+    vi.setSystemTime(new Date(MIDDAY_DUE));
+    actAs(seedSlotHoursProfile("Midday due"));
+    const seated = await renderRows();
+    const midday = slotControl(seated, "Midday");
+    expect(midday.type).toBe(UsualRoutineControl);
+    expect((midday.props as { window: string }).window).toBe("Midday");
+    expect(slotControl(seated, "Morning").type).toBe(DoseSlotTakeAll);
+  });
+
+  // Once the current slot is logged the control collapses: it does not jump back to the
+  // earlier slot still owed (#2458's collapse, e2e/routine-usual.spec.ts).
+  it("does not move the control back to Morning once Midday is logged", async () => {
+    vi.setSystemTime(new Date(MIDDAY_DUE));
+    const profileId = seedSlotHoursProfile("Midday logged");
+    actAs(profileId);
+    const props = slotControl(await renderRows(), "Midday")
+      .props as React.ComponentProps<typeof UsualRoutineControl>;
+    expect(
+      logUsualRoutineCore(
+        profileId,
+        "Midday",
+        today(profileId),
+        props.food.map((member) => member.slug),
+        props.doses.map((dose) => dose.id),
+        "dashboard-widget"
+      ).kind
+    ).toBe("logged");
+    const seated = await renderRows();
+    expect(seated.has("attention.fact:dose-slot:Midday")).toBe(false);
+    expect(slotControl(seated, "Morning").type).toBe(DoseSlotTakeAll);
   });
 });
