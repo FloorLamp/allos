@@ -1233,7 +1233,7 @@ async function measureReachCosts(browser) {
     ["Sleep", "/sleep"],
     ["Upcoming", "/upcoming"],
     ["Medications", "/medications"],
-    ["Longevity", "/longevity"],
+    ["Results", "/results"],
   ];
   for (const [name, href] of hubs) {
     await page.goto(`${BASE}/`);
