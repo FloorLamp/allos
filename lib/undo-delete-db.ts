@@ -336,33 +336,6 @@ export function unlinkIntakeItemsFromRecord(
   ).run(recordId, profileId);
 }
 
-// The rows a capture of `rootRow` holds: the root and each child by its `childWhere`.
-// captureDelete stores them; Data → Manage's Delete all takes no capture and reads
-// them only to learn which media files its wipe leaves without a row.
-export function captureRowsOf(
-  kind: string,
-  rootRow: Row,
-  capturedChildren?: Record<string, Row[]>
-): Record<string, Row[]> {
-  const [root, ...children] = getKindSpec(kind).entities;
-  const rows: Record<string, Row[]> = { [root.entity]: [rootRow] };
-  for (const child of children) {
-    const binds = Array.from(
-      { length: child.childBinds ?? 1 },
-      () => rootRow.id
-    );
-    const columns = child.repoint ? `id, ${child.repoint.column}` : "*";
-    rows[child.entity] =
-      capturedChildren?.[child.entity] ??
-      (db
-        .prepare(
-          `SELECT ${columns} FROM ${child.table} WHERE ${child.childWhere}`
-        )
-        .all(...binds) as Row[]);
-  }
-  return rows;
-}
-
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -390,7 +363,18 @@ export function captureDelete(
       .get(rootId, profileId) as Row | undefined;
     if (!rootRow) return null;
 
-    const rows = captureRowsOf(kind, rootRow, capturedChildren);
+    const rows: Record<string, Row[]> = { [root.entity]: [rootRow] };
+    for (const child of spec.entities.slice(1)) {
+      const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
+      const columns = child.repoint ? `id, ${child.repoint.column}` : "*";
+      rows[child.entity] =
+        capturedChildren?.[child.entity] ??
+        (db
+          .prepare(
+            `SELECT ${columns} FROM ${child.table} WHERE ${child.childWhere}`
+          )
+          .all(...binds) as Row[]);
+    }
 
     detachRepointedLinks(kind, profileId, rootId, rows);
 

@@ -1183,6 +1183,36 @@ describe("Delete all removes the media files it leaves without a row (#5990)", (
     }
   );
 
+  // Only the media rows are read: an activity's telemetry, which a capture would
+  // hold and which can run to megabytes a row, is never touched to find a file.
+  it("reads no non-media child of the rows it wipes", async () => {
+    const { profile } = seedActor();
+    const activityId = Number(
+      db
+        .prepare(
+          "INSERT INTO activities (profile_id, date, type, title) VALUES (?, ?, 'cardio', 'Run')"
+        )
+        .run(profile.id, DAY).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO activity_telemetry (profile_id, activity_id, source, streams_json, snapshot_at)
+       VALUES (?, ?, 'strava', '{}', ?)`
+    ).run(profile.id, activityId, DAY);
+    const prepare = vi.spyOn(db, "prepare");
+    try {
+      expect(await deleteAllDatasetRows("activities")).toMatchObject({
+        ok: true,
+        deleted: 1,
+      });
+      const sql = prepare.mock.calls.map(([text]) => text);
+      expect(sql.filter((text) => text.includes("activity_telemetry"))).toEqual(
+        []
+      );
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+
   it("a wipe that rolls back keeps its files", async () => {
     const { login, profile } = seedActor();
     const other = createProfile("Other media", login.id);

@@ -17,7 +17,6 @@ import {
 import { DATASET_UNDO_KIND, undoKindForTable } from "@/lib/dataset-undo";
 import {
   captureDelete,
-  captureRowsOf,
   capturedFilesOf,
   deleteExplicitChildren,
   detachRepointedLinks,
@@ -25,7 +24,13 @@ import {
   unlinkProtocolsFromIntakeItem,
   unlinkPurgedFiles,
 } from "@/lib/undo-delete-db";
-import { serializePayload } from "@/lib/undo-delete";
+import {
+  PHOTO_FILE_TABLES,
+  VIDEO_FILE_TABLES,
+  getKindSpec,
+  serializePayload,
+  type Row,
+} from "@/lib/undo-delete";
 import { nullEncounterLinks } from "@/lib/queries/visit-links";
 import { detachConditionIntakeLinks } from "@/lib/condition-delete";
 import { unlinkProtocolsFromTargets } from "@/lib/frequency-target-delete";
@@ -199,22 +204,38 @@ function freeRowLinks(table: DeletableDatasetKey, profileId: number): void {
   for (const { id } of rows) seam(profileId, id);
 }
 
-// The media files Delete all leaves without a row (owner ruling on #5990): each row
-// is read as the per-row capture would hold it, and its files are collected the way
-// the Trash purge collects a capture's. A symptom day's photos, an activity's clips
-// and training photos. Read before the wipe; unlinked only after it commits.
+// The media files Delete all leaves without a row (owner ruling on #5990), collected
+// the way the Trash purge collects a capture's: capturedFilesOf over a payload of the
+// kind's media entities (a symptom day's photos, an activity's clips and training
+// photos). Only those rows are read, never the rest of a capture (an activity's
+// telemetry and route), which is why Delete all takes no capture at all. Read before
+// the wipe; unlinked only after it commits.
 function wipedMediaFiles(table: DeletableDatasetKey, profileId: number) {
   const kind = undoKindForTable(table);
-  if (!kind) return capturedFilesOf([]);
-  const rows = db
-    .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
-    .all(profileId) as Record<string, unknown>[];
-  return capturedFilesOf(
-    rows.map((row) => ({
-      profile_id: profileId,
-      payload: serializePayload(kind, captureRowsOf(kind, row)),
-    }))
+  const entities = kind ? getKindSpec(kind).entities : [];
+  const media = entities.filter(
+    (e) => e.table in PHOTO_FILE_TABLES || e.table in VIDEO_FILE_TABLES
   );
+  if (!kind || media.length === 0) return capturedFilesOf([]);
+  const ids = db
+    .prepare(`SELECT id FROM ${table} WHERE profile_id = ?`)
+    .all(profileId) as { id: number }[];
+  const rows: Record<string, Row[]> = {};
+  for (const e of media) {
+    const isRoot = e === entities[0];
+    const read = db.prepare(
+      `SELECT * FROM ${e.table}
+        WHERE (${isRoot ? "id = ?" : e.childWhere}) AND profile_id = ?`
+    );
+    const binds = isRoot ? 1 : (e.childBinds ?? 1);
+    rows[e.entity] = ids.flatMap(
+      ({ id }) =>
+        read.all(...Array<number>(binds).fill(id), profileId) as Row[]
+    );
+  }
+  return capturedFilesOf([
+    { profile_id: profileId, payload: serializePayload(kind, rows) },
+  ]);
 }
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
