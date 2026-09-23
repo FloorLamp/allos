@@ -29,10 +29,6 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto("/nutrition?tab=food");
     await openFoodAdd(page);
-    // The open door is the layer's close, not "✕ Add" (#5098).
-    await expect(page.getByTestId("food-add-door")).toHaveAccessibleName(
-      "Close"
-    );
     await expect(page.getByTestId("nutrition-page-title")).toBeHidden();
     const shell = page.getByTestId("shell-chrome");
     const shellTabs = shell.getByTestId("shell-tab-strip");
@@ -40,6 +36,10 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
 
     const quick = page.getByTestId("food-quick-log");
     await expect(quick).toBeVisible({ timeout: WAIT });
+    // The open door is the layer's close, not "✕ Add" (#5098).
+    await expect(quick.getByTestId("food-add-door")).toHaveAccessibleName(
+      "Close"
+    );
     const initialSnapshot = page.getByTestId("nutrition-mobile-snapshot");
     await expect(initialSnapshot).toBeVisible();
     await expect(initialSnapshot).not.toContainText("At a glance");
