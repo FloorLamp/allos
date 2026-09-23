@@ -227,9 +227,9 @@ export async function dispatchTempRedFlagForReading(
     settleTempRedFlag(profileId, date);
     return { failed: false };
   }
-  const takenRecently =
-    takenAt != null &&
-    now().getTime() - takenAt.getTime() <= SYNC_LAG_MINUTES * 60_000;
+  // A future instant is a skewed clock, not a recent reading: it opens nothing.
+  const age = takenAt ? now().getTime() - takenAt.getTime() : NaN;
+  const takenRecently = age >= 0 && age <= SYNC_LAG_MINUTES * 60_000;
   const staleBefore =
     minuteOfDay < MIDNIGHT_GRACE_MINUTES || takenRecently
       ? shiftDateStr(date, -1)
