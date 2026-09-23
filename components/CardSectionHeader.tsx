@@ -1,4 +1,5 @@
 import DestinationLink from "@/components/DestinationLink";
+import SectionHeading from "@/components/SectionHeading";
 import type { AppRoute } from "@/lib/hrefs";
 import type { ReactNode } from "react";
 
@@ -18,7 +19,9 @@ import type { ReactNode } from "react";
 // `variant` NAMES THE HEADING'S REGISTER, and `label` is the app's uppercase eyebrow —
 // the third register the 23 hand-rolls were already wearing, brought into the union
 // rather than restyled. Only `card` is a page-level h2; a section and a label are both
-// h3, because they head a part of a card and not the card itself.
+// h3, because they head a part of a card and not the card itself. `SectionHeading`
+// owns the card and section classes (#5186); the label stays the `section-label`
+// eyebrow, which is a caption treatment and not a step on the heading scale.
 //
 // THE ROW ITSELF IS THE CONVENTION: one alignment (`items-center`) and one margin
 // (`mb-3`). A caller that wants its own spacing keeps it on the section around this
@@ -28,12 +31,6 @@ import type { ReactNode } from "react";
 // written in — the control sits inside the row's element — so adopting is a swap of the
 // wrapper rather than a rewrite into a prop.
 type Register = "card" | "section" | "label";
-
-const HEADING_CLASS: Record<Register, string> = {
-  card: "font-semibold text-slate-800 dark:text-slate-100",
-  section: "text-sm font-semibold text-slate-700 dark:text-slate-200",
-  label: "section-label",
-};
 
 export default function CardSectionHeader({
   title,
@@ -52,21 +49,27 @@ export default function CardSectionHeader({
   /** The trailing control: a button, a count, a link of the caller's own. */
   children?: ReactNode;
 }) {
-  const Heading = variant === "card" ? "h2" : "h3";
+  const titleContent = titleHref ? (
+    <DestinationLink
+      href={titleHref}
+      className="inline-flex items-center gap-1 text-link"
+    >
+      {title}
+    </DestinationLink>
+  ) : (
+    title
+  );
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <Heading className={HEADING_CLASS[variant]}>
-        {titleHref ? (
-          <DestinationLink
-            href={titleHref}
-            className="inline-flex items-center gap-1 text-link"
-          >
-            {title}
-          </DestinationLink>
-        ) : (
-          title
-        )}
-      </Heading>
+      {variant === "label" ? (
+        <h3 className="section-label">{titleContent}</h3>
+      ) : variant === "card" ? (
+        <SectionHeading level={2}>{titleContent}</SectionHeading>
+      ) : (
+        <SectionHeading level={3} size="sm">
+          {titleContent}
+        </SectionHeading>
+      )}
       <div className="flex flex-wrap items-center justify-end gap-2">
         {children}
         {href ? (

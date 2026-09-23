@@ -3,6 +3,7 @@
 import { saveAnxietyScaleOptIn } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // The check-in "Calm" (anxiety) scale opt-in (issue #1313, signal 6). The daily
 // anxiety rating on the "How are you today?" card is relevance-gated — it appears on
@@ -25,9 +26,7 @@ export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
   return (
     <div className="card space-y-3" data-testid="anxiety-scale-form">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Daily check-in scales
-        </h2>
+        <SectionHeading level={2}>Daily check-in scales</SectionHeading>
         <SaveStatus {...status} />
       </div>
       <label className="flex items-start gap-2 text-sm">
