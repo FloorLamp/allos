@@ -58,7 +58,7 @@ sky. Do not repeat a card's tone as an uppercase text verdict.
 | Stat                                   | `StatBox` / `stat-tile`, using `--ghost` and the surface radius                                                                      |
 | Empty subsection                       | `EmptyState compact`; no large reserved billboard                                                                                    |
 | Card-edge footnote                     | `card-footnote`                                                                                                                      |
-| Section or card heading                | `SectionHeading`: `level` 2 or 3, optional `size` and `trailing`; margin is the parent's. `SectionCreateHeader` composes it          |
+| Section heading                        | `SectionHeading`, not its margin                                                                                                     |
 | Intro disclosure                       | `LeadFold`; [copy](copy.md#lead-and-detail) owns content                                                                             |
 | Short explanation or hidden full value | `InfoTooltipIcon`, with touch, keyboard, and pointer access                                                                          |
 | Linked row with disclosure controls    | `OverlayDestination`; controls are DOM siblings, never buttons inside a link                                                         |
@@ -73,7 +73,7 @@ bleed without clearing content padding. Fill reaches the viewport or its placed
 cell, never an intermediate inset.
 
 Group bands with labels and dividers. `Notice` and its `FindingCard` sibling
-retain their tinted emphasis through the owned `data-notice` treatment.
+keep tinted emphasis through `data-notice`.
 
 | Spacing utility                      | Below `sm`                                                                                       |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -82,8 +82,8 @@ retain their tinted emphasis through the owned `data-notice` treatment.
 | `section-stack` / `section-stack-sm` | 24 / 16px                                                                                        |
 
 Keep desktop values intact. Shared phone overrides and the unlayered flat-card
-rule own the cascade. Adjacent margins collapse to the larger value, so inspect
-the rendered gap when changing a seam. `DelegatedCard` parts own the one gutter
+rule own the cascade. Adjacent margins collapse, so inspect
+the gap when changing a seam. `DelegatedCard` parts own the one gutter
 layer: Header/standard Cell 16→20px, compact Cell 8→20px, Action 8→12px.
 
 ## 3. Control grammar
