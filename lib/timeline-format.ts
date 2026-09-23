@@ -508,7 +508,7 @@ export function clinicalObservationHref(
 }
 
 // Parse the "label::value::unit::flag[::occurredAt]" pipe-delimited GROUP_CONCAT
-// payloads the timeline SQL builds for expandable result/dose detail rows. A stated
+// payload the timeline SQL builds for a results fold's expandable readings. A stated
 // instant becomes the item's profile-local clock, and timed items sort by instant
 // (then name) ahead of untimed ones, which keep their order. Returns undefined when
 // nothing usable parses out (so the caller can omit the field).
