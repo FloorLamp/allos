@@ -916,7 +916,6 @@ const bodybuilder: SeedPersona = {
     "/progress",
     "/trends",
     "/nutrition",
-    "/longevity",
     "/results/clinical-results",
   ],
   dashboard: {
@@ -1237,7 +1236,6 @@ const marathonRunner: SeedPersona = {
   routes: [
     "/training",
     "/trends",
-    "/longevity",
     "/equipment",
     "/results/clinical-results",
     "/upcoming",
@@ -2482,15 +2480,7 @@ const diabeticCgm: SeedPersona = {
     "visit-summary document — plus Priya, his partner with chronic asthma: " +
     "controller + rescue inhalers, a peak-flow stream with a flare dip, " +
     "spirometry results, and her own imported pulmonology report.",
-  routes: [
-    "/",
-    "/medications",
-    "/results",
-    "/upcoming",
-    "/trends",
-    "/longevity",
-    "/data",
-  ],
+  routes: ["/", "/medications", "/results", "/upcoming", "/trends", "/data"],
   gaps: [
     "Continuous glucose has a HOME but no way in and no way to look at it: " +
       "the two stores exist (#2810 — a glucose_trace stream plus its derived " +
@@ -2870,7 +2860,6 @@ const biohacker: SeedPersona = {
     "weigh-ins with body composition beside the manual weekly log.",
   routes: [
     "/nutrition",
-    "/longevity",
     "/supplies",
     "/upcoming",
     "/results/clinical-results",
