@@ -8,9 +8,9 @@ import { createLogger } from "./log";
 // here, the SOLE importer of `nodemailer`. Owning the wire in one place means the
 // cross-cutting obligations — TLS enforcement, the "not configured ⇒ refuse"
 // gate, plaintext-first bodies, and the deterministic test capture — are applied
-// once and can never drift per call site. Enforced by the source-scan test
-// lib/__tests__/email-chokepoint.test.ts, which fails CI if any other module
-// imports nodemailer.
+// once and can never drift per call site. Enforced by
+// `EMAIL_RAW_SEND_BAN` in eslint.config.mjs, which fails lint if any other shipped
+// module imports nodemailer.
 //
 // Plaintext-first, minimal HTML, NEVER attachments (phase-1 auth mail carries no
 // PHI). TLS is required: port 465 uses implicit TLS (secure), everything else uses
