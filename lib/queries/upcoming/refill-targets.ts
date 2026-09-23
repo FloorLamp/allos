@@ -7,11 +7,12 @@
 // so a cue and its control are joined on the identity the producer stamped rather than
 // by parsing one back out of a string.
 //
-// PURE, AND PARAMETERISED ON THE LIST rather than on a profile id: the caller hands in
-// the snapshot-cached `getIntakeItems` result it already took, so asking for the
-// targets costs no read of its own, and every claim below is checkable against
+// PURE, AND PARAMETERISED ON ITS INPUTS rather than on a profile id: the caller hands in
+// the snapshot-cached `getIntakeItems` result it already took, plus a lookup for a
+// bottle's own remembered fill, so every claim below is checkable against
 // `poolRefillItems` without a page or a request.
 
+import { rememberedFillFor } from "@/lib/refill";
 import { poolRefillSignalKey, refillSignalKey } from "@/lib/refill-nudge";
 import type { IntakeItem } from "@/lib/types";
 
@@ -25,8 +26,11 @@ export interface RefillCueTarget {
 }
 
 // The targets for every cue key this profile's items can raise, private and pooled.
+// `bottleFill` answers a shared bottle's OWN remembered fill; it is asked once per
+// bottle, and only for a bottle this profile draws from.
 export function refillCueTargets(
-  items: readonly IntakeItem[]
+  items: readonly IntakeItem[],
+  bottleFill: (supplyId: number) => number | null
 ): Map<string, RefillCueTarget> {
   const refillTargets = new Map<string, RefillCueTarget>();
   for (const item of items) {
@@ -40,7 +44,11 @@ export function refillCueTargets(
       refillTargets.set(refillSignalKey(item.id), {
         itemId: item.id,
         supplyId: null,
-        lastFillSize: item.last_fill_size,
+        lastFillSize: rememberedFillFor({
+          supplyId: null,
+          itemLastFillSize: item.last_fill_size,
+          poolLastFillSize: null,
+        }),
       });
       continue;
     }
@@ -55,25 +63,19 @@ export function refillCueTargets(
       refillTargets.set(poolKey, {
         itemId: item.id,
         supplyId: item.supply_id,
-        // NO MEMBER'S REMEMBERED FILL REACHES A POOLED TARGET HERE. Carrying it is a
-        // POSITION — this profile's lowest id, picked to aim an href — and a position's
-        // fill size is not the bottle's. No predicate over the member rescues it: one
-        // the pool rates at nothing (paused, situationally held, never dosed) is one
-        // case, and a member refilled at 30 while it was still PRIVATE and only then
-        // linked is another, because `linkItemToPool` drops the private count and keeps
-        // `last_fill_size` — a number that was never a fill of this jar, on a fully
-        // active sole member. So the input is removed rather than filtered.
-        //
-        // THE CONSEQUENCE, PLAINLY: the pooled target is null on EVERY render, not only
-        // the first, so a pooled cue built from this map asks for a size on EVERY tap.
-        // That is the reviewed design — the household's count moves only by a number
-        // someone typed for THIS bottle — and not a first-use path that later remembers.
-        //
-        // SCOPED TO THIS PROJECTION, not to the app. `MedicationRow` and
-        // `MedicationCard` still mount the one-tap for a pooled item with
-        // `hasLastFill={med.last_fill_size != null}`, straight into `refillSupply`'s
-        // pooled branch; that is live on main and is #5911's, not this module's.
-        lastFillSize: null,
+        // THE BOTTLE'S OWN USUAL REFILL (#5121 owner ruling 2026-09-16), never a
+        // member's: the carrier is a position picked to aim an href, and a member's
+        // `last_fill_size` may be a fill of a private bottle it had before linking
+        // (#5908, #5911). `rememberedFillFor` owns that rule for every surface; a bottle
+        // that remembers nothing answers null, so the first tap asks for a size.
+        lastFillSize:
+          seated != null
+            ? seated.lastFillSize
+            : rememberedFillFor({
+                supplyId: item.supply_id,
+                itemLastFillSize: item.last_fill_size,
+                poolLastFillSize: bottleFill(item.supply_id),
+              }),
       });
   }
   return refillTargets;
