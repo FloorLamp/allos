@@ -370,9 +370,8 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/undo-delete-db.ts",
-    includes:
-      "SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
-    why: "sweepDeletedRows video-file cleanup (#1290): reads the SAME expiring rows the GLOBAL retention purge DELETE (above) is about to remove, to unlink their orphaned clip files — profile-agnostic for the identical reason, and each captured path is then re-contained under its domain root before any unlink",
+    includes: "payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
+    why: "sweepDeletedRows media-file cleanup (#1290): reads the SAME expiring rows the GLOBAL retention purge DELETE (above) is about to remove, to unlink their orphaned media files — profile-agnostic for the identical reason. It reads each row's profile_id so every captured path is contained to THAT profile's own upload directory before any unlink (#5997)",
   },
   {
     file: "lib/offline/writes.ts",

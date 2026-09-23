@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RestTimer from "@/components/activity-form/RestTimer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import LiveWorkoutPanel from "@/components/activity-form/LiveWorkoutPanel";
-import { HAPTIC_PATTERNS } from "@/lib/haptics";
+import { HAPTIC_PATTERNS, HAPTIC_TONES } from "@/lib/haptics";
+import { stubAudio } from "./audio-stub";
 
 const editor = vi.hoisted(() => ({ subjectName: undefined, minimized: false }));
 vi.mock("@/components/ActivityEditorProvider", () => ({
@@ -65,45 +66,6 @@ async function refreshNotificationRow() {
   await act(async () => {
     fireEvent(document, new Event("visibilitychange"));
   });
-}
-
-function stubAudio(failure?: "construct" | "resume") {
-  const start = vi.fn();
-  const resume = vi.fn(() =>
-    failure === "resume"
-      ? Promise.reject(new Error("Audio resume denied"))
-      : Promise.resolve()
-  );
-  vi.stubGlobal(
-    "AudioContext",
-    class {
-      currentTime = 0;
-      destination = {};
-      resume = resume;
-      constructor() {
-        if (failure === "construct") throw new Error("Audio unavailable");
-      }
-      createOscillator() {
-        return {
-          type: "sine",
-          frequency: { value: 0 },
-          connect: (gain: unknown) => gain,
-          start,
-          stop: vi.fn(),
-        };
-      }
-      createGain() {
-        return {
-          gain: {
-            setValueAtTime: vi.fn(),
-            exponentialRampToValueAtTime: vi.fn(),
-          },
-          connect: vi.fn(),
-        };
-      }
-    }
-  );
-  return { start, resume };
 }
 
 function startRest() {
@@ -180,7 +142,8 @@ describe("activity timer completion", () => {
         fireEvent(document, new Event("visibilitychange"));
         vi.advanceTimersByTime(1000);
       });
-      expect(audio.start).toHaveBeenCalledTimes(1);
+      // The cue plays the table's alert tone through the one adapter (#5900).
+      expect(audio.tones).toEqual([HAPTIC_TONES.alert.hz]);
       expect(vibrate.mock.calls).toEqual([[[...HAPTIC_PATTERNS.alert]]]);
     }
   );

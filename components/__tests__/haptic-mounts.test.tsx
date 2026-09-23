@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SegmentedControl from "../SegmentedControl";
 import PullToRefresh from "../PullToRefresh";
 import { ToastProvider, useToast } from "../Toast";
-import { HAPTIC_PATTERNS } from "@/lib/haptics";
+import { HAPTIC_PATTERNS, HAPTIC_TONES } from "@/lib/haptics";
+import { stubAudio } from "./audio-stub";
 
 // THE SUBSTRATE MOUNTS (#3699), pinned where they are cheapest to pin.
 //
@@ -67,21 +68,20 @@ describe("the toast provider carries commit and reject (#3699)", () => {
   beforeEach(() => stubReducedMotion(false));
   afterEach(() => vi.unstubAllGlobals());
 
+  // The tone rides the haptic's answer (#5900): same cue, same silent set.
   it.each([
-    ["the default tone", undefined, [[...HAPTIC_PATTERNS.commit]]],
-    [
-      "an explicit success",
-      { tone: "success" as const },
-      [[...HAPTIC_PATTERNS.commit]],
-    ],
-    ["an error", { tone: "error" as const }, [[...HAPTIC_PATTERNS.reject]]],
-    ["a headless poster", { silent: true }, []],
+    ["the default tone", undefined, "commit"],
+    ["an explicit success", { tone: "success" as const }, "commit"],
+    ["an error", { tone: "error" as const }, "reject"],
+    ["a headless poster", { silent: true }, null],
+    ["a silent error", { tone: "error" as const, silent: true }, null],
   ] as [
     string,
     { tone?: "success" | "error"; silent?: boolean } | undefined,
-    number[][],
-  ][])("%s", (_name, options, expected) => {
+    "commit" | "reject" | null,
+  ][])("%s", (_name, options, cue) => {
     const calls = stubVibrate();
+    const audio = stubAudio();
     render(
       <ToastProvider>
         <Poster options={options} />
@@ -95,12 +95,15 @@ describe("the toast provider carries commit and reject (#3699)", () => {
     // The toast itself is posted either way — `silent` is about the hand, never
     // about what is on screen.
     expect(screen.getByText("Saved.")).toBeTruthy();
-    expect(calls).toEqual(expected);
+    expect(calls).toEqual(cue ? [[...HAPTIC_PATTERNS[cue]]] : []);
+    expect(audio.tones).toEqual(cue ? [HAPTIC_TONES[cue].hz] : []);
   });
 
-  it("stays silent under prefers-reduced-motion (#1307)", () => {
+  // Reduced motion stills the buzz but not the tone: a sound is not motion (#5900).
+  it("stays still under prefers-reduced-motion (#1307) but still plays its tone", () => {
     stubReducedMotion(true);
     const calls = stubVibrate();
+    const audio = stubAudio();
     render(
       <ToastProvider>
         <Poster />
@@ -113,6 +116,7 @@ describe("the toast provider carries commit and reject (#3699)", () => {
 
     expect(screen.getByText("Saved.")).toBeTruthy();
     expect(calls).toEqual([]);
+    expect(audio.tones).toEqual([HAPTIC_TONES.commit.hz]);
   });
 });
 
