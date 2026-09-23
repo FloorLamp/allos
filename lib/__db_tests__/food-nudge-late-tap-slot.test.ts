@@ -190,8 +190,8 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
       slotServingsOnDate(p.profileId, NUDGE_WINDOW, t).get("berries")
     ).toBeUndefined();
 
-    // The button continues to offer one serving.
-    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries");
+    // The button still offers one serving, marked as just tapped (#5613).
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries ✅");
   });
 
   it("leaves the DAY tally alone — logging was always right, only the count disagreed", () => {
@@ -227,7 +227,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
         t
       )
     );
-    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries");
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries ✅");
     expect(storedSlots(p.profileId, t, "berries")).toEqual([null, null]);
   });
 

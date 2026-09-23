@@ -7,6 +7,7 @@ import {
   groupTimelineDays,
   isTimelineUnfiltered,
   clinicalObservationHref,
+  countedNames,
   normalizeTimelineRange,
   parseDetailItems,
   parseUtcStamp,
@@ -150,18 +151,46 @@ describe("timeline event helpers", () => {
 
   it("parses pipe-delimited detail-item payloads", () => {
     expect(
-      parseDetailItems("Glucose::130::mg/dL::high||HDL::55::mg/dL::")
+      parseDetailItems("Glucose::130::mg/dL::high||HDL::55::mg/dL::", "UTC")
     ).toEqual([
       { label: "Glucose", value: "130", unit: "mg/dL", flag: "high" },
       { label: "HDL", value: "55", unit: "mg/dL" },
     ]);
-    expect(parseDetailItems("Vitamin D::1 cap")).toEqual([
+    expect(parseDetailItems("Vitamin D::1 cap", "UTC")).toEqual([
       { label: "Vitamin D", value: "1 cap" },
     ]);
     // Nothing usable → undefined (so callers can omit the field).
-    expect(parseDetailItems("")).toBeUndefined();
-    expect(parseDetailItems(null)).toBeUndefined();
-    expect(parseDetailItems("::just a value")).toBeUndefined();
+    expect(parseDetailItems("", "UTC")).toBeUndefined();
+    expect(parseDetailItems(null, "UTC")).toBeUndefined();
+    expect(parseDetailItems("::just a value", "UTC")).toBeUndefined();
+  });
+
+  // #5407: several draws of one analyte name it once, with a count.
+  it("collapses repeated names in first-appearance order", () => {
+    expect(countedNames(["Glucose", "Glucose", "Glucose"])).toEqual([
+      "Glucose ×3",
+    ]);
+    expect(countedNames(["Sodium", "Glucose", "Sodium"])).toEqual([
+      "Sodium ×2",
+      "Glucose",
+    ]);
+    // One analyte at any count still opens its own page.
+    expect(
+      clinicalObservationHref(null, countedNames(["LDL", "LDL"]), "LDL")
+    ).toBe("/results/clinical-results/view?name=LDL");
+  });
+
+  it("states each reading's local clock and orders by instant", () => {
+    expect(
+      parseDetailItems(
+        "Glucose::101::mg/dL::::2026-08-18T14:40:00.000Z||HDL::55::mg/dL::||Glucose::96::mg/dL::::2026-08-18T12:05:00.000Z",
+        "America/New_York"
+      )
+    ).toEqual([
+      { label: "Glucose", value: "96", unit: "mg/dL", clock: "08:05" },
+      { label: "Glucose", value: "101", unit: "mg/dL", clock: "10:40" },
+      { label: "HDL", value: "55", unit: "mg/dL" },
+    ]);
   });
 
   it("parses UTC-stored timestamps (SQLite datetime and ISO forms)", () => {

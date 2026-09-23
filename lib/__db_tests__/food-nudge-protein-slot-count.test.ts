@@ -121,7 +121,7 @@ describe("protein button after repeated taps", () => {
       )
     );
     // The first tap makes the profile a protein tracker and brings its button into view.
-    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein ✅");
 
     // Another tap records another scoop without changing the next offered amount.
     await handleCallbackQuery(
@@ -134,7 +134,7 @@ describe("protein button after repeated taps", () => {
         12
       )
     );
-    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein ✅");
     expect(getProteinTapsOnDate(p.profileId, t)).toBe(2);
   });
 });

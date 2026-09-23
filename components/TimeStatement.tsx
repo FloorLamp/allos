@@ -21,7 +21,7 @@ import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 // four dialects said this one sentence four ways. The question is the ACCESSIBLE NAME
 // and never a `title=`: #2378/#3375 ruled hover-only text out of this codebase because
 // a touch or keyboard reader never receives it, and
-// lib/__tests__/raw-title-boundary.test.ts holds that line.
+// `RAW_TITLE_BAN` in eslint.config.mjs holds that line.
 export const WHEN_DOOR = "When";
 
 // ONE COLLAPSED TIME STATEMENT (#4426), over the shared `WhenControl` (#2236) and in

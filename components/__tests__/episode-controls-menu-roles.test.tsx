@@ -17,7 +17,7 @@ vi.mock("@/app/(app)/medical/episodes/actions", () => ({
 // two of its three items were plain buttons. A `role="menu"` whose children are
 // not menu items is not a menu to a screen reader: it states an item count that
 // counts one of the three, and the other two are announced as loose buttons
-// inside it. `lib/__tests__/menu-item-role-scan.test.ts` holds the whole app to
+// inside it. `MENU_ITEM_ROLE_BAN` in eslint.config.mjs holds the whole app to
 // this; here it is asserted where a browser can see it, at the site that drifted.
 //
 // BY ROLE, NOT BY TAG. The elements were always <button>s and always rendered;

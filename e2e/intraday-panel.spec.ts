@@ -16,6 +16,14 @@ import {
   INTRADAY_TICK_DOC,
 } from "./fixture-logins";
 import { INTRADAY_VARIANTS } from "@/lib/intraday-layout";
+import { frozenNow } from "./worker-env";
+
+/** "Synced 1h 5m ago" → 65: the lag sentence's minutes, whichever unit it chose. */
+function lagMinutes(sentence: string): number {
+  const m = /^Synced (?:(\d+)h ?)?(?:(\d+)(?: min|m))? ago$/.exec(sentence);
+  if (!m) throw new Error(`not a lag sentence: ${sentence}`);
+  return Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
+}
 
 // The Timeline day view's intraday panel (issue #1068) — the day rotated 90°: the
 // SAME events the day's feed lists, projected onto a 00:00–24:00 clock axis.
@@ -564,6 +572,11 @@ test.describe("the day view's intraday panel (#1068)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      // The lag sentence reads the BROWSER's clock between syncs (#5146), which ticks
+      // on from the run's frozen instant. Hold `Date` still so both mounts below read
+      // the same minute however long the steps between them take; timers keep running.
+      const frozen = frozenNow().getTime();
+      await member.clock.setFixedTime(frozen);
       await member.goto("/");
       const glance = appContent(member).getByTestId("home-glance");
       await expect(glance).toBeVisible();
@@ -595,7 +608,15 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // The lag sentence, on the card that draws the day.
       const glanceLag = glance.getByTestId("intraday-freshness");
       await expect(glanceLag).toHaveText(/^Synced .+ ago$/);
+      const firstLag = (await glanceLag.textContent())!.trim();
+
+      // …and it COUNTS UP between syncs (#5146): a minute later, with no navigation
+      // and no refresh, the same card reads one minute further on.
+      await member.clock.setFixedTime(frozen + 60_000);
+      await member.clock.fastForward("00:31");
+      await expect(glanceLag).not.toHaveText(firstLag);
       const homeLag = (await glanceLag.textContent())!.trim();
+      expect(lagMinutes(homeLag)).toBe(lagMinutes(firstLag) + 1);
 
       // …and the panel says it in the SAME WORDS, which is the claim: one
       // `intradayFreshness` over one day model, printed by two mounts.

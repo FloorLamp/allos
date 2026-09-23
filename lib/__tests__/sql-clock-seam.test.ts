@@ -43,8 +43,7 @@ import { REPO, readSource, relPath } from "./sql-scan";
 // reads back against the app's clock may still stay here, with that said out loud.
 //
 // This test reads the repo's own source as TEXT (no DB, no network) so it stays
-// "pure" in the vitest sense — the same shape as lib/__tests__/immediate-tx.test.ts
-// and lib/__tests__/telegram-chokepoint.test.ts.
+// "pure" in the vitest sense — the same shape as lib/__tests__/immediate-tx.test.ts.
 //
 // SCOPE / KNOWN GAP: the scan sees raw now-reads in QUERY TEXT. A column DEFAULT of
 // `(datetime('now'))` lives in a shipped, immutable migration and cannot be scanned

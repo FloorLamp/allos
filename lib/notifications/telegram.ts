@@ -16,8 +16,8 @@
 //   4. DELIVERY ACCOUNTING — the send throws on failure so dispatch()'s per-channel
 //      result feeds the notify_last_error marker (#131/#192).
 //
-// The boundary is enforced by lib/__tests__/telegram-chokepoint.test.ts, which fails
-// CI if any module other than this one imports the guarded primitives.
+// The boundary is enforced by `TELEGRAM_RAW_SEND_BAN` in eslint.config.mjs, which
+// fails lint if any shipped module other than this one imports the guarded primitives.
 
 import {
   getFoodNudgePointer,
