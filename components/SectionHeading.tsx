@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 
 // ── ONE SECTION HEADING (issue #5186) ───────────────────────────────────────
 //
-// A card or section title below the page's h1. The level picks the element and
-// nothing else; the size is the one scale axis callers choose. Omitting `size`
-// inherits the surrounding text size, which is the common card heading. Weight
-// and grey are fixed here, and margin belongs to the parent's gap.
+// A card or section title below the page's h1. The level picks the element; the
+// size is the one scale axis callers choose. Omitting `size` inherits the
+// surrounding text size, which is the common card heading. A small h3 heads a
+// part of a card, so it takes the quieter grey; every other heading takes the
+// strong one. Margin belongs to the parent's gap.
 const SIZE_CLASS = {
   lg: "text-lg ",
   base: "text-base ",
@@ -33,7 +34,11 @@ export default function SectionHeading({
     <Heading
       id={id}
       data-testid={testId}
-      className={`${size ? SIZE_CLASS[size] : ""}font-semibold text-slate-800 dark:text-slate-100`}
+      className={`${size ? SIZE_CLASS[size] : ""}font-semibold ${
+        level === 3 && size === "sm"
+          ? "text-slate-700 dark:text-slate-200"
+          : "text-slate-800 dark:text-slate-100"
+      }`}
     >
       {children}
     </Heading>

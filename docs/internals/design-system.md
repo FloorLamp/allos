@@ -58,7 +58,7 @@ sky. Do not repeat a card's tone as an uppercase text verdict.
 | Stat                                   | `StatBox` / `stat-tile`, using `--ghost` and the surface radius                                                                      |
 | Empty subsection                       | `EmptyState compact`; no large reserved billboard                                                                                    |
 | Card-edge footnote                     | `card-footnote`                                                                                                                      |
-| Section heading                        | `SectionHeading`, not its margin                                                                                                     |
+| Section heading                        | `SectionHeading`; header rows compose it                                                                                             |
 | Intro disclosure                       | `LeadFold`; [copy](copy.md#lead-and-detail) owns content                                                                             |
 | Short explanation or hidden full value | `InfoTooltipIcon`, with touch, keyboard, and pointer access                                                                          |
 | Linked row with disclosure controls    | `OverlayDestination`; controls are DOM siblings, never buttons inside a link                                                         |
@@ -81,7 +81,7 @@ keep tinted emphasis through `data-notice`.
 | `section-seam` / `section-seam-lg`   | 16 / 24px                                                                                        |
 | `section-stack` / `section-stack-sm` | 24 / 16px                                                                                        |
 
-Keep desktop values intact. Shared phone overrides and the unlayered flat-card
+Keep desktop values. Shared phone overrides and the unlayered flat-card
 rule own the cascade. Adjacent margins collapse, so inspect
 the gap when changing a seam. `DelegatedCard` parts own the one gutter
 layer: Header/standard Cell 16→20px, compact Cell 8→20px, Action 8→12px.

@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import SectionHeading from "@/components/SectionHeading";
 
 describe("SectionHeading", () => {
@@ -9,7 +10,7 @@ describe("SectionHeading", () => {
     [2, "lg", "text-lg font-semibold text-slate-800 dark:text-slate-100"],
     [3, "base", "text-base font-semibold text-slate-800 dark:text-slate-100"],
     [2, "sm", "text-sm font-semibold text-slate-800 dark:text-slate-100"],
-    [3, "sm", "text-sm font-semibold text-slate-800 dark:text-slate-100"],
+    [3, "sm", "text-sm font-semibold text-slate-700 dark:text-slate-200"],
   ] as const)("level %i, size %s owns its class", (level, size, className) => {
     render(
       <SectionHeading level={level} size={size}>
@@ -33,4 +34,18 @@ describe("SectionHeading", () => {
     );
     expect(row.textContent).toBe("Titlelast 28 nights");
   });
+
+  it.each([
+    ["card", 2, "font-semibold text-slate-800 dark:text-slate-100"],
+    ["section", 3, "text-sm font-semibold text-slate-700 dark:text-slate-200"],
+    ["label", 3, "section-label"],
+  ] as const)(
+    "keeps CardSectionHeader's %s register",
+    (variant, level, className) => {
+      render(<CardSectionHeader title="Title" variant={variant} />);
+      expect(
+        screen.getByRole("heading", { level, name: "Title" }).className
+      ).toBe(className);
+    }
+  );
 });
