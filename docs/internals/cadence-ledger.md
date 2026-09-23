@@ -80,8 +80,8 @@ Every former reader is a thin adapter over it:
 | `getCadenceWeekVerdicts`          | `weeks: 1, includeCurrent: true`, **both** directions |
 | `getCadenceCapWeeks`              | `weeks: N, includeCurrent: true, direction: "cap"`    |
 
-`getPracticeTrends` and `getProtocolAdherence` were already formatters over the
-first two and keep working unchanged — which is the proof the layering holds.
+`getProtocolAdherence` was already a formatter over the
+first two and keeps working unchanged — which is the proof the layering holds.
 
 The last two rows are the periodic recap's reads (#2395/#2397). The daily digest
 reported a weekly target's PACE while the message that CLOSES the week never
