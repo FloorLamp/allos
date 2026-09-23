@@ -288,8 +288,13 @@ export interface IntradayTick {
 // says nothing about the person's day — it plots a MACHINE event beside
 // physiological ones. The feed list below still shows the insight; the chart is a
 // map of the day, not of the app's activity. Do not "helpfully" restore it.
+//
+// `medical` (#5407): a results fold's `sortTime` is its latest reading's instant,
+// kept for the row's clock. Whether a reading earns a day-chart mark is its own
+// ruling, so the fold draws none.
 const EXCLUDED_TICK_CATEGORIES: ReadonlySet<TimelineCategory> = new Set([
   "insight",
+  "medical",
 ]);
 
 // The resolved expected-sleep window, in the axis's own relative minute space
