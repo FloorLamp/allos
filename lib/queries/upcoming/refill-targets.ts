@@ -8,9 +8,9 @@
 // by parsing one back out of a string.
 //
 // PURE, AND PARAMETERISED ON ITS INPUTS rather than on a profile id: the caller hands in
-// the snapshot-cached `getIntakeItems` result it already took, plus a lookup for a
-// bottle's own remembered fill, so every claim below is checkable against
-// `poolRefillItems` without a page or a request.
+// the snapshot-cached `getIntakeItems` result it already took, the cue keys it has
+// already raised, and a lookup for a bottle's own remembered fill, so every claim below
+// is checkable against `poolRefillItems` without a page or a request.
 
 import { rememberedFillFor } from "@/lib/refill";
 import { poolRefillSignalKey, refillSignalKey } from "@/lib/refill-nudge";
@@ -26,10 +26,12 @@ export interface RefillCueTarget {
 }
 
 // The targets for every cue key this profile's items can raise, private and pooled.
-// `bottleFill` answers a shared bottle's OWN remembered fill; it is asked once per
-// bottle, and only for a bottle this profile draws from.
+// A pooled target is emitted only for a bottle whose cue is in `raised` (it is low or
+// due), and only then is `bottleFill` asked for that bottle's OWN remembered fill, once
+// per bottle. A profile with no low shared bottle costs no lookup.
 export function refillCueTargets(
   items: readonly IntakeItem[],
+  raised: ReadonlySet<string>,
   bottleFill: (supplyId: number) => number | null
 ): Map<string, RefillCueTarget> {
   const refillTargets = new Map<string, RefillCueTarget>();
@@ -58,6 +60,7 @@ export function refillCueTargets(
     // the same item, and a second member of the same bottle can never mint a rival
     // control for it.
     const poolKey = poolRefillSignalKey(item.supply_id);
+    if (!raised.has(poolKey)) continue;
     const seated = refillTargets.get(poolKey);
     if (seated == null || item.id < seated.itemId)
       refillTargets.set(poolKey, {

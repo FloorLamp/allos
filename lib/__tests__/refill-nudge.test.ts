@@ -282,9 +282,12 @@ describe("refillCueTargets", () => {
       ...over,
     }) as IntakeItem;
 
+  const lowBottle = new Set([poolRefillSignalKey(900)]);
+
   it("keys a private supply on the item and keeps its remembered fill", () => {
     const targets = refillCueTargets(
       [cueItem(4, { quantity_on_hand: 2, last_fill_size: 30 })],
+      new Set(),
       () => 45
     );
     expect([...targets]).toEqual([
@@ -306,6 +309,7 @@ describe("refillCueTargets", () => {
         order.map((id) =>
           cueItem(id, { supply_id: 900, active: id === 4 ? 0 : 1 })
         ),
+        lowBottle,
         () => null
       );
       expect(targets.get(poolRefillSignalKey(900))?.itemId).toBe(4);
@@ -322,7 +326,7 @@ describe("refillCueTargets", () => {
       cueItem(6, { supply_id: 900, last_fill_size: 60 }),
     ];
     const asked: number[] = [];
-    const remembering = refillCueTargets(members, (supplyId) => {
+    const remembering = refillCueTargets(members, lowBottle, (supplyId) => {
       asked.push(supplyId);
       return 45;
     });
@@ -333,7 +337,25 @@ describe("refillCueTargets", () => {
     });
     expect(asked).toEqual([900]);
     expect(
-      refillCueTargets(members, () => null).get(poolRefillSignalKey(900))
+      refillCueTargets(members, lowBottle, () => null).get(
+        poolRefillSignalKey(900)
+      )
     ).toEqual({ itemId: 2, supplyId: 900, lastFillSize: null });
+  });
+
+  it("never looks up the fill of a shared bottle that is not low", () => {
+    // Only a raised cue gets a control, so a bottle with no cue gets no target and
+    // costs Home no read.
+    const asked: number[] = [];
+    const targets = refillCueTargets(
+      [cueItem(2, { supply_id: 900 }), cueItem(3, { supply_id: 901 })],
+      new Set([poolRefillSignalKey(901)]),
+      (supplyId) => {
+        asked.push(supplyId);
+        return 45;
+      }
+    );
+    expect(asked).toEqual([901]);
+    expect([...targets.keys()]).toEqual([poolRefillSignalKey(901)]);
   });
 });
