@@ -355,7 +355,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
     ).toBe(FORM_ID_OF_LOG_DOMAIN.stool);
   });
 
-  it("keeps the mood door on its day, clears it, and accepts a second save", async () => {
+  it("keeps the mood door on its day, and closes it once the check-in saves", async () => {
     open("mood");
     fireEvent.click(screen.getByText("Details"));
     fireEvent.click(screen.getByRole("button", { name: "Energy: 4" }));
@@ -374,39 +374,9 @@ describe("the record's Add door posts to the domain's own create action", () => 
       factors: "work",
       note: "clear afternoon",
     });
+    // A form body closes on save (#5663 ruling 2), and the record re-reads.
     expect(refreshed).toHaveLength(1);
-    expect(screen.getByTestId("history-add-panel-mood")).toBeTruthy();
-    expect(screen.getByTestId("quick-mood-status").textContent).toBe(
-      "Tap to log that day."
-    );
-    expect(
-      screen
-        .getByRole("button", { name: "Mood: Good" })
-        .getAttribute("aria-pressed")
-    ).toBe("false");
-    expect(
-      screen
-        .getByRole("button", { name: "Energy: 4" })
-        .getAttribute("aria-pressed")
-    ).toBe("false");
-    expect(
-      screen.getByRole("button", { name: "Work" }).getAttribute("aria-pressed")
-    ).toBe("false");
-    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe(
-      ""
-    );
-
-    await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
-    );
-    expect(posted.logMood).toHaveLength(2);
-    expect(Object.fromEntries(posted.logMood![1]!.entries())).toMatchObject({
-      date: FOUND_DAY,
-      date_reach: "dated",
-      valence: "4",
-    });
-    expect(refreshed).toHaveLength(2);
-    expect(screen.getByTestId("history-add-panel-mood")).toBeTruthy();
+    expect(screen.queryByTestId("history-add-panel-mood")).toBeNull();
   });
 
   it("keeps the dose form on its chosen day and resets it for a second save", async () => {
