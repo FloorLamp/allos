@@ -655,11 +655,14 @@ describe("Home's one list, rendered", () => {
   // the day read that serves the day bar, the record band and the chart, the three
   // bands, and both streamed sections resolved.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 192,
-    "marathon-runner": 204,
-    household: 262,
-    pregnant: 197,
-    "diabetic-cgm": 204,
+    // -4 each for bodybuilder, marathon-runner, household, pregnant and diabetic-cgm
+    // (#6013): none seats a dose row for the current slot, so the usual-routine offer
+    // is no longer asked.
+    bodybuilder: 188,
+    "marathon-runner": 200,
+    household: 258,
+    pregnant: 193,
+    "diabetic-cgm": 200,
     // +1 for #5409's nightly breathing-rate card. `biohacker` is the only persona
     // whose seeded wearable data produces `respiratory_rate_bpm` samples, and the
     // card is present-gated, so the read fires there and nowhere else. The PRESENCE
@@ -770,11 +773,12 @@ describe("Home's one list, rendered", () => {
   // cold table, and the same reason for having numbers rather than a ratio: a move
   // here has to be accounted for, in either direction.
   const WARM_BASELINE: Record<string, number> = {
-    bodybuilder: 173,
-    "marathon-runner": 184,
-    household: 239,
-    pregnant: 178,
-    "diabetic-cgm": 185,
+    // -4 each, the warm half of #6013's skipped offer read.
+    bodybuilder: 169,
+    "marathon-runner": 180,
+    household: 235,
+    pregnant: 174,
+    "diabetic-cgm": 181,
     // +2, the warm half of the same two #5409 reads — see QUERY_BASELINE above.
     // Neither is memoized away: the card's series read and the hero's night read
     // are both statements a second load still issues.
