@@ -29,8 +29,6 @@ import { doseItems } from "@/lib/queries/upcoming/intake-safety";
 import {
   getIntakeItems,
   getIntakeDoses,
-  getTakenDoseIds,
-  getActivitiesByDate,
   getInteractionWarnings,
   markDoseTaken,
   setDoseStatusCore,
@@ -42,7 +40,6 @@ import {
   getSituationEvents,
   getTimezone,
 } from "@/lib/settings";
-import { intakeAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/intake-schedule";
 import {
   adherenceSummary,
@@ -174,25 +171,6 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
     expect(offeredItems(p, day).map((i) => i.title)).not.toContain(
       "Creatine (test)"
     );
-
-    // The adherence x/y counts ONLY the pushed tier now (#1505): a `may` item has no
-    // occurrences, so it cannot drag an honest fraction down.
-    const adherence = intakeAdherenceToday(
-      getIntakeDoses(p),
-      new Map(
-        getIntakeItems(p)
-          .filter((s) => s.active)
-          .map((s) => [s.id, s])
-      ),
-      {
-        date: "2026-03-04",
-        isWorkoutDay: getActivitiesByDate(p, day).length > 0,
-        activeSituations: new Set(getActiveSituations(p)),
-        predictedWorkoutDay: null,
-      },
-      getTakenDoseIds(p, day)
-    );
-    expect(adherence.due).toBe(1);
   });
 
   it("a `must` MEDICATION stays on every push surface; a `may` one does not (obligation decides, not kind)", () => {

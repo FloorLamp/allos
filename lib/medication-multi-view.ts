@@ -51,11 +51,10 @@ export interface MedStripItem {
 }
 
 // A member's medication attention, filtered out of the household rollup (which mixes
-// supplements + appointments): keep ONLY the medication rows. A medication dose/refill
+// in supplements): keep ONLY the medication rows. A medication dose/refill
 // UpcomingItem carries `href === MEDICATIONS_HREF` (intakeHref('medication')); a
-// supplement's points at the Nutrition tab, and the rollup's nextAppointment is dropped
-// here (this is the Medications page). ONE computation — the rollup is the household
-// page's exact per-member attention aggregation (#221), never a second engine.
+// supplement's points at the Nutrition tab. ONE computation — the rollup is Upcoming's
+// per-member attention aggregation (#221), never a second engine.
 export interface HouseholdMedRollup {
   dueDoses: UpcomingItem[];
   lowRefills: UpcomingItem[];

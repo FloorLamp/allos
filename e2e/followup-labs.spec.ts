@@ -7,7 +7,8 @@ import {
   E2E_MEMBER_PASSWORD,
   FLAGGED_LAB_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenToday, workerDbPath } from "./worker-env";
+import { shiftDateStr } from "@/lib/date";
 
 // The finding follow-up loop — FLAGGED LABS adapter (#700): a flagged biomarker →
 // a tracked, LEGIBLE "Recheck …" follow-up on Upcoming → a resolution OFFER when a
@@ -61,19 +62,14 @@ function addLaterReading() {
   const handle = new Database(DB_PATH);
   try {
     const pid = profileId(handle);
-    const now = handle.prepare("SELECT date('now') AS d").get() as {
-      d: string;
-    };
-    const later = handle
-      .prepare("SELECT date(?, '-3 days') AS d")
-      .get(now.d) as { d: string };
+    const later = shiftDateStr(frozenToday(), -3);
     handle
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, source)
          VALUES (?, ?, 'lab', ?, '126', 126, 'mg/dL', ?, 'normal', 'manual')`
       )
-      .run(pid, later.d, EAG, EAG);
+      .run(pid, later, EAG, EAG);
   } finally {
     handle.close();
   }

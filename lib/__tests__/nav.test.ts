@@ -139,7 +139,6 @@ describe("isNavLeafVisible", () => {
   const ctx = (over: Partial<Parameters<typeof isNavLeafVisible>[1]> = {}) => ({
     isAdmin: true,
     adultContentAvailable: true,
-    multiProfile: true,
     foodLoggingRelevant: true,
     hasIntakeItems: false,
     relevance: DEFAULT_NAV_RELEVANCE,
@@ -150,23 +149,14 @@ describe("isNavLeafVisible", () => {
   it("shows a plain leaf to everyone", () => {
     expect(isNavLeafVisible({ href: "/results" }, ctx())).toBe(true);
     expect(
-      isNavLeafVisible(
-        { href: "/results" },
-        ctx({ isAdmin: false, multiProfile: false })
-      )
+      isNavLeafVisible({ href: "/results" }, ctx({ isAdmin: false }))
     ).toBe(true);
   });
 
   it("hides adminOnly leaves from non-admins", () => {
-    const leaf = { href: "/household", adminOnly: true };
+    const leaf = { href: "/settings/family", adminOnly: true };
     expect(isNavLeafVisible(leaf, ctx({ isAdmin: true }))).toBe(true);
     expect(isNavLeafVisible(leaf, ctx({ isAdmin: false }))).toBe(false);
-  });
-
-  it("hides requiresMultiProfile leaves when only one profile exists", () => {
-    const leaf = { href: "/household", requiresMultiProfile: true };
-    expect(isNavLeafVisible(leaf, ctx({ multiProfile: true }))).toBe(true);
-    expect(isNavLeafVisible(leaf, ctx({ multiProfile: false }))).toBe(false);
   });
 
   it("hides the Training leaf when the workout product is not relevant", () => {
@@ -175,28 +165,6 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(leaf, ctx({ trainingRelevant: false }))).toBe(
       false
     );
-  });
-
-  it("shows Household to any login with 2+ accessible profiles (issue #31)", () => {
-    // Household is gated on multi-profile ONLY (no longer adminOnly): a caregiver
-    // member with several grants must see it, while a single-profile login (member
-    // or a one-profile instance) must not.
-    const household = {
-      href: "/household",
-      requiresMultiProfile: true,
-    };
-    expect(
-      isNavLeafVisible(household, ctx({ isAdmin: true, multiProfile: true }))
-    ).toBe(true);
-    expect(
-      isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: true }))
-    ).toBe(true); // caregiver member with 2+ grants
-    expect(
-      isNavLeafVisible(household, ctx({ isAdmin: true, multiProfile: false }))
-    ).toBe(false);
-    expect(
-      isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: false }))
-    ).toBe(false); // single-profile member
   });
 
   it("hides requiresFoodLogging leaves for an infant profile (issue #591/#746)", () => {

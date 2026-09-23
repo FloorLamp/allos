@@ -10,6 +10,7 @@ import {
   type DisplayFormatPrefs,
   type TimeFormat,
 } from "@/lib/format-date";
+import SectionHeading from "@/components/SectionHeading";
 
 // Date & time display preferences — a LOGIN-scoped setting (#964), the sibling of
 // the Units card. Autosaves on change like the other Preferences cards (#794).
@@ -58,9 +59,7 @@ export default function FormatPrefsForm({
   return (
     <div className="card space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Date &amp; time
-        </h2>
+        <SectionHeading level={2}>Date &amp; time</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

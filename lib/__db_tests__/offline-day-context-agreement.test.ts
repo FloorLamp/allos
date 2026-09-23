@@ -1,8 +1,8 @@
-// DB INTEGRATION TIER — the offline dose schedule and the household card ask the same
-// day question the medications page asks (#5321).
+// DB INTEGRATION TIER — the offline dose schedule asks the same day question the
+// medications page asks (#5321).
 //
 // #5167 closed the SITUATIONS field of the intake day context; this is the rest of the
-// object. The page's builder answers FIVE fields and these two surfaces answered THREE,
+// object. The page's builder answers FIVE fields and other surfaces answered THREE,
 // and the missing ones diverge in OPPOSITE directions:
 //
 //   • no `predictedWorkoutDay` ⇒ a pre-workout dose keys on "a session was already
@@ -62,7 +62,6 @@ import { GET as calendarFeedGET } from "@/app/api/calendar/[token]/route";
 import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
 import type { DoseScheduleEntry } from "@/lib/offline/snapshots";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
-import { intakeAdherenceOn } from "@/lib/queries/household";
 import {
   doseDayProgress,
   offeredItems,
@@ -222,25 +221,6 @@ describe("the offline schedule and the page predict the same training day (#5321
 });
 
 describe("a live surface holds a post-workout dose until the session ends (#5321)", () => {
-  // THE `?? true` DIRECTION, on the surfaces that RENDER rather than store. The household
-  // card is read at the moment it is built, so it wants the same minute-shaped answer the
-  // member's own page gives — and without the field it offered a dose that page holds.
-  it("counts what the medications page counts, mid-session and after", () => {
-    const p = newProfile();
-    const td = today(p);
-    seedItem(p, "Recovery tablet", "post_workout");
-    logWorkout(p, td, "17:00", "18:00");
-
-    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
-    expect(pageDueNames(p)).toEqual([]);
-    expect(intakeAdherenceOn(p, td)).toEqual({ taken: 0, due: 0 });
-
-    // The control: the hold is the session's end time, not the condition itself.
-    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
-    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
-    expect(intakeAdherenceOn(p, td)).toEqual({ taken: 0, due: 1 });
-  });
-
   // THE THREE SURFACES #5637 LEFT, closed here as the behavior fix the PM ruled it is
   // (2026-09-09). Upcoming's dose rows, Upcoming's availability disclosure and the
   // quick-log sheet each assembled their own four-field context, so `?? true` unheld a

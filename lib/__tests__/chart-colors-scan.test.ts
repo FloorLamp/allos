@@ -457,7 +457,7 @@ const TONE_VOCABULARIES = new Map<string, string>([
   [
     "FindingTone",
     "CoachingTone plus `info`, so it inherits `action` and adds a second " +
-      "no-judgment word; mapped at its boundary in components/HouseholdCard.tsx",
+      "no-judgment word",
   ],
   [
     "HeatTone",

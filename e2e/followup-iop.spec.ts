@@ -7,7 +7,8 @@ import {
   E2E_MEMBER_PASSWORD,
   FLAGGED_IOP_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenToday, workerDbPath } from "./worker-env";
+import { shiftDateStr } from "@/lib/date";
 
 // The finding follow-up loop — IOP glaucoma adapter (#698 §6 / Part of #700): a flagged
 // intraocular pressure → a tracked, LEGIBLE "Recheck IOP / glaucoma workup" on Upcoming
@@ -62,19 +63,14 @@ function addLaterReading() {
   const handle = new Database(DB_PATH);
   try {
     const pid = profileId(handle);
-    const now = handle.prepare("SELECT date('now') AS d").get() as {
-      d: string;
-    };
-    const later = handle
-      .prepare("SELECT date(?, '-3 days') AS d")
-      .get(now.d) as { d: string };
+    const later = shiftDateStr(frozenToday(), -3);
     handle
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, source)
          VALUES (?, ?, 'vitals', ?, '17', 17, 'mmHg', ?, 'normal', 'manual')`
       )
-      .run(pid, later.d, IOP_OS, IOP_OS);
+      .run(pid, later, IOP_OS, IOP_OS);
   } finally {
     handle.close();
   }

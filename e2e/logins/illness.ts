@@ -98,24 +98,17 @@ export const HH_HISTORY_CHILD_PROFILE = "Household History Child (e2e)";
 // affordance. Separate login so the read-only assertions never race the write one.
 export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
 
-// ── Household-rollup + illness-episode caregiver fixtures (#868 census hardening) ──
-// Five member logins granted the SHARED seeded profiles — profile 1 ("admin") and
-// profile 2 ("Riley (child)", seeded by scripts/seed.ts) — so the household-rollup and
-// illness-episode specs stop CREATING members at runtime through Settings → Family. That
+// ── Illness-episode caregiver fixtures (#868 census hardening) ──
+// Member logins granted the SHARED seeded profiles — profile 1 ("admin") and
+// profile 2 ("Riley (child)", seeded by scripts/seed.ts) — so the illness-episode
+// specs stop CREATING members at runtime through Settings → Family. That
 // page's create/grant controls are onClick + router.refresh() (not form submits), so the
 // grant rows render only after a client refresh that goes stale under CI load — the
 // create-member census flake (#868 fixture-ownership discipline). Seeded grants render
 // deterministically. These logins are READ-STRUCTURE ONLY: their grant sets are STATIC
-// (never mutated by a spec), and the specs leave the shared profiles' data as found
-// (household-rollup resets only its own dedicated dose row). Profile 1 is the lowest
-// granted id, so a caregiver lands acting as it (createSession picks accessibleProfiles[0]).
-//   • HH_CAREGIVER — profile 1 write + profile 2 write. Two Household cards; confirms
-//     profile 2's due dose from its card while the active profile stays profile 1.
-//   • HH_SOLO — profile 1 write ONLY. No Household nav; bounced off /household.
-//   • HH_VIEWER — profile 1 read + profile 2 read. Sees both cards, NO confirm buttons.
-export const E2E_LOGIN_HH_CAREGIVER = "e2e_hh_caregiver";
-export const E2E_LOGIN_HH_SOLO = "e2e_hh_solo";
-export const E2E_LOGIN_HH_VIEWER = "e2e_hh_viewer";
+// (never mutated by a spec), and the specs leave the shared profiles' data as found.
+// Profile 1 is the lowest granted id, so a caregiver lands acting as it
+// (createSession picks accessibleProfiles[0]).
 //   • ILLNESS_CAREGIVER — profile 1 write + profile 2 write. Acts as profile 2 (well),
 //     so sick profile 1 surfaces only in the cross-profile illness Now-group accordion (#858).
 //   • ILLNESS_RO — profile 1 READ + profile 2 write. Acts as profile 2, opens sick
