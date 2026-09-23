@@ -247,6 +247,41 @@ function liveRowIdForUniqueKey(
   return found ? found.id : null;
 }
 
+// Null the surviving rows' links to a root the kind declares as `repoint` children
+// (equipment's sets, sessions, protocols and goals): the rows stay and lose the link.
+// captureDelete passes the rows it captured, so restore can re-point exactly those;
+// Data → Manage's Delete all takes no capture and passes none, so each child's rows
+// are read by the same `childWhere` the capture would have used.
+export function detachRepointedLinks(
+  kind: string,
+  profileId: number,
+  rootId: number,
+  rows?: Record<string, Row[]>
+): void {
+  for (const child of getKindSpec(kind).entities.slice(1)) {
+    if (!child.repoint) continue;
+    const { column } = child.repoint;
+    const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
+    const linked =
+      rows?.[child.entity] ??
+      (db
+        .prepare(`SELECT id FROM ${child.table} WHERE ${child.childWhere}`)
+        .all(...binds) as Row[]);
+    const detach =
+      child.table === "exercise_sets"
+        ? db.prepare(
+            `UPDATE exercise_sets SET ${column} = NULL
+          WHERE id = ? AND ${column} = ?
+            AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+          )
+        : db.prepare(
+            `UPDATE ${child.table} SET ${column} = NULL
+          WHERE id = ? AND ${column} = ? AND profile_id = ?`
+          );
+    for (const row of linked) detach.run(row.id, rootId, profileId);
+  }
+}
+
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -287,23 +322,7 @@ export function captureDelete(
           .all(...binds) as Row[]);
     }
 
-    for (const child of spec.entities.slice(1)) {
-      if (!child.repoint) continue;
-      const { column } = child.repoint;
-      const detach =
-        child.table === "exercise_sets"
-          ? db.prepare(
-              `UPDATE exercise_sets SET ${column} = NULL
-            WHERE id = ? AND ${column} = ?
-              AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
-            )
-          : db.prepare(
-              `UPDATE ${child.table} SET ${column} = NULL
-            WHERE id = ? AND ${column} = ? AND profile_id = ?`
-            );
-      for (const row of rows[child.entity])
-        detach.run(row.id, rootId, profileId);
-    }
+    detachRepointedLinks(kind, profileId, rootId, rows);
 
     // Detach INBOUND references before the root delete (row-ops null-out rule): a
     // protocol can link an intake item as its intervention (protocols.intake_item_id,
@@ -376,10 +395,6 @@ export function captureDelete(
       // foreign_keys = ON aborts it. Centralized here for the reason the conditions
       // block above states: the bulk path must inherit the same detach, and before
       // this it did not (a bulk delete of a linked visit threw on the FK).
-      db.prepare(
-        `UPDATE appointments SET encounter_id = NULL
-          WHERE encounter_id = ? AND profile_id = ?`
-      ).run(rootId, profileId);
       nullEncounterLinks(profileId, rootId);
     }
     if (spec.ownedTable === "skin_lesions") {

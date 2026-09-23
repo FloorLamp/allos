@@ -24,6 +24,11 @@ import {
 } from "@/lib/followup-write";
 import { IMAGING_FOLLOWUP_KIND } from "@/lib/followup-imaging";
 import { LABS_FOLLOWUP_KIND } from "@/lib/followup-labs";
+import {
+  linkEpisodeToEncounter,
+  linkRecordToEncounter,
+} from "@/lib/queries/visit-links";
+import { logVisitFromAppointment } from "@/app/(app)/encounters/appointment-actions";
 import { seedActor, createProfile } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -604,4 +609,225 @@ describe("Delete all frees a tracked follow-up's link (#5966)", () => {
         .get(tracked.carePlanItemId)
     ).toEqual({ resolution: "stable" });
   });
+});
+
+// #5990 — "Delete all" on a dataset whose rows other sections link to with no ON
+// DELETE action. Deleting one row already frees those links through captureDelete;
+// the wipe takes no capture, so before it ran the same seam it raised
+// SQLITE_CONSTRAINT_FOREIGNKEY and rolled back. Owner ruling: the linked records stay
+// and lose the link. The positive control runs the pre-fix statement on the same
+// fixture.
+describe("Delete all frees the links a visit or a piece of gear carries (#5990)", () => {
+  const DAY = "2026-05-01";
+
+  function one(sql: string, ...args: unknown[]) {
+    return db.prepare(sql).get(...args);
+  }
+
+  function count(table: string, profileId: number): number {
+    return (
+      one(
+        `SELECT COUNT(*) AS c FROM ${table} WHERE profile_id = ?`,
+        profileId
+      ) as {
+        c: number;
+      }
+    ).c;
+  }
+
+  function insert(sql: string, ...args: unknown[]): number {
+    return Number(db.prepare(sql).run(...args).lastInsertRowid);
+  }
+
+  // A visit with three kinds of inbound link, each written by its production path:
+  // the appointment it was logged from ("Log this visit"), a condition picked onto it,
+  // and an illness episode linked to it. The visit is created by that action for the
+  // acting profile; any other profile gets a hand-added visit.
+  async function linkedVisit(profileId: number, acting: boolean) {
+    const appointmentId = insert(
+      "INSERT INTO appointments (profile_id, date, title) VALUES (?, ?, 'Checkup')",
+      profileId,
+      DAY
+    );
+    let encounterId: number;
+    if (acting) {
+      const form = new FormData();
+      form.set("id", String(appointmentId));
+      expect((await logVisitFromAppointment(form)).ok).toBe(true);
+      encounterId = (
+        one(
+          "SELECT encounter_id FROM appointments WHERE id = ?",
+          appointmentId
+        ) as {
+          encounter_id: number;
+        }
+      ).encounter_id;
+    } else {
+      encounterId = insert(
+        "INSERT INTO encounters (profile_id, date) VALUES (?, ?)",
+        profileId,
+        DAY
+      );
+      db.prepare("UPDATE appointments SET encounter_id = ? WHERE id = ?").run(
+        encounterId,
+        appointmentId
+      );
+    }
+    const conditionId = insert(
+      "INSERT INTO conditions (profile_id, name) VALUES (?, 'Asthma')",
+      profileId
+    );
+    expect(
+      linkRecordToEncounter(profileId, "condition", conditionId, encounterId)
+    ).toBe(true);
+    const episodeId = insert(
+      "INSERT INTO illness_episodes (profile_id, situation, start_date) VALUES (?, 'cold', ?)",
+      profileId,
+      DAY
+    );
+    expect(linkEpisodeToEncounter(profileId, episodeId, encounterId)).toBe(
+      true
+    );
+    return { encounterId, appointmentId, conditionId, episodeId };
+  }
+
+  function visitLinks(v: Awaited<ReturnType<typeof linkedVisit>>) {
+    return {
+      appointment: one(
+        "SELECT encounter_id FROM appointments WHERE id = ?",
+        v.appointmentId
+      ),
+      condition: one(
+        "SELECT encounter_id FROM conditions WHERE id = ?",
+        v.conditionId
+      ),
+      episodeLinks: (
+        one(
+          "SELECT COUNT(*) AS c FROM episode_encounters WHERE episode_id = ?",
+          v.episodeId
+        ) as { c: number }
+      ).c,
+    };
+  }
+
+  // Gear used by a session, one of its sets, a goal and a protocol. Each column is
+  // one a form writes (activity-write, goal-actions, protocols/actions).
+  function linkedGear(profileId: number) {
+    const equipmentId = insert(
+      "INSERT INTO equipment (profile_id, name) VALUES (?, 'Kettlebell')",
+      profileId
+    );
+    const activityId = insert(
+      "INSERT INTO activities (profile_id, date, type, title, equipment_id) VALUES (?, ?, 'strength', 'Swings', ?)",
+      profileId,
+      DAY,
+      equipmentId
+    );
+    const setId = insert(
+      "INSERT INTO exercise_sets (activity_id, exercise, set_number, equipment_id) VALUES (?, 'Swing', 1, ?)",
+      activityId,
+      equipmentId
+    );
+    const goalId = insert(
+      "INSERT INTO goals (profile_id, title, equipment_id) VALUES (?, 'Swing more', ?)",
+      profileId,
+      equipmentId
+    );
+    const protocolId = insert(
+      "INSERT INTO protocols (profile_id, name, start_date, equipment_id) VALUES (?, 'Swings daily', ?, ?)",
+      profileId,
+      DAY,
+      equipmentId
+    );
+    return { equipmentId, activityId, setId, goalId, protocolId };
+  }
+
+  function gearLinks(g: ReturnType<typeof linkedGear>) {
+    const link = (table: string, id: number) =>
+      one(`SELECT equipment_id FROM ${table} WHERE id = ?`, id);
+    return {
+      activity: link("activities", g.activityId),
+      set: link("exercise_sets", g.setId),
+      goal: link("goals", g.goalId),
+      protocol: link("protocols", g.protocolId),
+    };
+  }
+
+  it("encounters: Delete all keeps the linked records and unlinks them", async () => {
+    const { login, profile } = seedActor();
+    const mine = await linkedVisit(profile.id, true);
+    const other = createProfile("Other visits", login.id);
+    const theirs = await linkedVisit(other.id, false);
+
+    const res = await deleteAllDatasetRows("encounters");
+    expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+    expect(count("encounters", profile.id)).toBe(0);
+    expect(visitLinks(mine)).toEqual({
+      appointment: { encounter_id: null },
+      condition: { encounter_id: null },
+      episodeLinks: 0,
+    });
+    // The records themselves survive.
+    expect(count("appointments", profile.id)).toBe(1);
+    expect(count("conditions", profile.id)).toBe(1);
+    expect(count("illness_episodes", profile.id)).toBe(1);
+
+    expect(count("encounters", other.id)).toBe(1);
+    expect(visitLinks(theirs)).toEqual({
+      appointment: { encounter_id: theirs.encounterId },
+      condition: { encounter_id: theirs.encounterId },
+      episodeLinks: 1,
+    });
+    expect(rawDb.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("equipment: Delete all keeps the workouts, goals and protocols and unlinks them", async () => {
+    const { login, profile } = seedActor();
+    const mine = linkedGear(profile.id);
+    const other = createProfile("Other gear", login.id);
+    const theirs = linkedGear(other.id);
+
+    const res = await deleteAllDatasetRows("equipment");
+    expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
+    expect(count("equipment", profile.id)).toBe(0);
+    expect(gearLinks(mine)).toEqual({
+      activity: { equipment_id: null },
+      set: { equipment_id: null },
+      goal: { equipment_id: null },
+      protocol: { equipment_id: null },
+    });
+    expect(count("activities", profile.id)).toBe(1);
+    expect(count("goals", profile.id)).toBe(1);
+    expect(count("protocols", profile.id)).toBe(1);
+    expect(
+      one("SELECT 1 AS x FROM exercise_sets WHERE id = ?", mine.setId)
+    ).toEqual({
+      x: 1,
+    });
+
+    expect(count("equipment", other.id)).toBe(1);
+    const kept = { equipment_id: theirs.equipmentId };
+    expect(gearLinks(theirs)).toEqual({
+      activity: kept,
+      set: kept,
+      goal: kept,
+      protocol: kept,
+    });
+    expect(rawDb.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it.each([
+    { key: "encounters", seed: (id: number) => linkedVisit(id, true) },
+    { key: "equipment", seed: async (id: number) => linkedGear(id) },
+  ])(
+    "positive control — $key: the bare wipe on the same fixture throws and rolls back",
+    async ({ key, seed }) => {
+      const { profile } = seedActor();
+      await seed(profile.id);
+      expect(() =>
+        db.prepare(`DELETE FROM ${key} WHERE profile_id = ?`).run(profile.id)
+      ).toThrow(/FOREIGN KEY constraint failed/);
+      expect(count(key, profile.id)).toBe(1);
+    }
+  );
 });
