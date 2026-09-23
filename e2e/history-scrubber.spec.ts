@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenNow, frozenDayThisYear } from "./worker-env";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
@@ -58,11 +58,13 @@ function shiftedDay(days: number): string {
 
 // Distances chosen so no profile timezone can move any of them across the "after
 // today" edge, the 14-day recent edge, a month boundary or a 1 January.
+// The three older goals are held inside the frozen year, since only this year's
+// months are rail stops; early in a year they share its first month.
 const DATES = {
   ahead: shiftedDay(45),
-  mid: shiftedDay(-100),
-  older: shiftedDay(-160),
-  oldest: shiftedDay(-220),
+  mid: frozenDayThisYear(-100),
+  older: frozenDayThisYear(-160),
+  oldest: frozenDayThisYear(-220),
   lastYear: shiftedDay(-400),
 } as const;
 

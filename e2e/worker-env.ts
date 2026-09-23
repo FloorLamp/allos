@@ -9,6 +9,8 @@ import "../scripts/load-env";
 import fs from "node:fs";
 import path from "node:path";
 import { syncInstantBefore } from "./sync-instants";
+import { pinnedTimezone } from "./pinned-timezone";
+import { dateStrInTz, shiftDateStr, type LocalDay } from "../lib/date";
 
 // DB-per-worker addressing (issue #1538) — the ONE place that answers "which DB,
 // which port, which directory belongs to THIS Playwright worker".
@@ -157,6 +159,31 @@ export function frozenLocalHHMM(zone: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(frozenNow());
+}
+
+/**
+ * The frozen clock's profile-local day in `zone` (the run's pinned zone unless a
+ * fixture sets its own). A spec that seeds a dated row derives it from here, never
+ * from SQLite's `date('now')`, which reads the real clock and ages the row out of
+ * every window on a forward-clock run (#6015).
+ */
+export function frozenToday(
+  zone: string = pinnedTimezone(frozenNow().toISOString()).zone
+): LocalDay {
+  return dateStrInTz(zone, frozenNow());
+}
+
+/**
+ * The frozen day `offsetDays` back, held inside the frozen CALENDAR YEAR (no earlier
+ * than 2 January). For a fixture that must land in one of this year's month folds
+ * rather than a previous year's card: a fixed offset leaves the year whenever the
+ * frozen clock sits early in one, as a forward-clock run often does (#6015).
+ */
+export function frozenDayThisYear(offsetDays: number): LocalDay {
+  const today = frozenToday();
+  const day = shiftDateStr(today, offsetDays);
+  const floor = `${today.slice(0, 4)}-01-02`;
+  return day < floor ? floor : day;
 }
 
 /** Admin credentials the seed bootstraps, and that each worker logs in with. */
