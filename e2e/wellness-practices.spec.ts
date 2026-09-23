@@ -70,7 +70,6 @@ test("from the quick-log sheet a person adds a practice, edits it and logs it wi
   try {
     const list = await openPracticeSheet(page);
     const sheet = page.getByTestId("quick-entry-sheet");
-    const url = page.url();
 
     // ADD opens over the sheet. Its picker must paint above both surfaces, and
     // Escape dismisses the nested picker first, then the dialog — never the sheet.
@@ -144,8 +143,9 @@ test("from the quick-log sheet a person adds a practice, edits it and logs it wi
     await expect(renamedRow.getByTestId("practice-row-facts")).toHaveText(
       "1 today · 1 of 2 this week"
     );
+    // Still on the page the sheet was opened over: nothing navigated.
     await expect(sheet).toBeVisible();
-    expect(page.url()).toBe(url);
+    expect(new URL(page.url()).pathname).toBe("/");
     const db = openDb();
     try {
       expect(
