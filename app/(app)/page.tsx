@@ -38,7 +38,7 @@ import { STEPS_AFTERNOON_HOUR } from "@/lib/steps-target";
 import IntradayChart from "@/components/IntradayChart";
 import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
 import { getIntradayDay } from "@/lib/queries/intraday";
-import { intradayFreshness } from "@/lib/intraday";
+import IntradayFreshness from "@/components/IntradayFreshness";
 import {
   isFoodLoggingRelevant,
   isStrengthTrainingRelevant,
@@ -1763,14 +1763,11 @@ function renderGlance({
             profileId={profileId}
             className="mt-2 w-full"
           />
-          {intradayFreshness(frame) ? (
-            <p
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="intraday-freshness"
-            >
-              {intradayFreshness(frame)}
-            </p>
-          ) : null}
+          <IntradayFreshness
+            model={frame}
+            profileId={profileId}
+            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          />
         </IntradayInteractionProvider>
       ) : null}
     </div>
