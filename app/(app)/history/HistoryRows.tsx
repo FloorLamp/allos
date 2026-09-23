@@ -979,8 +979,7 @@ export default function HistoryRows({
                   /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
-                     chevron and lib/__tests__/destination-link-primitive.test.ts
-                     refuses a hand-rolled one inside a link. So the row has exactly one
+                     chevron. So the row has exactly one
                      control and one cue, and a row can never show both verbs. */
                   <DestinationLink
                     href={row.href}

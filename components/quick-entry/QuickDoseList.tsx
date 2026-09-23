@@ -12,14 +12,22 @@ import {
   QuickEntryRow,
   QuickEntryRowList,
 } from "@/components/quick-entry/QuickEntryRowList";
-import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
+import Button from "@/components/Button";
+import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
+import {
+  DOSE_ACTION_LABEL,
+  DOSE_ACTION_NEUTRAL,
+} from "@/components/medications/dose-action-styles";
+import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import { hhmmFromMinutes } from "@/lib/date";
+import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
+import { bulkLabel, namesPhrase } from "@/lib/usual-routine";
 import { logHistoricalDose } from "@/app/(app)/nutrition/intake-actions";
 import type {
   QuickEntryDose,
   QuickEntryOtherItem,
   QuickEntryOthers,
   QuickEntryPastDay,
-  QuickEntryPastDose,
   QuickEntryPrn,
 } from "@/app/(app)/quick-entry-actions";
 import type { IntakeItemKind } from "@/lib/types";
@@ -208,6 +216,7 @@ export default function QuickDoseList({
           onResolved={(doseIds) => markResolved(day, doseIds)}
           subjectProfileId={subjectProfileId}
           profileToday={profileToday}
+          timeFormat={prn?.timeFormat ?? "12h"}
         />
       ) : remaining.length === 0 && !prn?.meds.length ? (
         <p
@@ -323,16 +332,14 @@ export default function QuickDoseList({
 // that no amount was saved for the date. One body, two grammars, and the second one was
 // the grammar #5521 had already deleted from today.
 //
-// THE BUCKET SURVIVES AS THE CHIP'S PAYLOAD, which is where the slot has belonged since
-// #4753 ruling 1: the row prints the dose name, so the label says when it was owed
-// (`Morning · Take`) and the sectioning that used to say it has nothing left to do. The
-// bundle offer is #5663's receipt-and-toast contract rather than a second control row,
-// and the assumed-amount sentence is a FACT beside the dose it qualifies.
+// THE SLOT CAME BACK AS THE UNIT OF TIME (#5813), not as a second body: one header per
+// slot states the time once for the whole act (see `PastSlot`), and the rows under it
+// stay today's composition. The receipt is #5663's toast, and the assumed-amount
+// sentence is a FACT beside the dose it qualifies.
 //
-// WHAT THE DAY STILL DECIDES, because it is the day's own doing and not a second
-// policy: nothing is filtered by arrived slot (every bucket of a closed day has
-// arrived), and the minute is REQUIRED (#5595) — `DatedDoseControl` reads that off the
-// date it is handed, so this list states no rule of its own about it.
+// WHAT THE DAY STILL DECIDES: nothing is filtered by arrived slot (every bucket of a
+// closed day has arrived), and a minute is still asked for (#5595) — by the slot, or
+// by the row while the slot states none.
 function PastDayDoses({
   date,
   slots,
@@ -341,11 +348,13 @@ function PastDayDoses({
   onResolved,
   subjectProfileId,
   profileToday,
+  timeFormat,
 }: {
   date: string;
   // The live profile day, so the rows can tell a day that has ENDED from today (#4686).
   profileToday: string;
-  slots: { bucket: TimeBucket; doses: QuickEntryPastDose[] }[];
+  slots: QuickEntryPastDay["slots"];
+  timeFormat: TimeFormat;
   // Keyed by `occurrenceKey`, not by dose id — see the host's note on why a schedule
   // row id is not an occurrence.
   notes: Record<string, string>;
@@ -367,57 +376,150 @@ function PastDayDoses({
   return (
     <div data-testid="quick-entry-dose-day" data-date={date}>
       <QuickEntryRowList testId="quick-entry-dose-list">
-        {slots.flatMap((slot) =>
-          slot.doses.map((dose) => (
-            <QuickEntryRow
-              key={dose.doseId}
-              testId={`quick-entry-dose-${dose.doseId}`}
-              identity={dose.name}
-              facts={
-                <>
-                  {dose.detail && (
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      {dose.detail}
-                    </span>
-                  )}
-                  {dose.amountAssumed ? (
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      Oldest known amount
-                    </span>
-                  ) : null}
-                  {notes[occurrenceKey(date, dose.doseId)] && (
-                    <span
-                      data-testid={`quick-entry-dose-note-${dose.doseId}`}
-                      className="block text-xs font-medium text-rose-600 dark:text-rose-400"
-                    >
-                      {notes[occurrenceKey(date, dose.doseId)]}
-                    </span>
-                  )}
-                </>
-              }
-              actions={
-                <DatedDoseControl
-                  doseId={dose.doseId}
-                  date={date}
-                  profileToday={profileToday}
-                  taken={false}
-                  skipped={false}
-                  variant="pill"
-                  payload={TIME_BUCKET_LABELS[slot.bucket]}
-                  itemName={dose.name}
-                  rowLeaves
-                  profileId={subjectProfileId}
-                  onSettled={(result) => {
-                    if (result.ok) onResolved([dose.doseId]);
-                    else onNote(dose.doseId, result.error);
-                  }}
-                />
-              }
-            />
-          ))
-        )}
+        {slots.map((slot) => (
+          <PastSlot
+            key={slot.bucket}
+            date={date}
+            slot={slot}
+            notes={notes}
+            onNote={onNote}
+            onResolved={onResolved}
+            subjectProfileId={subjectProfileId}
+            profileToday={profileToday}
+            timeFormat={timeFormat}
+          />
+        ))}
       </QuickEntryRowList>
     </div>
+  );
+}
+
+// ONE TIME PER SLOT (#5813, owner ruling 2026-09-10). On a past day the slot is the
+// unit: its header states one time for the whole act, offers the profile's usual clock
+// for it and "Don't know", and Take all posts that time on every row. The chips only
+// fill the field; nothing writes until a Take. A row's own Take uses the slot's time
+// once one is stated, and asks for its own while none is.
+function PastSlot({
+  date,
+  slot,
+  notes,
+  onNote,
+  onResolved,
+  subjectProfileId,
+  profileToday,
+  timeFormat,
+}: {
+  date: string;
+  slot: QuickEntryPastDay["slots"][number];
+  notes: Record<string, string>;
+  onNote: (doseId: number, text: string) => void;
+  onResolved: (doseIds: readonly number[]) => void;
+  subjectProfileId?: number;
+  profileToday: string;
+  timeFormat: TimeFormat;
+}) {
+  const label = TIME_BUCKET_LABELS[slot.bucket];
+  const testId = `quick-entry-dose-slot-${slot.bucket.replace(" ", "-")}`;
+  const time = useTimeStatement({
+    day: date,
+    required: true,
+    unknownLabel: "Don’t know",
+    timeLabel: "Time",
+    testId: `${testId}-when`,
+  });
+  const { resolveAll, bulkBlocked } = useDoseDayResolution({
+    date,
+    bulkFailureMessage: "Couldn't log those doses. Try again.",
+    note: onNote,
+    resolved: onResolved,
+    profileId: subjectProfileId,
+  });
+  const ids = slot.doses.map((dose) => dose.doseId);
+  const usual = slot.usual;
+  return (
+    <>
+      <li
+        data-testid={testId}
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
+      >
+        <div className="flex-auto font-medium text-slate-800 dark:text-slate-100">
+          {label} · {slot.doses.length}
+        </div>
+        {slot.doses.length > 1 ? (
+          <Button
+            data-testid={`${testId}-takeall`}
+            aria-label={`${bulkLabel("Take", slot.doses)}: ${namesPhrase(slot.doses.map((dose) => dose.name))}`}
+            disabled={bulkBlocked(ids)}
+            onClick={() => resolveAll(ids, time.at)}
+          >
+            {bulkLabel("Take", slot.doses)}
+          </Button>
+        ) : null}
+        <div className="flex w-full flex-wrap items-end gap-2">
+          {time.reveal}
+          {usual ? (
+            <button
+              type="button"
+              data-testid={`${testId}-usual`}
+              data-source={usual.source}
+              onClick={() => time.fill(hhmmFromMinutes(usual.minute))}
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+            >
+              {usual.source === "recorded" ? "Usually" : label}{" "}
+              {formatClockMinutes(timeFormat, usual.minute, "lower-nospace")}
+            </button>
+          ) : null}
+        </div>
+      </li>
+      {slot.doses.map((dose) => (
+        <QuickEntryRow
+          key={dose.doseId}
+          testId={`quick-entry-dose-${dose.doseId}`}
+          identity={dose.name}
+          facts={
+            <>
+              {dose.detail && (
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  {dose.detail}
+                </span>
+              )}
+              {dose.amountAssumed ? (
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  Oldest known amount
+                </span>
+              ) : null}
+              {notes[occurrenceKey(date, dose.doseId)] && (
+                <span
+                  data-testid={`quick-entry-dose-note-${dose.doseId}`}
+                  className="block text-xs font-medium text-rose-600 dark:text-rose-400"
+                >
+                  {notes[occurrenceKey(date, dose.doseId)]}
+                </span>
+              )}
+            </>
+          }
+          actions={
+            <DatedDoseControl
+              doseId={dose.doseId}
+              date={date}
+              profileToday={profileToday}
+              taken={false}
+              skipped={false}
+              variant="pill"
+              payload={label}
+              itemName={dose.name}
+              rowLeaves
+              profileId={subjectProfileId}
+              slot={time}
+              onSettled={(result) => {
+                if (result.ok) onResolved([dose.doseId]);
+                else onNote(dose.doseId, result.error);
+              }}
+            />
+          }
+        />
+      ))}
+    </>
   );
 }
 

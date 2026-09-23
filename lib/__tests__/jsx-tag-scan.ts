@@ -2,9 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The repo's source-scan reader, shared by the guards that ask "where does this
-// JSX tag still get hand-rolled" (`time-input-scan.test.ts`,
-// `media-input-scan.test.ts`, `menu-item-role-scan.test.ts`). It reads TSX as
+// The repo's source-scan reader for "where does this JSX tag still get
+// hand-rolled" (`time-input-scan.test.ts`). It reads TSX as
 // TEXT — no DB, no network, so the scans stay "pure".
 //
 // WHY TOKENIZE RATHER THAN GREP. Three shapes defeat a line-keyed regex and all

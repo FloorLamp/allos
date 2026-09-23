@@ -6,7 +6,7 @@ import { gapFillValue, seriesGapForSeriesKey } from "../trend-sparkline";
 import type { ChartXAxis } from "@/components/chart-spec";
 
 // The DAY-GRAIN GAP chokepoint (issue #2258), in the repo's source-scan idiom
-// (`chart-scaffold-scan.test.ts`, `chart-colors-scan.test.ts`): read the app's own
+// (`chart-colors-scan.test.ts`): read the app's own
 // TSX as TEXT — no DB, no network, so it stays "pure" in the vitest sense — and
 // fail the build when a day-precision series reaches a chart card without saying
 // what its gaps mean.
