@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { useUndoableAction } from "@/components/useUndoableAction";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useResettableState } from "@/components/useResettableState";
 import CardSectionHeader from "@/components/CardSectionHeader";
@@ -40,8 +41,11 @@ import {
   declineDoseBandUpdate,
   logMedicationAdministration,
 } from "@/app/(app)/medications/actions";
+import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
+import { statedHhmm } from "@/lib/stated-time";
+import { undoRefusalText, type UndoOffer } from "@/lib/undo-offer";
 import { formatClockValue } from "@/lib/format-date";
 import { microMotionPlan } from "@/lib/micro-motion";
 import type { FormResult } from "@/lib/types";
@@ -204,6 +208,7 @@ export default function QuickLogPrnControl({
   // has ended has none, so the tap below asks for the minute instead of stamping one.
   const isPrimaryDay = date == null ? card.isPrimaryDay : date === todayStr;
   const toast = useToast();
+  const announce = useUndoableAction();
   const prefs = useFormatPrefs();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
@@ -259,13 +264,50 @@ export default function QuickLogPrnControl({
   // The whole sentence for a reader, where the visible pill abbreviates it. Both arms
   // read this one string.
   const takeName = `${verb} ${name}${doseDetail ? ` · ${doseDetail}` : ""}`;
-  // THE ROW STATES WHAT LANDED (#5663 ruling 1): "Taken", with the minute when one
-  // was stated. Null until this mount lands a dose, and dropped when the subject or
-  // the day moves, because a receipt belongs to the day it was written for.
-  const [receipt, setReceipt] = useResettableState<string | null>(
-    null,
-    `${profileId ?? ""}|${cardDay}`
-  );
+  // THE ROW STATES WHAT LANDED (#5663 ruling 1): "Taken · 4:02 PM", the minute the
+  // write stored. Null until this mount lands a dose, and dropped when the subject or
+  // the day moves, because a receipt belongs to the day it was written for. `undo` is
+  // the offer the toast carries, so the row and the toast take back the same row.
+  const [receipt, setReceipt] = useResettableState<{
+    text: string;
+    administrationId: number;
+    undo: UndoOffer | null;
+  } | null>(null, `${profileId ?? ""}|${cardDay}`);
+  const [undoing, setUndoing] = useState(false);
+  // THE INVERSE (#5663 ruling 1, lib/undo-offer.ts): the shared administration
+  // delete, which captures the row, re-credits supply and re-checks ownership
+  // server-side against the subject posted here. The redose window and the day's
+  // count are derived from the ledger, so removing the row restores them too.
+  function undoOffer(administrationId: number): UndoOffer {
+    return {
+      undoneMessage: "Dose undone.",
+      run: async () => {
+        const fd = new FormData();
+        fd.set("log_id", String(administrationId));
+        if (profileId != null) fd.set("profile_id", String(profileId));
+        const removed = await deleteAdministration(fd);
+        // `undoId` null is the action's only refusal: the row is gone or not this
+        // subject's.
+        if (removed.undoId == null) return { ok: false, reason: "changed" };
+        setReceipt((r) =>
+          r?.administrationId === administrationId ? null : r
+        );
+        return { ok: true };
+      },
+    };
+  }
+  async function undoFromRow(offer: UndoOffer) {
+    setUndoing(true);
+    try {
+      const outcome = await offer.run();
+      if (outcome.ok) toast(offer.undoneMessage);
+      else toast(undoRefusalText(outcome.reason), { tone: "error" });
+    } catch {
+      toast(undoRefusalText("failed"), { tone: "error" });
+    } finally {
+      setUndoing(false);
+    }
+  }
   // ONE SETTLE PER LANDED DOSE (#5900 problem 2), as `DoseStatusControl.settleConfirm`:
   // one 300 ms run on the tapped control after a dose the server wrote, never on
   // mount, a refusal or a duplicate. Under reduced motion no class is applied and the
@@ -347,22 +389,25 @@ export default function QuickLogPrnControl({
           );
         } else {
           // Ruling 1's grammar, `<Thing> logged · <time>`, and the row says the same.
-          // The slot is the STATED minute and drops otherwise, as on the stool and
-          // measurements bodies: this row never learns the instant a now-tap stamped.
-          //
-          // NO UNDO YET. The inverse exists — `deleteAdministration` captures the row
-          // and re-credits supply — but this action does not name the row it wrote,
-          // and a first dose (#5981) also borns a dose row that delete leaves behind.
+          // The minute is the one the write STORED: a dose's instant is always real,
+          // because it arms the redose window, so a now-tap names it too.
           const clock = formatClockValue(
-            consumed,
+            statedHhmm(res.occurredAt, tz),
             prefs.timeFormat,
             "",
             "upper-space"
           );
-          const at = clock ? ` · ${clock}` : "";
-          setReceipt(`Taken${at}`);
+          // NO UNDO ON A FIRST DOSE (#5981). That tap also borned the item's first
+          // dose row, which the administration delete leaves behind, so the inverse is
+          // not complete (lib/undo-offer.ts) and the toast offers none.
+          const undo = needsDoseAmount ? null : undoOffer(res.administrationId);
+          setReceipt({
+            text: `Taken · ${clock}`,
+            administrationId: res.administrationId,
+            undo,
+          });
           settleConfirm();
-          toast(`Dose logged${at}`);
+          announce({ message: `Dose logged · ${clock}`, undo });
         }
         // Rule 4, and `consumed` is why this is not the unconditional reset it used to
         // be: the now-tap consumes NO statement, so one made beside it survives the tap
@@ -581,11 +626,21 @@ export default function QuickLogPrnControl({
   ) : null;
 
   const receiptLine = receipt ? (
-    <div
-      className="text-xs font-medium text-slate-700 dark:text-slate-200"
-      data-testid="prn-receipt"
-    >
-      {receipt}
+    <div className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+      <span data-testid="prn-receipt">{receipt.text}</span>
+      {receipt.undo ? (
+        <button
+          type="button"
+          className="btn-ghost shrink-0 text-sm"
+          data-testid="prn-receipt-undo"
+          disabled={undoing}
+          aria-busy={undoing || undefined}
+          onClick={() => receipt.undo && void undoFromRow(receipt.undo)}
+        >
+          {undoing ? <BusyMark /> : null}
+          Undo
+        </button>
+      ) : null}
     </div>
   ) : null;
 

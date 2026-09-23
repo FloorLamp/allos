@@ -14,7 +14,14 @@ import { getAdministrationsForItemOnDate } from "@/lib/queries";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
-import { seedActor, fd, type TestProfile } from "./harness";
+import {
+  actAs,
+  createProfile,
+  seedActor,
+  fd,
+  type TestLogin,
+  type TestProfile,
+} from "./harness";
 
 vi.mocked(revalidatePath);
 
@@ -55,9 +62,10 @@ function adminIds(itemId: number): number[] {
   ).map((r) => r.id);
 }
 
+let login: TestLogin;
 let profile: TestProfile;
 beforeEach(() => {
-  ({ profile } = seedActor());
+  ({ login, profile } = seedActor());
 });
 
 describe("logMedicationAdministration → deleteAdministration → undoDelete round-trip", () => {
@@ -99,5 +107,52 @@ describe("logMedicationAdministration → deleteAdministration → undoDelete ro
     const { undoId } = await deleteAdministration(fd({ log_id: 999999 }));
     expect(undoId).toBeNull();
     expect(onHand(itemId)).toBe(5); // untouched
+  });
+});
+
+// THE QUICK-LOG ROW'S UNDO (#5663). The log action names the row it wrote, and the
+// row's Undo deletes exactly that id through the same gated delete.
+describe("a logged administration's own id is what its Undo takes back", () => {
+  it("deletes exactly the row the log named, and nothing beside it", async () => {
+    const itemId = seedPrnMed(profile, 20);
+    const first = await logMedicationAdministration(
+      fd({ id: itemId, offset: "custom", time: "00:01" })
+    );
+    const second = await logMedicationAdministration(
+      fd({ id: itemId, offset: "now" })
+    );
+    if (!first.ok || first.outcome !== "logged") throw new Error("not logged");
+    if (!second.ok || second.outcome !== "logged")
+      throw new Error("not logged");
+    expect(adminIds(itemId)).toEqual([
+      first.administrationId,
+      second.administrationId,
+    ]);
+
+    const { undoId } = await deleteAdministration(
+      fd({ log_id: second.administrationId })
+    );
+    expect(undoId).not.toBeNull();
+    expect(adminIds(itemId)).toEqual([first.administrationId]);
+    expect(onHand(itemId)).toBe(19);
+  });
+
+  it("refuses another profile's administration id", async () => {
+    const other = createProfile("Other household member");
+    actAs(login, other);
+    const otherItem = seedPrnMed(other, 20);
+    const logged = await logMedicationAdministration(
+      fd({ id: otherItem, offset: "now" })
+    );
+    if (!logged.ok || logged.outcome !== "logged")
+      throw new Error("not logged");
+
+    actAs(login, profile);
+    const { undoId } = await deleteAdministration(
+      fd({ log_id: logged.administrationId })
+    );
+    expect(undoId).toBeNull();
+    expect(adminIds(otherItem)).toEqual([logged.administrationId]);
+    expect(onHand(otherItem)).toBe(19);
   });
 });

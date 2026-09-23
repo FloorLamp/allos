@@ -193,13 +193,25 @@ function logAdministrationTx(
       occurredAtStr,
       ADMIN_DEDUP_WINDOW_SEC
     ) as { id: number } | undefined;
-  if (!dup) {
-    db.prepare(
+  const summary = () =>
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count
+             FROM intake_item_logs
+            WHERE item_id = ? AND date = ? AND status = 'taken'`
+        )
+        .get(itemId, date) as { count: number }
+    ).count;
+  if (dup) return { kind: "duplicate", count: summary(), date };
+  const inserted = db
+    .prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, amount, recorded_at, occurred_at,
           notify_message_id, logged_via)
        VALUES (?,?,?,?,?,?,?,?)`
-    ).run(
+    )
+    .run(
       doseId,
       itemId,
       date,
@@ -209,19 +221,13 @@ function logAdministrationTx(
       notifyMessageId ?? null,
       loggedVia
     );
-    decrementSupply(profileId, itemId);
-  }
-  const summary = db
-    .prepare(
-      `SELECT COUNT(*) AS count
-         FROM intake_item_logs
-        WHERE item_id = ? AND date = ? AND status = 'taken'`
-    )
-    .get(itemId, date) as { count: number };
+  decrementSupply(profileId, itemId);
   return {
-    kind: dup ? "duplicate" : "logged",
-    count: summary.count,
+    kind: "logged",
+    count: summary(),
     date,
+    administrationId: Number(inserted.lastInsertRowid),
+    occurredAt: occurredAtStr,
   };
 }
 
