@@ -219,12 +219,7 @@ describe("nav ↔ route consistency", () => {
   // "/trends", not "/history": #4965 swapped the two — the day view's #4918
   // promotion earned History a top-level row, and Trends took the vacated
   // group slot. Household left the group when its page retired (#5667).
-  const GROUPED_HREFS = [
-    "/upcoming",
-    "/trends",
-    "/longevity",
-    "/progress",
-  ];
+  const GROUPED_HREFS = ["/upcoming", "/trends", "/longevity", "/progress"];
 
   // The source text of one top-level `const <name> ... <close>;` declaration in
   // Nav.tsx, comments stripped so a route named in prose never counts as a
