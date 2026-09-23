@@ -41,10 +41,11 @@ import {
 // is posted — which is exactly what this page's own form posts, so nothing here moves.
 
 export type CycleActionResult = { ok: true } | { ok: false; error: string };
-// An end answers which row it closed and on which day, so its toast's Undo can name
-// exactly that write.
+// An end answers which profile's row it closed and on which day, so its toast's Undo
+// can name exactly that write.
 export type EndPeriodResult =
-  { ok: true; id: number; end: string } | { ok: false; error: string };
+  | { ok: true; profileId: number; id: number; end: string }
+  | { ok: false; error: string };
 export type CycleCreateResult =
   { ok: true; id: number } | { ok: false; error: string };
 
@@ -112,15 +113,17 @@ export async function endPeriodAction(
     return { ok: false, error: "Enter an end on or after the period start." };
   }
   revalidateCycle();
-  return { ok: true, id: outcome.id, end };
+  return { ok: true, profileId: writeProfileId, id: outcome.id, end };
 }
 
-// The Undo on that end's toast (active profile, like the tap). Refused as `changed`
+// The Undo on that end's toast. It gates the profile the END wrote to, posted as
+// `profile_id`, not whoever is active now: a profile switch inside the toast's window
+// must not aim the inverse at someone else (the substance undo's shape). Refused
 // unless the row is still exactly as the end left it (`undoEndPeriodCore`).
 export async function undoEndPeriodAction(
   formData: FormData
 ): Promise<UndoOutcome> {
-  const { writeProfileId } = await requireWriteAccess();
+  const writeProfileId = await gateItemProfile(formData);
   const id = parseId(formData);
   const end = String(formData.get("end") ?? "");
   if (id == null || !isRealIsoDate(end))

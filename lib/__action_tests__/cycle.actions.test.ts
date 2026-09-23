@@ -43,8 +43,9 @@ function seedPeriod(
 
 describe("cycle actions", () => {
   let profileId: number;
+  let login: ReturnType<typeof createLogin>;
   beforeEach(() => {
-    const login = createLogin({ role: "admin" });
+    login = createLogin({ role: "admin" });
     const profile = createProfile("Cycle Actor", login.id);
     actAs(login, profile);
     profileId = profile.id;
@@ -118,7 +119,12 @@ describe("cycle actions", () => {
     await startPeriodAction(fd({}));
     const ended = await endPeriodAction(fd({}));
     const row = listCyclePeriods(profileId)[0];
-    expect(ended).toEqual({ ok: true, id: row.id, end: today(profileId) });
+    expect(ended).toEqual({
+      ok: true,
+      profileId,
+      id: row.id,
+      end: today(profileId),
+    });
     expect(getOpenPeriod(profileId)).toBeNull();
     expect(row.period_end).toBe(today(profileId));
   });
@@ -128,7 +134,9 @@ describe("cycle actions", () => {
     const ended = await endPeriodAction(fd({}));
     if (!ended.ok) throw new Error(ended.error);
     const undo = () =>
-      undoEndPeriodAction(fd({ id: ended.id, end: ended.end }));
+      undoEndPeriodAction(
+        fd({ profile_id: ended.profileId, id: ended.id, end: ended.end })
+      );
 
     expect(await undo()).toEqual({ ok: true });
     expect(getOpenPeriod(profileId)?.id).toBe(ended.id);
@@ -161,23 +169,45 @@ describe("cycle actions", () => {
       `UPDATE cycles SET period_start = ?, period_end = ? WHERE id = ?`
     ).run(shiftDateStr(old, -3), old, ended.id);
 
-    expect(await undoEndPeriodAction(fd({ id: ended.id, end: old }))).toEqual({
+    expect(
+      await undoEndPeriodAction(
+        fd({ profile_id: ended.profileId, id: ended.id, end: old })
+      )
+    ).toEqual({
       ok: false,
       reason: "expired",
     });
     expect(getCycleRow(profileId, ended.id)?.period_end).toBe(old);
   });
 
-  it("the end's Undo never reaches another profile's row", async () => {
+  it("the end's Undo reaches the profile that ended, after a switch", async () => {
+    await startPeriodAction(fd({}));
+    const ended = await endPeriodAction(fd({}));
+    if (!ended.ok) throw new Error(ended.error);
+    expect(ended.profileId).toBe(profileId);
+
+    // The same login switches to another profile inside the toast's window.
+    actAs(login, createProfile("Second Profile", login.id));
+    expect(
+      await undoEndPeriodAction(
+        fd({ profile_id: ended.profileId, id: ended.id, end: ended.end })
+      )
+    ).toEqual({ ok: true });
+    expect(getOpenPeriod(profileId)?.id).toBe(ended.id);
+  });
+
+  it("the end's Undo is refused to a login without write access to that profile", async () => {
     await startPeriodAction(fd({}));
     const ended = await endPeriodAction(fd({}));
     if (!ended.ok) throw new Error(ended.error);
 
-    const login = createLogin({ role: "admin" });
-    actAs(login, createProfile("Someone Else", login.id));
-    expect(
-      await undoEndPeriodAction(fd({ id: ended.id, end: ended.end }))
-    ).toEqual({ ok: false, reason: "changed" });
+    const stranger = createLogin({ role: "member" });
+    actAs(stranger, createProfile("Someone Else", stranger.id));
+    await expect(
+      undoEndPeriodAction(
+        fd({ profile_id: ended.profileId, id: ended.id, end: ended.end })
+      )
+    ).rejects.toThrow();
     expect(getCycleRow(profileId, ended.id)?.period_end).toBe(ended.end);
   });
 

@@ -156,6 +156,7 @@ export default function PeriodOfferButton({
                   undoneMessage: "Period end undone",
                   run: () => {
                     const fd = new FormData();
+                    fd.set("profile_id", String(result.profileId));
                     fd.set("id", String(result.id));
                     fd.set("end", result.end);
                     return undoEndPeriodAction(fd);

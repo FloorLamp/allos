@@ -151,6 +151,7 @@ describe("the period offer after a tap", () => {
   it("settles once after an end that landed, and its toast offers the Undo", async () => {
     actions.endPeriodAction.mockResolvedValue({
       ok: true,
+      profileId: 3,
       id: 7,
       end: "2026-04-20",
     });
@@ -170,7 +171,11 @@ describe("the period offer after a tap", () => {
     expect(message).toBe("Period end logged · today");
     expect(await undo.run()).toEqual({ ok: true });
     const posted = actions.undoEndPeriodAction.mock.calls[0][0] as FormData;
-    expect(Object.fromEntries(posted)).toEqual({ id: "7", end: "2026-04-20" });
+    expect(Object.fromEntries(posted)).toEqual({
+      profile_id: "3",
+      id: "7",
+      end: "2026-04-20",
+    });
   });
 
   it("does not settle or announce on a refusal", async () => {
