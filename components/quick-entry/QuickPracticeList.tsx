@@ -170,7 +170,7 @@ export default function QuickPracticeList({
   // UNLIKE the logging branch, this one CLOSES on success. Declaring a practice is a
   // transaction with a real end, and the sheet's props were gathered on open — so
   // staying would show the create form again over a list that has since changed.
-  // Reopening "Log practice" now finds the practice, and the nav row has appeared.
+  // Reopening "Log practice" now finds the practice.
   if (rows.length === 0) {
     return (
       <div className="space-y-3" data-testid="quick-entry-practice-empty">
