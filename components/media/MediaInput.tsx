@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { IconCamera, IconRefresh, IconUpload } from "@tabler/icons-react";
+import Button, { type ButtonProps } from "@/components/Button";
 import ModalShell from "@/components/ModalShell";
 import { useHydrated } from "@/components/useHydrated";
 import { useCompactViewport } from "@/components/useCompactViewport";
@@ -70,14 +71,9 @@ export interface MediaInputProps {
   // command palette's create action).
   autoOpen?: boolean;
   disabled?: boolean;
-  className?: string;
   // Trigger test id, so a consumer's own spec can name ITS button rather than
   // the generic one (several add-media surfaces can share a page).
   triggerTestId?: string;
-  // Trigger body, for a consumer whose door is a full-width dashed zone rather
-  // than a button (the documents form's). It replaces the icon+label INSIDE the
-  // one trigger element; it is not a second trigger.
-  triggerContent?: ReactNode;
   // Test id for the one real input, so a spec can setInputFiles on it.
   inputTestId?: string;
   // DOM id for the one real input. A consumer with a `<label htmlFor>` shortcut
@@ -101,6 +97,30 @@ export interface MediaInputProps {
   // Name given to a camera capture handed back through onConfirm.
   fileName?: string;
 }
+
+// THE TRIGGER IS TYPED, NOT A CLASS STRING (#4978). It is either the Button
+// primitive at the rank the caller states (secondary by default, `primary` where
+// adding media is the surface's action), or — for a consumer whose door is a
+// full-width dashed zone (the documents form's) — that zone, carrying the body
+// the caller hands in. The zone is the same shape the dialog's own chooser draws,
+// so there is one dashed door, not one per consumer.
+type MediaInputTriggerProps =
+  | {
+      variant?: Extract<ButtonProps["variant"], "primary">;
+      triggerContent?: never;
+    }
+  | {
+      variant?: never;
+      // Replaces the icon+label INSIDE the one trigger element; it is not a
+      // second trigger.
+      triggerContent: ReactNode;
+    };
+
+type MediaInputMountProps = MediaInputProps & MediaInputTriggerProps;
+
+// The dashed drop zone: the dialog's chooser, and the documents form's door.
+const DROPZONE_CLASS =
+  "flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-black/10 disabled:hover:bg-slate-50 data-drag-active:border-brand-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950";
 
 type Picked = { file: File; url: string | null };
 
@@ -126,7 +146,7 @@ export default function MediaInput({
   onConfirm,
   autoOpen = false,
   disabled = false,
-  className,
+  variant,
   triggerTestId = "media-input-open",
   triggerContent,
   inputTestId = "media-input-file",
@@ -137,7 +157,7 @@ export default function MediaInput({
   maxEdge = PHOTO_MAX_EDGE,
   quality = PHOTO_CLIENT_QUALITY,
   fileName = "photo.jpg",
-}: MediaInputProps) {
+}: MediaInputMountProps) {
   // THE CAMERA OPTION IS DERIVED FROM WHAT THE CONSUMER ACCEPTS, not from a
   // flag. The viewfinder captures a canvas frame, which is a JPEG — so it is a
   // way in only where images are wanted. A clip consumer gets choose/drop/paste
@@ -480,32 +500,46 @@ export default function MediaInput({
           aims at the affordance they can see, not at a dialog that is not open
           yet — so a drop here opens straight into confirm with the files
           staged. It is the same handler the dialog's own zone uses, so there is
-          one drop implementation and it works before and after the open. */}
-      <button
-        type="button"
-        className={className ?? "btn"}
-        onClick={() => void open()}
+          one drop implementation and it works before and after the open. The
+          handlers sit on a box-less span because the Button primitive takes no
+          drag props; a drop on the trigger bubbles to it. */}
+      <span
+        className="contents"
         onDragOver={(e) => {
           e.preventDefault();
           if (!disabled) setDragActive(true);
         }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
-        disabled={disabled}
-        data-drag-active={dragActive ? "" : undefined}
-        data-testid={triggerTestId}
       >
-        {triggerContent ?? (
-          <>
+        {triggerContent !== undefined ? (
+          <button
+            type="button"
+            className={DROPZONE_CLASS}
+            onClick={() => void open()}
+            disabled={disabled}
+            data-drag-active={dragActive ? "" : undefined}
+            data-testid={triggerTestId}
+          >
+            {triggerContent}
+          </button>
+        ) : (
+          <Button
+            variant={variant}
+            onClick={() => void open()}
+            disabled={disabled}
+            data={{ "data-drag-active": dragActive ? "" : undefined }}
+            data-testid={triggerTestId}
+          >
             {cameraApplies ? (
               <IconCamera size={18} aria-hidden />
             ) : (
               <IconUpload size={18} aria-hidden />
             )}
             {triggerLabel}
-          </>
+          </Button>
         )}
-      </button>
+      </span>
 
       {/* The ONE real picker, offscreen and always mounted. Every path — picked,
           dropped, pasted, photographed — lands in the same confirm step, and a
@@ -554,7 +588,7 @@ export default function MediaInput({
                 >
                   <button
                     type="button"
-                    className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
+                    className={DROPZONE_CLASS}
                     onClick={() => fileInputRef.current?.click()}
                     data-testid="media-input-choose"
                   >
@@ -573,24 +607,20 @@ export default function MediaInput({
 
                 <div className="flex flex-wrap items-center gap-2">
                   {cameraApplies ? (
-                    <button
-                      type="button"
-                      className="btn-ghost"
+                    <Button
                       onClick={() => void attemptCamera(cameraError !== null)}
                       data-testid="media-input-camera"
                     >
                       <IconCamera size={16} aria-hidden /> Use camera
-                    </button>
+                    </Button>
                   ) : null}
                   {reloadOffered ? (
-                    <button
-                      type="button"
-                      className="btn-ghost"
+                    <Button
                       onClick={() => window.location.reload()}
                       data-testid="media-input-camera-reload"
                     >
                       <IconRefresh size={16} aria-hidden /> Reload and retry
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
 
@@ -720,9 +750,8 @@ export default function MediaInput({
                 </ul>
                 {confirmFields}
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button
+                    variant="primary"
                     onClick={confirm}
                     disabled={pending}
                     data-testid="media-input-submit"
@@ -732,10 +761,8 @@ export default function MediaInput({
                       : stage.picked.length > 1
                         ? `Add ${stage.picked.length} files`
                         : "Add file"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
+                  </Button>
+                  <Button
                     disabled={pending}
                     onClick={() => {
                       revoke(stage.picked);
@@ -745,7 +772,7 @@ export default function MediaInput({
                     data-testid="media-input-retake"
                   >
                     Start over
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : null}
