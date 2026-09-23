@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // Training HR-zone settings (issue #159) — PROFILE-scoped, following the active
 // profile. A manual max-HR override for people who've tested theirs (it beats the
@@ -53,9 +54,7 @@ export default function TrainingZonesForm({
       data-testid="training-zones-form"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Training heart-rate zones
-        </h2>
+        <SectionHeading level={2}>Training heart-rate zones</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

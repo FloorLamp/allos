@@ -58,6 +58,7 @@ sky. Do not repeat a card's tone as an uppercase text verdict.
 | Stat                                   | `StatBox` / `stat-tile`, using `--ghost` and the surface radius                                                                      |
 | Empty subsection                       | `EmptyState compact`; no large reserved billboard                                                                                    |
 | Card-edge footnote                     | `card-footnote`                                                                                                                      |
+| Section or card heading                | `SectionHeading`: `level` 2 or 3, optional `size` and `trailing`; margin is the parent's. `SectionCreateHeader` composes it          |
 | Intro disclosure                       | `LeadFold`; [copy](copy.md#lead-and-detail) owns content                                                                             |
 | Short explanation or hidden full value | `InfoTooltipIcon`, with touch, keyboard, and pointer access                                                                          |
 | Linked row with disclosure controls    | `OverlayDestination`; controls are DOM siblings, never buttons inside a link                                                         |

@@ -11,6 +11,7 @@ import {
 import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // GLOBAL, admin-only: automated nightly SQLite snapshots + retention (#131). The
 // hour is in the instance timezone (backups are instance-wide, not per-profile).
@@ -117,9 +118,7 @@ export default function BackupSettings({
   return (
     <div className="card space-y-5" data-testid="backup-settings">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Automated backups
-        </h2>
+        <SectionHeading level={2}>Automated backups</SectionHeading>
         <SaveStatus {...status} />
       </div>
 
