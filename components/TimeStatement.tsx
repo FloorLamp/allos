@@ -83,6 +83,11 @@ export interface TimeStatement {
   reveal: ReactNode;
   open: boolean;
   setOpen: (open: boolean) => void;
+  /**
+   * Rule 6 on a tap (#5813): a host chip that offers a minute fills the field with
+   * it — opened, editable, never posted until the host's own action posts it.
+   */
+  fill: (hhmm: string) => void;
 }
 
 // The pair a mount opens on: the surface's day, and the minute its host is proposing
@@ -245,6 +250,11 @@ export function useTimeStatement({
       ),
     open: effectiveOpen,
     setOpen: (next) => setOpen(required ? true : next),
+    fill: (hhmm) => {
+      setWhen(seedWhen(day, hhmm, tz));
+      setUnknown(false);
+      setOpen(true);
+    },
     reveal,
     // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
     // already the shared language of these rows — practices and protocols import it

@@ -46,6 +46,10 @@ import {
   type PendingDayDose,
 } from "@/lib/queries/usual-routine";
 import { upcomingDueText } from "@/lib/upcoming";
+import {
+  getDoseSlotClocks,
+  type DoseSlotClock,
+} from "@/lib/queries/intake/dose-slot-clock";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot, FoodSlotBoundaries } from "@/lib/food-slot";
@@ -132,6 +136,9 @@ export interface QuickEntryPastDay {
   date: string;
   slots: {
     bucket: TimeBucket;
+    // The slot's usual clock (#5813), the past-day Time row's "Usually" chip. Absent
+    // when the slot has none (Anytime with too little history).
+    usual?: DoseSlotClock;
     doses: QuickEntryPastDose[];
   }[];
 }
@@ -751,9 +758,10 @@ async function gatherQuickEntry(
   const pastPending = doseLogDays(date)
     .slice(1)
     .map((day) => ({ date: day, pending: pendingDayDoses(profile.id, day) }));
+  const slotClocks = getDoseSlotClocks(profile.id, date, tz);
   const pastDays = pastPending.map(({ date: day, pending }) => ({
     date: day,
-    slots: groupDosesByBucket(pending),
+    slots: groupDosesByBucket(pending, slotClocks),
   }));
   return {
     form: "dose",
@@ -885,10 +893,12 @@ function clockOfInstant(
 // A day's unresolved doses in declared-bucket order, empty buckets dropped. The order
 // is TIME_BUCKETS' own, so a day reads down the clock the way the schedule does.
 function groupDosesByBucket(
-  pending: readonly PendingDayDose[]
+  pending: readonly PendingDayDose[],
+  clocks: Partial<Record<TimeBucket, DoseSlotClock>>
 ): QuickEntryPastDay["slots"] {
   return TIME_BUCKETS.map((bucket) => ({
     bucket,
+    usual: clocks[bucket],
     doses: pending
       .filter((dose) => dose.bucket === bucket)
       .map((dose) => ({

@@ -1288,6 +1288,15 @@ export async function resolveDayDoses(
   // to infer it from the minute they happened to land in. Only the taken arm carries
   // one — a skip is its own statement and never joins a collapsed row.
   const bundleId = newBundle();
+  // THE SLOT'S STATED TIME (#5813), the same wall-time `at` `setDoseStatus` reads and
+  // resolved the same way: one instant for the whole act. Unstated keeps a past day's
+  // rows untimed (#5595) and today's at the tap.
+  const takenAt =
+    statedInstantOnDate(
+      date,
+      String(formData.get("at") ?? ""),
+      getTimezone(profileId)
+    ) ?? (date === localToday ? undefined : null);
   const doses = pendingDayDoses(profileId, date)
     .filter((dose) => named.has(dose.doseId))
     .map((dose) => ({
@@ -1301,11 +1310,7 @@ export async function resolveDayDoses(
               dose.itemId,
               date,
               loggedVia,
-              {
-                takenAt: date === localToday ? undefined : null,
-                notifyMessageId: null,
-                bundleId,
-              }
+              { takenAt, notifyMessageId: null, bundleId }
             )
           : markDoseSkipped(
               profileId,
