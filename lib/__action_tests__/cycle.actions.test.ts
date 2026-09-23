@@ -14,6 +14,7 @@ import {
   deleteCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
 import { db, today } from "@/lib/db";
+import { REOPEN_PERIOD_MAX_AGE_DAYS } from "@/lib/cycle-plausibility";
 import { shiftDateStr } from "@/lib/date";
 import {
   listCyclePeriods,
@@ -144,6 +145,27 @@ describe("cycle actions", () => {
     );
     expect(await undo()).toEqual({ ok: false, reason: "changed" });
     expect(getCycleRow(profileId, ended.id)?.period_end).toBe(corrected);
+  });
+
+  it("the end's Undo keeps the reopen window: a replay days later is refused", async () => {
+    await startPeriodAction(fd({}));
+    const ended = await endPeriodAction(fd({}));
+    if (!ended.ok) throw new Error(ended.error);
+    // The same row and the same end, just older than "Still bleeding" would reopen:
+    // what a hand-built Undo request posted days later looks like.
+    const old = shiftDateStr(
+      today(profileId),
+      -(REOPEN_PERIOD_MAX_AGE_DAYS + 1)
+    );
+    db.prepare(
+      `UPDATE cycles SET period_start = ?, period_end = ? WHERE id = ?`
+    ).run(shiftDateStr(old, -3), old, ended.id);
+
+    expect(await undoEndPeriodAction(fd({ id: ended.id, end: old }))).toEqual({
+      ok: false,
+      reason: "expired",
+    });
+    expect(getCycleRow(profileId, ended.id)?.period_end).toBe(old);
   });
 
   it("the end's Undo never reaches another profile's row", async () => {

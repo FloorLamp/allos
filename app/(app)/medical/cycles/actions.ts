@@ -125,11 +125,16 @@ export async function undoEndPeriodAction(
   const end = String(formData.get("end") ?? "");
   if (id == null || !isRealIsoDate(end))
     return { ok: false, reason: "changed" };
-  const outcome = undoEndPeriodCore(writeProfileId, id, end);
+  const outcome = undoEndPeriodCore(
+    writeProfileId,
+    id,
+    end,
+    today(writeProfileId)
+  );
   revalidateCycle();
   return outcome.kind === "reopened"
     ? { ok: true }
-    : { ok: false, reason: "changed" };
+    : { ok: false, reason: outcome.kind };
 }
 
 // One-tap "Still bleeding" (today, active profile) — reopens the most recently ended

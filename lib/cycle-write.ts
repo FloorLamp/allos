@@ -100,23 +100,31 @@ export function endPeriodCore(
   });
 }
 
-export type UndoEndPeriodOutcome = { kind: "reopened" } | { kind: "changed" };
+export type UndoEndPeriodOutcome =
+  | { kind: "reopened" }
+  | { kind: "changed" }
+  // Past the reopen window: the same rule as "Still bleeding", so a replayed Undo
+  // cannot reopen a period days later.
+  | { kind: "expired" };
 
 // The Undo on the "Period ended" toast (#5663 ruling 1). An end writes only
 // `period_end` on the open row, so clearing it is the complete inverse, but only while
 // the world is as that tap left it: the row is still this profile's last end, on the
 // same day, and nothing has opened since. Anything else is `changed`, and nothing is
-// written (lib/undo-offer.ts: an inverse re-derives, it never trusts the client).
+// written (lib/undo-offer.ts: an inverse re-derives, it never trusts the client). And
+// only within the reopen window `reopenPeriodCore` keeps, as of `date`.
 export function undoEndPeriodCore(
   profileId: WriteAuthorizedProfileId,
   id: number,
-  end: string
+  end: string,
+  date: string
 ): UndoEndPeriodOutcome {
   return writeTx(() => {
     const periods = listCyclePeriods(profileId);
     const last = lastEndedPeriodIn(periods);
     if (openPeriodIn(periods) || last?.id !== id || last.period_end !== end)
       return { kind: "changed" };
+    if (!canReopenLastPeriodOn(periods, date)) return { kind: "expired" };
     updateCycleRow(
       profileId,
       last.id,
