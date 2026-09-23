@@ -56,7 +56,7 @@ second axis only for genuinely different units and explains that mode. Do not
 expand dual-axis use or use radar charts for muscle coverage.
 
 A new page composes a card or specification. A genuinely new form needs its own
-justification and an update to the form inventory in `chart-scaffold-scan.test.ts`.
+justification.
 Slope/dumbbell, bullet-tile, and dot-strip forms remain unbuilt.
 
 ## Specifications and rendering

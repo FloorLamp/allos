@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./strip-comments";
 
-// Static hygiene guard for the e2e suite (issue #868, fix a) — the #448 /
-// telegram-chokepoint source-scan pattern applied to Playwright specs. It reads
+// Static hygiene guard for the e2e suite (issue #868, fix a) — the #448
+// source-scan pattern applied to Playwright specs. It reads
 // every e2e/*.ts source (specs AND the shared driver/helper modules, e.g.
 // symptom-helpers.ts — issue #868 phase 2 widened the scan past *.spec.ts so a
 // settle anti-pattern can't hide in a helper the specs import) as TEXT (no

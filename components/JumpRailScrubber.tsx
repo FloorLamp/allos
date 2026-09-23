@@ -73,8 +73,7 @@ import {
 //
 //    THE YEAR DIGITS LIVE INSIDE THAT SAME 44px. The hit area did not grow an inch to
 //    fit them, which is what forces the two other decisions here: 10px type (the
-//    density call `components/DayHistory.tsx` already makes for its tick labels, and
-//    allowlisted in lib/__tests__/micro-text-size.test.ts on the same grounds), and a
+//    density call `components/DayHistory.tsx` already makes for its tick labels), and a
 //    label column strictly INBOARD of the dot column, so a label and a dot cannot
 //    share pixels whatever their y. Label-against-label is the collision geometry
 //    cannot solve, and `scrubberYearLabels` solves it by dropping digits — never a

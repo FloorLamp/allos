@@ -866,7 +866,17 @@ describe("intradayFreshness (#4767)", () => {
     ["a whole hour drops the minutes half", 480, "Synced 1h ago"],
     ["past the hour keeps both", 505, "Synced 1h 25m ago"],
   ] as const)("%s", (_name, nowMinute, expected) => {
-    expect(intradayFreshness(model(nowMinute))).toBe(expected);
+    const m = model(nowMinute);
+    expect(intradayFreshness(m, m.nowMinute)).toBe(expected);
+  });
+
+  // #5146: the model's stamp is only the first paint. The client advances `nowMinute`
+  // between syncs and the same model reads the same table further along.
+  it("counts up from the caller's clock, not the model's stamp", () => {
+    const m = model(442);
+    expect(intradayFreshness(m, 442)).toBe("Synced 22 min ago");
+    expect(intradayFreshness(m, 480)).toBe("Synced 1h ago");
+    expect(intradayFreshness(m, 505)).toBe("Synced 1h 25m ago");
   });
 
   // WHICH ROW MAY MOVE THE SENTENCE (#4863 owner ruling, 2026-09-04). Both cases put
@@ -899,7 +909,7 @@ describe("intradayFreshness (#4767)", () => {
         }),
       ],
     });
-    expect(intradayFreshness(withBlock)).toBe(expected);
+    expect(intradayFreshness(withBlock, 720)).toBe(expected);
   });
 
   it("says so when today has no worn minutes at all", () => {
@@ -909,7 +919,7 @@ describe("intradayFreshness (#4767)", () => {
     const noHr = buildIntradayModel(
       input({ nowMinute: 720, events: [activityEvent("activity:9")] })
     )!;
-    expect(intradayFreshness(noHr)).toBe("No heart rate synced today yet");
+    expect(intradayFreshness(noHr, 720)).toBe("No heart rate synced today yet");
   });
 
   it("is silent on a block that closed BEFORE the last sample", () => {
@@ -928,7 +938,7 @@ describe("intradayFreshness (#4767)", () => {
         }),
       ],
     });
-    expect(intradayFreshness(covered)).toBe("Synced just now");
+    expect(intradayFreshness(covered, 420)).toBe("Synced just now");
   });
 });
 

@@ -14,8 +14,8 @@ import { fileURLToPath } from "node:url";
 // been made above the chart instead of inside it.
 //
 // So this file guards WHERE the decisions live, which is the property no runtime
-// assertion on one page can see. It is a source scan for the same reason
-// `chart-scaffold-scan` is: the claim is about every speaker at once.
+// assertion on one page can see. It is a source scan because the claim is
+// about every speaker at once.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // The funnel is the CARD since #4925, not an Inner: the recharts tree moved to

@@ -4,8 +4,8 @@
 // Rendering them bare flattened CCD/extraction notes — encounters especially — to
 // one run-on line, and let a URL overflow a min-w-0 flex/table cell. Every notes
 // surface renders through here so the `whitespace-pre-wrap wrap-break-word` treatment
-// can't be forgotten; a source-scan guard (lib/__tests__/notes-text.test.ts) fails
-// the build if a note is rendered as a bare JSX child instead of through this.
+// can't be forgotten; `BARE_NOTES_BAN` in eslint.config.mjs fails
+// lint if a note is rendered as a bare JSX child instead of through this.
 //
 // The note is passed as the `notes` PROP (not children) precisely so the guard has
 // a reliable signature to ban — a raw `{x.notes}` JSX child. Renders nothing when
