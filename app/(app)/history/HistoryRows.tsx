@@ -889,11 +889,11 @@ export default function HistoryRows({
 
   const renderRow = (row: HistoryRow) => {
     const Glyph = KIND_GLYPH[row.kind];
-    const pickable = pick(row);
-    const subject = subjectNames[row.profileId];
     const gap = writable.has(row.profileId)
       ? foodGaps?.find((candidate) => candidate.id === row.id)
       : undefined;
+    const pickable = pick(row);
+    const subject = subjectNames[row.profileId];
     return (
       <Fragment key={row.id}>
         <li
