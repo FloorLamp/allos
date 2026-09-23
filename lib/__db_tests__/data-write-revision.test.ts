@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db, rawDb, writeTx } from "@/lib/db";
-import { readDataWriteRevision } from "@/lib/write-revision";
+import { bootTasks } from "@/lib/migrations/boot-tasks";
+import { readDataWriteRevision, trackedDatabase } from "@/lib/write-revision";
 
 function revision(): number {
   return readDataWriteRevision(db);
@@ -219,5 +220,39 @@ describe("transaction-owned data write revision", () => {
     expect("database" in statement).toBe(false);
     expect("transaction" in db).toBe(false);
     expect("exec" in db).toBe(false);
+  });
+});
+
+// Every module graph that opens the database re-runs the boot tasks. In production a
+// route handler's first request did exactly that, and the catalog re-seed rewrote
+// every unchanged row: the revision advanced, and each open page repainted itself for
+// data nobody had changed.
+describe("a repeat boot over unchanged data", () => {
+  it("does not advance the revision, but a real catalog change does", () => {
+    const boot = () => bootTasks(trackedDatabase(rawDb));
+    boot();
+    const before = revision();
+    boot();
+    expect(revision()).toBe(before);
+
+    const row = rawDb
+      .prepare(
+        "SELECT name, ref_high FROM canonical_result_definitions LIMIT 1"
+      )
+      .get() as { name: string; ref_high: number | null };
+    rawDb
+      .prepare(
+        "UPDATE canonical_result_definitions SET ref_high = -1 WHERE name = ?"
+      )
+      .run(row.name);
+    boot();
+    expect(revision()).toBe(before + 1);
+    expect(
+      rawDb
+        .prepare(
+          "SELECT ref_high FROM canonical_result_definitions WHERE name = ?"
+        )
+        .get(row.name)
+    ).toEqual({ ref_high: row.ref_high });
   });
 });
