@@ -29,6 +29,10 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto("/nutrition?tab=food");
     await openFoodAdd(page);
+    // The open door is the layer's close, not "✕ Add" (#5098).
+    await expect(page.getByTestId("food-add-door")).toHaveAccessibleName(
+      "Close"
+    );
     await expect(page.getByTestId("nutrition-page-title")).toBeHidden();
     const shell = page.getByTestId("shell-chrome");
     const shellTabs = shell.getByTestId("shell-tab-strip");
@@ -40,9 +44,10 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await expect(initialSnapshot).toBeVisible();
     await expect(initialSnapshot).not.toContainText("At a glance");
     await expect(initialSnapshot).not.toContainText("Details below");
+    // Today's protein verdict judges the week, so it says so (#5099).
     await expect(
       initialSnapshot.getByTestId("nutrition-snapshot-protein-status")
-    ).toHaveText("Below");
+    ).toHaveText("This week below");
     await expect(
       initialSnapshot.getByTestId("nutrition-snapshot-fiber-status")
     ).toHaveText("Below");
