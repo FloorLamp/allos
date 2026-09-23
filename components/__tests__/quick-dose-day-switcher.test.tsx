@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   enqueue: vi.fn(),
   setDoseStatus: vi.fn(),
+  resolveDayDoses: vi.fn(),
   logHistoricalDose: vi.fn(async () => ({ ok: true as const })),
 }));
 
@@ -53,7 +54,7 @@ vi.mock("@/components/useOptimisticLedger", () => ({
   }),
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
-  resolveDayDoses: vi.fn(),
+  resolveDayDoses: mocks.resolveDayDoses,
   setDoseStatus: mocks.setDoseStatus,
   // The fold's Take (#5808) posts the DATED core, never the occurrence one. Its
   // payload is asserted in dose-two-pieces.test.tsx; here it only has to exist.
@@ -85,9 +86,14 @@ const PAST_DAYS = [
     slots: [
       {
         bucket: "Morning" as const,
+        usual: { minute: 7 * 60 + 5, source: "recorded" as const },
         doses: [dose(DAILY_DOSE, "Creatine", true), dose(12, "Collagen")],
       },
-      { bucket: "Before sleep" as const, doses: [dose(13, "Melatonin")] },
+      {
+        bucket: "Before sleep" as const,
+        usual: { minute: 21 * 60, source: "declared" as const },
+        doses: [dose(13, "Melatonin")],
+      },
     ],
   },
   // Already settled — still LISTED. A day that vanished would read as "there is
@@ -301,6 +307,8 @@ describe("a past-day check-off asks for the minute (#4686)", () => {
     expect(
       within(todayRow).queryByTestId(/dated-dose-when-.*-time/)
     ).toBeNull();
+    // Nor is there a slot Time row (#5813): today's rows keep their tap instant.
+    expect(screen.queryByTestId(/quick-entry-dose-slot-/)).toBeNull();
   });
 
   it("a day that has ended opens the field with no way to close it", () => {
@@ -341,6 +349,113 @@ describe("a past-day check-off asks for the minute (#4686)", () => {
     // administration instant" for a day that is not today.
     expect(posted.get("at")).toBeNull();
     expect(posted.get("date")).toBe("2026-08-27");
+  });
+});
+
+// #5813 owner rulings 2026-09-10: on a past day the slot is the unit of time — one
+// Time field, a "Usually" chip that fills it, "Don't know", and Take all.
+describe("a past-day slot states one time (#5813)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+    mocks.resolveDayDoses.mockResolvedValue({
+      ok: true,
+      date: "2026-08-27",
+      doses: [
+        { doseId: DAILY_DOSE, name: "Creatine", outcome: "logged" },
+        { doseId: 12, name: "Collagen", outcome: "logged" },
+      ],
+    });
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+  });
+
+  function yesterday() {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    return screen.getByTestId("quick-entry-dose-slot-Morning");
+  }
+
+  function takeAllPost(): FormData {
+    return mocks.resolveDayDoses.mock.calls[0]![0] as FormData;
+  }
+
+  it("fills the slot's Time from its usual clock and Take all posts it once", async () => {
+    const slot = yesterday();
+    expect(slot.textContent).toContain("Morning · 2");
+    const usual = within(slot).getByTestId(
+      "quick-entry-dose-slot-Morning-usual"
+    );
+    expect(usual.textContent).toBe("Usually 7:05am");
+    const time = within(slot).getByTestId(
+      "quick-entry-dose-slot-Morning-when-time"
+    ) as HTMLInputElement;
+    expect(time.value).toBe("");
+    fireEvent.click(usual);
+    expect(time.value).toBe("07:05");
+    // The chip fills; it never writes.
+    expect(mocks.resolveDayDoses).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        within(slot).getByTestId("quick-entry-dose-slot-Morning-takeall")
+      );
+    });
+    const posted = takeAllPost();
+    expect({
+      at: posted.get("at"),
+      date: posted.get("date"),
+      ids: posted.get("dose_ids"),
+    }).toEqual({ at: "07:05", date: "2026-08-27", ids: `${DAILY_DOSE},12` });
+    expect(mocks.toast).toHaveBeenCalledWith("2 doses logged.");
+  });
+
+  it("offers the slot's own opening clock when the profile has no usual", () => {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const usual = screen.getByTestId(
+      "quick-entry-dose-slot-Before-sleep-usual"
+    );
+    expect(usual.textContent).toBe("Bedtime 9:00pm");
+    fireEvent.click(usual);
+    expect(
+      (
+        screen.getByTestId(
+          "quick-entry-dose-slot-Before-sleep-when-time"
+        ) as HTMLInputElement
+      ).value
+    ).toBe("21:00");
+  });
+
+  it("Don't know then Take all posts no time", async () => {
+    const slot = yesterday();
+    fireEvent.click(
+      within(slot).getByTestId("quick-entry-dose-slot-Morning-usual")
+    );
+    fireEvent.click(
+      within(slot).getByTestId("quick-entry-dose-slot-Morning-when-unknown")
+    );
+    await act(async () => {
+      fireEvent.click(
+        within(slot).getByTestId("quick-entry-dose-slot-Morning-takeall")
+      );
+    });
+    expect(takeAllPost().get("at")).toBeNull();
+  });
+
+  it("a row's Take uses the slot's stated time, and the row stops asking", async () => {
+    const slot = yesterday();
+    fireEvent.change(
+      within(slot).getByTestId("quick-entry-dose-slot-Morning-when-time"),
+      { target: { value: "08:40" } }
+    );
+    const row = screen.getByTestId("quick-entry-dose-12");
+    expect(within(row).queryByTestId("dated-dose-when-12-time")).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(row).getByTestId("dose-take"));
+    });
+    expect((mocks.setDoseStatus.mock.calls[0]![0] as FormData).get("at")).toBe(
+      "08:40"
+    );
   });
 });
 
@@ -404,14 +519,13 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
         .find((row) => within(row).queryByText(name))!;
     expect(
       within(day)
-        .getAllByRole("listitem")
-        .map((row) => within(row).getByTestId("dose-take").textContent)
+        .getAllByTestId("dose-take")
+        .map((take) => take.textContent)
     ).toEqual(["MorningTake", "MorningTake", "BedtimeTake"]);
-    // ONE LIST, and it is the one today's rows sit in. The per-bucket sectioning that
-    // used to say the slot has nothing left to say: the chip says it.
+    // ONE LIST, and it is the one today's rows sit in. The slot heads its rows inside
+    // it (#5813) rather than sectioning the day into lists.
     expect(within(day).getAllByRole("list")).toHaveLength(1);
     expect(within(day).getByTestId("quick-entry-dose-list")).toBeTruthy();
-    expect(screen.queryByTestId("quick-entry-dose-slot-Morning")).toBeNull();
 
     // Tri-state: every row offers take AND skip, because on a closed day "I skipped
     // it" is as ordinary an answer as "I took it".
