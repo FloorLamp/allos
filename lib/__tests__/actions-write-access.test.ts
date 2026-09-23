@@ -294,29 +294,6 @@ const ALLOW: AllowEntry[] = [
     fn: "revertTravelTimezone",
     why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
   },
-  // --- Cross-profile / session-pointer actions (gate the TARGET, not the active
-  // profile, so requireWriteAccess() would check the wrong profile) ---
-  {
-    file: "app/(app)/household/actions.ts",
-    fn: "openProfileAction",
-    why: "moves the session's active-profile pointer (setActiveProfile re-checks accessibility); not a write to profile-owned data, and read-only members must still be able to switch profiles",
-  },
-  {
-    file: "app/(app)/household/actions.ts",
-    fn: "openMemberDayAction",
-    why: "navigation only (#1463): moves the session's active-profile pointer to the card's member and redirects to THAT member's own day, resolved server-side from their timezone and never posted; gated read-level on getAccessibleProfiles() before any of that member's facts are read, because a read-only caregiver must still be able to follow their digest's overflow line",
-    gate: "getAccessibleProfiles",
-  },
-  {
-    file: "app/(app)/household/actions.ts",
-    fn: "openMemberSetupAction",
-    why: "navigation only (#2173): moves the session's active-profile pointer to the card's member and redirects to a route RE-DERIVED server-side from the check id, never posted; gated read-level on getAccessibleProfiles() before any of that member's facts are read, because a read-only caregiver must still be able to follow a setup CTA",
-  },
-  {
-    file: "app/(app)/household/actions.ts",
-    fn: "dismissMemberSetupAction",
-    why: "silences a finding about a NON-active target profile (#2173); gates via requireProfileWriteAccess(targetId) — the active-profile requireWriteAccess() would authorize the wrong profile — and additionally refuses any row the pure model marks non-dismissible, so an unroutable member can never be silenced",
-  },
   // --- Shared supply pools (issue #1374) — a `shared_supplies` row is household-
   // shared and has NO owning profile, so the active-profile requireWriteAccess()
   // would authorize the wrong subject. Pool EDITS gate on the pool's MEMBERSHIP

@@ -88,8 +88,8 @@ See [notification suppression](notifications.md#suppression-and-safety).
   user-authored entry: the person names a food trigger and its effect, and the
   factor is a meal they logged or marked
   ([food sensitivities](food-sensitivities.md)).
-- Household setup health derives structural checks at read time. It does not
-  create stored finding state or a new notification engine.
+- The unroutable-reminders check derives at read time. It does not create
+  stored finding state or a new notification engine.
 - Intake suggestions are proposals, not findings. Reconsider that distinction
   only when their actual lifecycle or reach requires the finding substrate.
 

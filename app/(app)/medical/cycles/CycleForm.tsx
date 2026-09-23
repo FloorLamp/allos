@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import { FLOW_LEVELS, FLOW_LABELS, type CyclePeriod } from "@/lib/cycle";
 import type { CycleCreateResult } from "./actions";
@@ -126,11 +127,7 @@ export default function CycleForm({
             {editing ? "Save" : "Add period"}
           </SubmitButton>
         </div>
-        {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {editing && onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
     </form>
   );

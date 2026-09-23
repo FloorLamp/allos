@@ -182,7 +182,7 @@ export function deleteActivityVideoCore(
     db.prepare(
       `DELETE FROM activity_videos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    unlinkVideoFiles("activity", [row.stored_path, row.poster_path]);
+    unlinkVideoFiles("activity", profileId, [row.stored_path, row.poster_path]);
     return true;
   });
 }

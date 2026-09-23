@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { saveRiskFactors } from "./actions";
+import Button from "@/components/Button";
 import CardFootnote from "@/components/CardFootnote";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -153,15 +154,13 @@ export default function RiskFactorsForm({
             Reviewed &mdash; update any time.
           </p>
         ) : (
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
+          <Button
             data-testid="risk-none-apply"
             disabled={status.pending}
             onClick={() => save(attrs)}
           >
             None of these apply
-          </button>
+          </Button>
         )}
       </div>
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 import Chip from "@/components/Chip";
+import Button from "@/components/Button";
 import CreateAction, { useCreateActionLabel } from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
@@ -33,9 +34,7 @@ function IllnessAddMedicationControl({
 }) {
   const label = useCreateActionLabel();
   return (
-    <button
-      type="button"
-      className="btn-ghost btn-sm"
+    <Button
       data-testid="illness-add-medication"
       aria-expanded={open}
       aria-controls="illness-medication-quick-add"
@@ -45,7 +44,7 @@ function IllnessAddMedicationControl({
         className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
       />
       {label}
-    </button>
+    </Button>
   );
 }
 

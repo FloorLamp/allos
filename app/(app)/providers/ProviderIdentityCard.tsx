@@ -270,18 +270,14 @@ export default function ProviderIdentityCard({
         </dl>
         {canEdit ? (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              className="btn-ghost inline-flex items-center gap-1.5 text-sm"
+            <Button
               onClick={() => setEditing(true)}
               data-testid="provider-edit-button"
             >
               <IconPencil className="h-4 w-4" stroke={1.75} />
               Edit
-            </button>
-            <button
-              type="button"
-              className="btn-ghost inline-flex items-center gap-1.5 text-sm"
+            </Button>
+            <Button
               onClick={toggleArchive}
               data-testid="provider-archive-button"
             >
@@ -296,7 +292,7 @@ export default function ProviderIdentityCard({
                   Archive
                 </>
               )}
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>

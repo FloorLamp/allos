@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { IconLink, IconX, IconPlus } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
+import IconButton from "@/components/IconButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
@@ -109,10 +111,8 @@ export default function ProviderAffiliations({
                 ) : null}
               </Link>
               {canEdit ? (
-                <button
-                  type="button"
-                  className="btn-ghost shrink-0 p-1"
-                  aria-label={`Remove affiliation with ${a.name}`}
+                <IconButton
+                  label={`Remove affiliation with ${a.name}`}
                   data-testid="affiliation-unlink"
                   onClick={() => {
                     const fd = new FormData();
@@ -122,7 +122,7 @@ export default function ProviderAffiliations({
                   }}
                 >
                   <IconX className="h-4 w-4" stroke={1.75} />
-                </button>
+                </IconButton>
               ) : null}
             </li>
           ))}
@@ -153,9 +153,7 @@ export default function ProviderAffiliations({
                     </span>
                   </span>
                   <span className="flex shrink-0 gap-1.5">
-                    <button
-                      type="button"
-                      className="btn btn-sm"
+                    <Button
                       data-testid="affiliation-accept"
                       onClick={() => {
                         const fd = new FormData();
@@ -165,10 +163,8 @@ export default function ProviderAffiliations({
                       }}
                     >
                       Link
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost text-xs text-slate-500"
+                    </Button>
+                    <Button
                       data-testid="affiliation-decline"
                       onClick={() => {
                         const fd = new FormData();
@@ -182,7 +178,7 @@ export default function ProviderAffiliations({
                       }}
                     >
                       Dismiss
-                    </button>
+                    </Button>
                   </span>
                 </li>
               );
@@ -193,9 +189,8 @@ export default function ProviderAffiliations({
 
       {canEdit ? (
         <div className="mt-3">
-          <button
-            type="button"
-            className="btn"
+          <Button
+            variant="primary"
             data-testid="affiliation-add-toggle"
             onClick={() => {
               setError(null);
@@ -205,7 +200,7 @@ export default function ProviderAffiliations({
           >
             <IconPlus className="h-4 w-4" stroke={1.75} />
             Link affiliation
-          </button>
+          </Button>
           {adding ? (
             <ModalShell
               title="Link affiliation"

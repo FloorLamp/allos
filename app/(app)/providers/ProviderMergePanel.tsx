@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IconChevronDown, IconGitMerge } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { mergeProviderAction } from "./actions";
@@ -107,15 +108,14 @@ export default function ProviderMergePanel({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="btn-danger"
+          <Button
+            variant="danger"
             disabled={!chosen || busy}
             onClick={handleMerge}
             data-testid="provider-merge-button"
           >
             {busy ? "Merging…" : "Merge"}
-          </button>
+          </Button>
         </div>
         {error ? (
           <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">

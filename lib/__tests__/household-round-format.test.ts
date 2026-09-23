@@ -22,9 +22,6 @@ import {
   parseHouseholdDoseCallback,
 } from "@/lib/notifications/callback-data";
 
-const BASE = "https://allos.example";
-const HOUSEHOLD = "/household";
-
 function section(
   over: Partial<HouseholdRoundSection> = {}
 ): HouseholdRoundSection {
@@ -43,8 +40,6 @@ const render = (sections: HouseholdRoundSection[]) =>
   renderHouseholdRoundMessage({
     receiverProfileId: 1,
     sections,
-    base: BASE,
-    householdHref: HOUSEHOLD,
   });
 
 describe("renderHouseholdRoundMessage", () => {
@@ -230,7 +225,7 @@ describe("renderHouseholdRoundMessage", () => {
     expect(msg.actions![1].data).toContain(":2026-07-26");
   });
 
-  it("collapses past the cap to a single Household deep link", () => {
+  it("drops its buttons past the cap and links nowhere", () => {
     const doses = Array.from(
       { length: HOUSEHOLD_ROUND_MAX_BUTTONS + 1 },
       (_, i) => ({
@@ -241,30 +236,9 @@ describe("renderHouseholdRoundMessage", () => {
       })
     );
     const msg = render([section({ doses })])!;
-    expect(msg.actions).toEqual([
-      { label: "Open Household →", url: `${BASE}${HOUSEHOLD}` },
-    ]);
+    expect(msg.actions).toBeUndefined();
     // The body still lists everything — only the keyboard degrades.
     expect(msg.body).toContain("Item 0");
-  });
-
-  it("carries no buttons at all when the overflow link has no public URL", () => {
-    const doses = Array.from(
-      { length: HOUSEHOLD_ROUND_MAX_BUTTONS + 1 },
-      (_, i) => ({
-        doseId: 300 + i,
-        itemId: 400 + i,
-        itemName: `Item ${i}`,
-        amount: null,
-      })
-    );
-    const msg = renderHouseholdRoundMessage({
-      receiverProfileId: 1,
-      sections: [section({ doses })],
-      base: "",
-      householdHref: HOUSEHOLD,
-    })!;
-    expect(msg.actions).toBeUndefined();
   });
 
   it("keeps buttons exactly AT the cap", () => {
@@ -283,28 +257,13 @@ describe("renderHouseholdRoundMessage", () => {
     );
   });
 
-  // #1718: under the cap the round used to carry confirm buttons ONLY, so the Web
-  // Push and Home Assistant copies arrived naming members and items with no way to
-  // confirm and no way to open the page. The over-cap path already degraded to this
-  // link; the under-cap path needs it ALONGSIDE the buttons.
-  it("carries the household deep link alongside its confirm buttons", () => {
+  // The Household page retired (#5667) and the owner ruled the round carries no
+  // replacement link: confirm buttons only.
+  it("carries its confirm buttons and no link", () => {
     const msg = render([section()])!;
-    const link = msg.actions!.find((a) => a.url);
-    expect(link?.url).toBe(`${BASE}${HOUSEHOLD}`);
-    expect(link?.label).toBe("Open Household →");
-    // The confirm buttons are untouched — the link is additive.
     expect(msg.actions!.some((a) => a.data?.startsWith("hh:"))).toBe(true);
-  });
-
-  it("omits the link when no public URL is configured, keeping the buttons", () => {
-    const msg = renderHouseholdRoundMessage({
-      receiverProfileId: 1,
-      sections: [section()],
-      base: "",
-      householdHref: HOUSEHOLD,
-    })!;
-    expect(msg.actions!.every((a) => !a.url)).toBe(true);
-    expect(msg.actions!.length).toBeGreaterThan(0);
+    expect(msg.actions!.filter((a) => a.url)).toEqual([]);
+    expect(msg.actions!.map((a) => a.label)).not.toContain("Open Household →");
   });
 });
 

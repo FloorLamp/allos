@@ -26,12 +26,12 @@ import {
 
 // The #1042 frequency order, re-applied in #3079 to MEASURED frequency instead of
 // the estimate it was first set from. Six rows the owner never opened deliberately
-// became children of one "Plan & review" group; none of the six was retired, and
-// each kept the gate it carried as a top-level row (Household still needs 2+
-// profiles, Longevity is still adult-only, Wellness/Progress photos still carry
-// their relevance bits). #2762 removes the once-a-year retrospective from permanent
-// nav chrome; the command palette and recent-pages carry it instead, since #3958
-// phase 2 deleted the Timeline header action that used to be its one in-app door.
+// became children of one "Plan & review" group, each keeping the gate it carried as
+// a top-level row (Longevity is still adult-only, Wellness/Progress photos still
+// carry their relevance bits). Household was later retired outright (#5667). #2762
+// removes the once-a-year retrospective from permanent nav chrome; the command
+// palette and recent-pages carry it instead, since #3958 phase 2 deleted the
+// Timeline header action that used to be its one in-app door.
 //
 // UNCHANGED by #1522 on purpose: the medicine-cabinet row this repo just deleted was
 // a child of the Medical GROUP, not a top-level entry, so it never appeared in this
@@ -48,10 +48,9 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   // would be a second door to the page the reader is already on. The route and its
   // other doors are unchanged — the case below still walks to it.
   "Sleep",
-  // Trends is a child of this group now (#4965), alongside Upcoming, Household,
-  // Wellness, Longevity and Progress photos — six children where it used to be
-  // History plus five. Collapsed on "/" (no child route is active), which is
-  // why the group's whole text content here is its header label.
+  // Trends is a child of this group now (#4965), alongside Upcoming, Wellness,
+  // Longevity and Progress photos. Collapsed on "/" (no child route is active),
+  // which is why the group's whole text content here is its header label.
   "Plan & review",
   "Medical",
   // The Data entry carries the import-review badge since #1801 (it is Data →
@@ -234,7 +233,7 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 
 // The group's children AS THE SHARED ADMIN FIXTURE SEES THEM, in registry order.
 //
-// PROGRESS PHOTOS IS THE SIXTH CHILD AND IS DELIBERATELY ABSENT HERE: it rides the
+// PROGRESS PHOTOS IS THE FIFTH CHILD AND IS DELIBERATELY ABSENT HERE: it rides the
 // `progress` relevance bit, and profile 1 seeds no progress photos — which is why
 // it was missing from TOP_LEVEL_ORDER before this change too. Listing it would
 // assert a row that cannot render for this fixture. Its membership is pinned where
@@ -248,13 +247,7 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 // The list is the group's whole membership, so the substitution is the
 // assertion — a row added beside the swapped-in one, rather than in place of
 // it, fails this.
-const PLAN_REVIEW_CHILDREN = [
-  "Upcoming",
-  "Trends",
-  "Wellness",
-  "Longevity",
-  "Household",
-];
+const PLAN_REVIEW_CHILDREN = ["Upcoming", "Trends", "Wellness", "Longevity"];
 
 test("the episodic group holds exactly its children, and none of them is a top-level row (#3079)", async ({
   page,
@@ -356,7 +349,6 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
     Trends: "/trends",
     Wellness: "/wellness",
     Longevity: "/longevity",
-    Household: "/household",
   };
   for (const [label, href] of Object.entries(HREFS)) {
     await page.goto(href);

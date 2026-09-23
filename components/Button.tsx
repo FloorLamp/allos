@@ -92,13 +92,14 @@ export interface ButtonProps {
    * The CLOSED set of layout needs a caller may state (owner ruling
    * 2026-09-04, #4978), in place of the `className` escape and the wrapper
    * element that the two shapes below had otherwise grown. `block` is full
-   * width; `hidden-below-sm` is the responsive hide. Both are LAYOUT only —
-   * they never touch paint, type size or the control box (#3938). There is no
-   * third value on purpose: a mount that needs one is reported on #4978 and
-   * waits, so the type is the admission rule here exactly as it is for
-   * `variant`.
+   * width; `hidden-below-sm` and `hidden-below-md` are the responsive hides
+   * (the second added by PM ruling 1, 2026-09-09, for a mount deliberately
+   * absent on tablets). All are LAYOUT only — they never touch paint, type size
+   * or the control box (#3938). A mount that needs another value is reported on
+   * #4978 and waits, so the type is the admission rule here exactly as it is
+   * for `variant`.
    */
-  layout?: "block" | "hidden-below-sm";
+  layout?: "block" | "hidden-below-sm" | "hidden-below-md";
 }
 
 /**
@@ -140,13 +141,14 @@ export const BusyMark = () => (
   <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
 );
 
-// `hidden sm:inline-flex` beats the `button-control` utility's own
+// `hidden sm:inline-flex` (and its `md:` twin) beats the `button-control` utility's own
 // `inline-flex` because Tailwind emits custom `@utility` rules BEFORE the core
 // ones (checked against the compiled sheet, not assumed), so the later `hidden`
 // wins at equal specificity and `sm:inline-flex`, later still, restores it.
 const LAYOUT_CLASS = {
   block: "w-full",
   "hidden-below-sm": "hidden sm:inline-flex",
+  "hidden-below-md": "hidden md:inline-flex",
 } as const;
 
 // The ordinary secondary action, the ONE primary variant the owner ruled for

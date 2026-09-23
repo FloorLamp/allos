@@ -267,6 +267,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(two).toMatchObject({
       ok: true,
       weekCount: 2,
+      dayCount: 2,
       date: today(profile.id),
     });
 
@@ -292,7 +293,12 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(sub.n).toBe(0);
 
     const undone = await undoSubstanceUnitAction(fd({ substance: "alcohol" }));
-    expect(undone).toEqual({ ok: true, weekCount: 1 });
+    expect(undone).toEqual({
+      ok: true,
+      weekCount: 1,
+      dayCount: 1,
+      capProgress: null,
+    });
 
     const nicotineOne = await logSubstanceUnitAction(
       fd({ substance: "nicotine" })
@@ -328,7 +334,46 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     const nicotineUndone = await undoSubstanceUnitAction(
       fd({ substance: "nicotine" })
     );
-    expect(nicotineUndone).toEqual({ ok: true, weekCount: 1 });
+    expect(nicotineUndone).toEqual({
+      ok: true,
+      weekCount: 1,
+      dayCount: 1,
+      capProgress: null,
+    });
+  });
+
+  // The sheet row's receipt (#5663): the write day's count beside the week's, and the
+  // minute the write accepted for the toast.
+  it("answers with the write day's count and the stated minute it kept", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-day-count", login.id);
+    actAs(login, profile);
+    const yesterday = shiftDateStr(today(profile.id), -1);
+    await logSubstanceUnitAction(fd({ substance: "nicotine" }));
+    expect(
+      await logSubstanceUnitAction(
+        fd({
+          substance: "nicotine",
+          date: yesterday,
+          stated_at: `${yesterday}T21:30:00Z`,
+        })
+      )
+    ).toMatchObject({ ok: true, dayCount: 1, statedClock: "21:30" });
+    expect(
+      await logSubstanceUnitAction(fd({ substance: "nicotine" }))
+    ).toMatchObject({ ok: true, dayCount: 2, statedClock: null });
+
+    // The cap verdict rides both answers, so the line beside the tap moves with them.
+    await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "7" }));
+    const capped = await logSubstanceUnitAction(fd({ substance: "nicotine" }));
+    if (!capped.ok) throw new Error("fixture did not log");
+    expect(capped.capProgress).toBe(`${capped.weekCount} of 7 this week.`);
+    const undone = await undoSubstanceUnitAction(fd({ substance: "nicotine" }));
+    expect(undone).toMatchObject({
+      ok: true,
+      dayCount: 2,
+      capProgress: `${capped.weekCount - 1} of 7 this week.`,
+    });
   });
 
   it.each(["alcohol", "nicotine"])(
@@ -345,7 +390,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
         await undoSubstanceUnitAction(
           fd({ substance, event_id: a.eventId, date: a.date })
         )
-      ).toEqual({ ok: true, weekCount: 1 });
+      ).toEqual({ ok: true, weekCount: 1, dayCount: 1, capProgress: null });
       const rows = db
         .prepare(
           substance === "alcohol"
@@ -378,7 +423,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
       await undoSubstanceUnitAction(
         fd({ substance: "nicotine", event_id: old.eventId, date: prior })
       )
-    ).toEqual({ ok: true, weekCount: 0 });
+    ).toEqual({ ok: true, weekCount: 0, dayCount: 0, capProgress: null });
 
     const moved = logSubstanceUnitCore(
       profile.id,

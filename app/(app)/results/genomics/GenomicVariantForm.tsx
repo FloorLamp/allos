@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
@@ -394,11 +395,7 @@ export default function GenomicVariantForm({
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>
-        {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {editing && onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
     </form>
   );

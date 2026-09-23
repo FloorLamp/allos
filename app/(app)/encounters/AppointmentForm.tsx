@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useProviderOptions } from "@/components/ProviderOptionsContext";
 import { useToast } from "@/components/Toast";
@@ -444,11 +445,7 @@ export default function AppointmentForm({
             {editing ? "Save" : onDone ? "Schedule" : "Add"}
           </SubmitButton>
         </div>
-        {onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
     </form>
   );

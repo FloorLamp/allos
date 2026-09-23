@@ -22,7 +22,8 @@ import {
   SUPPRESSED_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, frozenToday, workerDbPath } from "./worker-env";
+import { shiftDateStr, utcSqlString } from "@/lib/date";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
@@ -54,20 +55,21 @@ function resetSuppressions(): void {
     const del = db.prepare(
       "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
     );
-    const snoozeUntil = db
-      .prepare("SELECT date('now', '+3 days') AS d")
-      .get() as { d: string };
+    // From the run's frozen clock, not SQLite's real one: a forward-clock run
+    // would otherwise write a snooze that has already expired.
+    const snoozeUntil = shiftDateStr(frozenToday(), 3);
+    const dismissedAt = utcSqlString(frozenNow());
     del.run(prof.id, `appointment:${appt.id}`);
     db.prepare(
       `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until)
        VALUES (?, ?, ?)`
-    ).run(prof.id, `appointment:${appt.id}`, snoozeUntil.d);
+    ).run(prof.id, `appointment:${appt.id}`, snoozeUntil);
     for (const key of [COACHING_KEY, BRIDGE_KEY]) {
       del.run(prof.id, key);
       db.prepare(
         `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
-         VALUES (?, ?, datetime('now'))`
-      ).run(prof.id, key);
+         VALUES (?, ?, ?)`
+      ).run(prof.id, key, dismissedAt);
     }
   } finally {
     db.close();

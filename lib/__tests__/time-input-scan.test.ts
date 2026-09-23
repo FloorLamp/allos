@@ -257,13 +257,6 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
     { kind: "field", why: "the when half of the event editor (#2236)" },
   ],
   [
-    "components/illness/SymptomLogBar.tsx",
-    {
-      kind: "field",
-      why: "the reading's time, beside the temperature field (#4424 ruling 5)",
-    },
-  ],
-  [
     "components/medications/HistoricalDoseForm.tsx",
     { kind: "field", why: "the backfill/amend form's date+time pair (#2228)" },
   ],
@@ -587,6 +580,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
     ).toEqual([
       "app/(app)/nutrition/FoodLogBar.tsx",
       "app/(app)/trends/MeasurementsQuickAdd.tsx",
+      "components/illness/SymptomLogBar.tsx",
       "components/medications/DatedDoseControl.tsx",
       "components/medications/QuickLogPrnControl.tsx",
       "components/medications/ScheduledDoseAction.tsx",

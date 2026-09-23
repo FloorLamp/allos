@@ -5,6 +5,7 @@ import DateField from "@/components/DateField";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
@@ -465,11 +466,7 @@ export default function ImagingStudyForm({
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>
-        {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {editing && onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
     </form>
   );

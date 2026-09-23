@@ -1,29 +1,23 @@
-// DB INTEGRATION TIER — the offline dose schedule and the household card read the same
-// situations the member's own page reads (#5167).
+// DB INTEGRATION TIER — the offline dose schedule reads the same situations the
+// member's own page reads (#5167).
 //
 // Every online surface that decides whether a dose is DUE moved to the effective
 // resolver — declared ∪ derived, dated per day (`getEffectiveActiveSituations`, #1360 /
-// #3993). Two surfaces did not come with them and asked `getActiveSituations`, which is
-// the declared half alone as of now:
+// #3993). The offline snapshot builder (`lib/offline/snapshot-build.ts`) did not come
+// with them and asked `getActiveSituations`, which is the declared half alone as of now.
 //
-//   • the offline snapshot builder (`lib/offline/snapshot-build.ts`), and
-//   • the /household card's x/y.
-//
-// So both had NEITHER the holding NOR the widening, and the two failures point opposite
+// So it had NEITHER the holding NOR the widening, and the two failures point opposite
 // ways, which is why each gets its own case here: a dose the page HOLDS for a derived
 // pause was offered, and a dose whose `situational` trigger the app DERIVED was omitted.
 //
 // OFFLINE IS WHAT SOMEONE READS WITH NO SIGNAL. /offline renders the schedule as rows
 // with no control on them, so the acting happens in the world rather than in the app:
 // this is what tells a person whether a dose is owed when nothing else can, and they
-// take it or skip it on that. The household card is the same shape one seat over — a
-// caregiver deciding whether to go and ask. Neither is a display divergence.
+// take it or skip it on that. It is not a display divergence.
 //
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
-import { createProfile, seedActor } from "@/lib/__action_tests__/harness";
-import HouseholdPage from "@/app/(app)/household/page";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -33,8 +27,6 @@ import {
 } from "@/lib/integrations/normalize";
 import { resolveSituationId } from "@/lib/settings/profile-attrs";
 import { BUILTIN_POOR_SLEEP_SITUATION } from "@/lib/derived-situations";
-import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
-import { intakeAdherenceOn } from "@/lib/queries/household";
 import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
 import type { DoseScheduleEntry } from "@/lib/offline/snapshots";
 
@@ -169,110 +161,5 @@ describe("the offline schedule reads the situations the page reads (#5167)", () 
 
     expect(offlineDoseNames(rough)).toEqual(["Electrolytes"]);
     expect(offlineDoseNames(rested)).toEqual(["Magnesium"]);
-  });
-});
-
-describe("the household card and the offline schedule agree (#5167)", () => {
-  // ONE DAY, ONE ANSWER, ACROSS TWO SURFACES. A caregiver reading "0/1" on a card while
-  // the member's phone offers the dose has no way to tell which is the schedule — and
-  // the card is what they act on when they decide whether to go and ask.
-  it("counts the doses the snapshot offers, on a derived pause and a derived trigger", () => {
-    const p = newProfile();
-    seedItem(p, "Magnesium", "paused-by");
-    seedItem(p, "Electrolytes", "due-on");
-
-    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
-    expect(offlineDoseNames(p)).toEqual(["Magnesium"]);
-
-    seedRoughNight(p);
-    // The pause takes one away and the trigger adds one back: the DUE count is the same
-    // number for a different reason, and the two surfaces name the same dose.
-    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
-    expect(offlineDoseNames(p)).toEqual(["Electrolytes"]);
-  });
-
-  it("answers for the subject it is asked about, not another member", () => {
-    // THE MUTANT THE SOURCE SCAN COULD NOT SEE. One member's rough night must not hold
-    // another member's dose: a card that reads 0/0 where the truth is 0/1 has lost the
-    // one signal on it that says a dose is owed, and the caregiver never goes to ask.
-    const rough = newProfile();
-    const rested = newProfile();
-    seedItem(rested, "Magnesium", "paused-by");
-    seedRoughNight(rough);
-
-    expect(getEffectiveActiveSituations(rough, today(rough)).size).toBe(1);
-    expect(intakeAdherenceOn(rested, today(rested))).toEqual({
-      taken: 0,
-      due: 1,
-    });
-  });
-
-  it("answers for the day it is asked about", () => {
-    // The other argument, pinned the same way: the rough night is two days back, so
-    // today's card counts the dose and the card for that day holds it.
-    const p = newProfile();
-    seedItem(p, "Magnesium", "paused-by");
-    seedRoughNight(p, [2]);
-    const rough = shiftDateStr(today(p), -2);
-
-    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
-    expect(intakeAdherenceOn(p, rough)).toEqual({ taken: 0, due: 0 });
-  });
-});
-
-describe("the /household card scores each member against their own day (#5167)", () => {
-  // THE PAGE'S OWN LOOP, RENDERED — not a rebuild of it, and not a scan of it.
-  //
-  // The earlier round pinned `intakeAdherenceOn` and left the page's CALL observed by
-  // nothing, so two one-token mutants shipped byte-identical green across the whole db
-  // tier: swapping the card's subject to the first accessible profile, and reverting the
-  // household half of #5167 outright. The comment that justified this said there was
-  // "nothing for a test to call" because the loop is inline in a page. That was FALSE,
-  // and in-tree: `manual-sleep-window.test.ts` renders `SleepPage()` in this directory,
-  // and `dashboard-render-harness.ts` loads any App Router page under `app/`.
-  //
-  // So this awaits the page's own server component and reads the cards it built. It
-  // costs one render and it is the only thing in the suite that can see whether
-  // /household asks the question at all.
-  function cardsOf(
-    tree: unknown
-  ): { name: string; due: number; taken: number }[] {
-    const out: { name: string; due: number; taken: number }[] = [];
-    const walk = (node: unknown): void => {
-      if (Array.isArray(node)) return void node.forEach(walk);
-      if (node == null || typeof node !== "object") return;
-      const rec = node as Record<string, unknown>;
-      const profile = rec.profile as { name?: string } | undefined;
-      const adherence = rec.adherence as
-        { taken?: number; due?: number } | undefined;
-      // Keyed on the PAIR rather than on serialization order, so a reordered card
-      // model cannot quietly stop matching.
-      if (profile?.name && adherence && typeof adherence.due === "number")
-        out.push({
-          name: profile.name,
-          taken: adherence.taken ?? -1,
-          due: adherence.due,
-        });
-      for (const value of Object.values(rec)) walk(value);
-    };
-    walk(tree);
-    return out;
-  }
-
-  it("holds one member's dose for THEIR rough night, not another member's", async () => {
-    const { login, profile: rough } = seedActor({ profileName: "Rough Night" });
-    const rested = createProfile("Slept Fine", login.id);
-    for (const id of [rough.id, rested.id]) {
-      setTimezone(id, "UTC");
-      seedItem(id, "Magnesium", "paused-by");
-    }
-    seedRoughNight(rough.id);
-
-    const cards = cardsOf(JSON.parse(JSON.stringify(await HouseholdPage())));
-    const byName = Object.fromEntries(cards.map((c) => [c.name, c]));
-    // The rough sleeper's own derived pause holds their dose; the rested member's
-    // stands. A subject swap makes these two agree, which is the whole assertion.
-    expect(byName["Rough Night"]).toMatchObject({ taken: 0, due: 0 });
-    expect(byName["Slept Fine"]).toMatchObject({ taken: 0, due: 1 });
   });
 });

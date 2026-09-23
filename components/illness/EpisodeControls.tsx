@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconPrinter, IconShare } from "@tabler/icons-react";
 import CreatedShareLink from "@/components/CreatedShareLink";
+import IconButton from "@/components/IconButton";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
 import OverflowMenu, {
@@ -103,24 +104,14 @@ export default function EpisodeControls({
       className="flex flex-wrap items-center gap-2 print:hidden"
       data-testid="episode-controls"
     >
-      <button
-        type="button"
-        className="btn-ghost w-9 px-0"
-        onClick={() => window.print()}
-        aria-label="Print episode"
-      >
+      <IconButton label="Print episode" onClick={() => window.print()}>
         <IconPrinter className="h-4 w-4" stroke={1.75} />
-      </button>
+      </IconButton>
 
       {canWrite && (
-        <button
-          type="button"
-          className="btn-ghost w-9 px-0"
-          onClick={() => setShareOpen(true)}
-          aria-label="Share episode"
-        >
+        <IconButton label="Share episode" onClick={() => setShareOpen(true)}>
           <IconShare className="h-4 w-4" stroke={1.75} />
-        </button>
+        </IconButton>
       )}
 
       {canWrite && (
