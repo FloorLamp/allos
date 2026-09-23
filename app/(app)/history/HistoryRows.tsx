@@ -65,6 +65,7 @@ import { isSubstanceFoodGroup } from "@/lib/substance-use";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import {
   HISTORY_KIND_LABELS,
+  detailSegment,
   historyRowPick,
   type HistoryKind,
   type HistoryRollup,
@@ -881,7 +882,7 @@ export default function HistoryRows({
   const renderRow = (row: HistoryRow) => {
     const Glyph = KIND_GLYPH[row.kind];
     const pickable = pick(row);
-    const subject = subjectNames[row.profileId];
+    const subject = detailSegment([subjectNames[row.profileId], row.subject]);
     return (
       <Fragment key={row.id}>
         <li
