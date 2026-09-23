@@ -12,8 +12,9 @@ import {
   leftRefillTrackedSet,
   type RefillCandidate,
 } from "@/lib/refill-nudge";
-import { refillCueTargets } from "@/lib/queries/upcoming/refill-targets";
+import { projectRefillCueTargets } from "@/lib/queries/upcoming/refill-targets";
 import type { IntakeItem } from "@/lib/types";
+import type { UpcomingItem } from "@/lib/upcoming";
 
 // Episode-dedup + page-suppression for the low-supply refill nudge (issues #87/#227),
 // mirroring the preventive nudge's plan tests. planRefillNudges is pure: given each
@@ -264,13 +265,13 @@ describe("explicit refill delivery state", () => {
 
 // ── The cue's control target (#5121 §9, #5907) ───────────────────────────────
 //
-// `refillCueTargets` is the projection Home used to spell inline: one target per cue
+// `projectRefillCueTargets` is the projection Home used to spell inline: one target per cue
 // KEY, minted by the two functions above. Tested here, beside the minters, because the
 // two claims it makes are about THEM — that a pooled bottle is keyed on the pool and
 // carried by this profile's lowest-id member (the pick `poolRefillItems` makes), and
-// that no member's remembered fill ever reaches that pooled key. Both used to be
-// reachable only by rendering the page.
-describe("refillCueTargets", () => {
+// that only the bottle's own remembered fill, never a member's, reaches that key. Both
+// used to be reachable only by rendering the page.
+describe("projectRefillCueTargets", () => {
   const cueItem = (id: number, over: Partial<IntakeItem> = {}): IntakeItem =>
     ({
       id,
@@ -282,10 +283,16 @@ describe("refillCueTargets", () => {
       ...over,
     }) as IntakeItem;
 
+  const cue = (key: string): UpcomingItem =>
+    ({ key, domain: "refill" }) as UpcomingItem;
+  const lowBottle = [cue(poolRefillSignalKey(900))];
+
   it("keys a private supply on the item and keeps its remembered fill", () => {
-    const targets = refillCueTargets([
-      cueItem(4, { quantity_on_hand: 2, last_fill_size: 30 }),
-    ]);
+    const targets = projectRefillCueTargets(
+      [cueItem(4, { quantity_on_hand: 2, last_fill_size: 30 })],
+      [],
+      () => 45
+    );
     expect([...targets]).toEqual([
       [refillSignalKey(4), { itemId: 4, supplyId: null, lastFillSize: 30 }],
     ]);
@@ -301,28 +308,61 @@ describe("refillCueTargets", () => {
       [4, 7, 9],
       [7, 4, 9],
     ]) {
-      const targets = refillCueTargets(
+      const targets = projectRefillCueTargets(
         order.map((id) =>
           cueItem(id, { supply_id: 900, active: id === 4 ? 0 : 1 })
-        )
+        ),
+        lowBottle,
+        () => null
       );
       expect(targets.get(poolRefillSignalKey(900))?.itemId).toBe(4);
       expect(targets.has(refillSignalKey(4))).toBe(false);
     }
   });
 
-  it("never lets a member's remembered fill reach a pooled key", () => {
+  it("gives a pooled key the bottle's own fill and never a member's", () => {
     // A member refilled at 30 while still PRIVATE and linked afterwards keeps
-    // last_fill_size; it was never a fill of this jar, so the pooled target states
-    // none — on every render, not only the first.
-    const targets = refillCueTargets([
+    // last_fill_size; it was never a fill of this jar. The bottle's own fill answers
+    // (#5121 owner ruling 2026-09-16), and a bottle that remembers none asks.
+    const members = [
       cueItem(2, { supply_id: 900, last_fill_size: 30 }),
       cueItem(6, { supply_id: 900, last_fill_size: 60 }),
-    ]);
-    expect(targets.get(poolRefillSignalKey(900))).toEqual({
+    ];
+    const asked: number[] = [];
+    const remembering = projectRefillCueTargets(
+      members,
+      lowBottle,
+      (supplyId) => {
+        asked.push(supplyId);
+        return 45;
+      }
+    );
+    expect(remembering.get(poolRefillSignalKey(900))).toEqual({
       itemId: 2,
       supplyId: 900,
-      lastFillSize: null,
+      lastFillSize: 45,
     });
+    expect(asked).toEqual([900]);
+    expect(
+      projectRefillCueTargets(members, lowBottle, () => null).get(
+        poolRefillSignalKey(900)
+      )
+    ).toEqual({ itemId: 2, supplyId: 900, lastFillSize: null });
+  });
+
+  it("never looks up the fill of a shared bottle that is not low", () => {
+    // Only a raised cue gets a control, so a bottle with no cue gets no target and
+    // costs Home no read.
+    const asked: number[] = [];
+    const targets = projectRefillCueTargets(
+      [cueItem(2, { supply_id: 900 }), cueItem(3, { supply_id: 901 })],
+      [cue(poolRefillSignalKey(901))],
+      (supplyId) => {
+        asked.push(supplyId);
+        return 45;
+      }
+    );
+    expect(asked).toEqual([901]);
+    expect([...targets.keys()]).toEqual([poolRefillSignalKey(901)]);
   });
 });
