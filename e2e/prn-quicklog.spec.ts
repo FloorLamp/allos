@@ -1,4 +1,9 @@
+import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
+import { settledClick } from "./helpers";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { shiftDateStr } from "@/lib/date";
 import {
   medicationsToday,
   prnTodayItem,
@@ -55,4 +60,73 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
   );
 
   await expect(detail.getByTestId("dose-status")).toHaveCount(0);
+});
+
+// THE ROW STATES WHAT LANDED (#5663 ruling 1). A tap on Take leaves "Taken" on the row
+// and the toast reads the one grammar. The medication is this test's own and is removed
+// after, so the shared seed's counts and redose window never see the write.
+const OWN_MED = "PRN Receipt Med (e2e)";
+
+function removeOwnMed(): void {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    const row = db
+      .prepare("SELECT id FROM intake_items WHERE profile_id = 1 AND name = ?")
+      .get(OWN_MED) as { id: number } | undefined;
+    if (!row) return;
+    db.prepare("DELETE FROM intake_item_logs WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM medication_courses WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM intake_items WHERE id = ?").run(row.id);
+  } finally {
+    db.close();
+  }
+}
+
+function seedOwnMed(): void {
+  removeOwnMed();
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    const todayLocal = frozenNow().toLocaleDateString("en-CA", {
+      timeZone: pinnedTimezone(frozenNow().toISOString()).zone,
+    });
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, condition, obligation, kind, active)
+           VALUES (1, ?, 'daily', 'may', 'medication', 1)`
+        )
+        .run(OWN_MED).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '200 mg', 'Anytime', 'any', 0)`
+    ).run(itemId);
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+       VALUES (?, ?, NULL, NULL, 'PRN — e2e receipt fixture')`
+    ).run(itemId, shiftDateStr(todayLocal, -5));
+  } finally {
+    db.close();
+  }
+}
+
+test("a Take tap leaves Taken on the row and toasts Dose logged (#5663)", async ({
+  page,
+}) => {
+  seedOwnMed();
+  try {
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await page.goto("/medications");
+    const row = prnTodayItem(medicationsToday(page), OWN_MED);
+    await expect(row.getByTestId("prn-receipt")).toHaveCount(0);
+    await settledClick(page, row.getByTestId("prn-log-now"));
+    await expect(row.getByTestId("prn-receipt")).toHaveText("Taken");
+    await expect(page.getByTestId("toast")).toContainText("Dose logged");
+  } finally {
+    removeOwnMed();
+  }
 });
