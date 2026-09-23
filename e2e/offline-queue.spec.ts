@@ -109,7 +109,7 @@ test("an offline weight is kept when its waist reading needs a connection (#4142
     await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
     await expect(badge).toHaveCount(0);
     await form.getByRole("button", { name: "Save measurements" }).click();
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
     await page.goto("/trends");
     await expect(page.getByText(marker)).toHaveCount(1);
     await page.reload();
