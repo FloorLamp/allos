@@ -22,7 +22,11 @@ import { dateStrInTz, minuteOfDayInTz } from "../date";
 import { today } from "../db";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
-import { type CorrectionBurst, type CorrectionDay } from "../correction-time";
+import {
+  seatCorrectionBursts,
+  type CorrectionBurst,
+  type CorrectionDay,
+} from "../correction-time";
 import { proteinTodayLineParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -31,7 +35,7 @@ import {
   type FoodNudgeWindow,
 } from "./food-format";
 import {
-  messageCorrectionBursts,
+  messageBoundBursts,
   type CorrectionMessageRef,
 } from "./message-pointers";
 import { slotSessionForKeyboard } from "./intake";
@@ -130,14 +134,24 @@ export function buildFoodNudge(
   // tap produced it, and an unattributed burst (web, offline replay, pruned pointer)
   // rides only the newest live food message in the chat — never an older one, whose
   // subject it is not and whose chips would restamp servings it never mentioned.
-  const corrections = messageCorrectionBursts(
+  //
+  // The same bound set, before the two-row seat, marks the buttons this message has
+  // just tapped (#5613): a burst that dropped off the rows keeps its checks, and a check
+  // lives exactly as long as its burst.
+  const taps = getRecentFoodTaps(profileId, now);
+  const bound = messageBoundBursts(
     profileId,
     "food",
-    getRecentFoodTaps(profileId, now),
+    taps,
     now,
     opts.ref ?? null,
     slotSessionForKeyboard
   );
+  const boundIds = new Set(bound.flatMap((b) => b.ids));
+  const tapped = new Set(
+    taps.filter((t) => boundIds.has(t.id)).map((t) => t.groupKey)
+  );
+  const corrections = seatCorrectionBursts(bound);
   const tz = getTimezone(profileId);
   // The empty-window notice (#2376). A RIDE-ALONG, exactly like the correction rows
   // above: no nudge is ever sent because a window closed empty — this clause only ever
@@ -166,6 +180,7 @@ export function buildFoodNudge(
     proteinLine,
     visibleCount,
     proteinPresetGrams: presetGrams,
+    tapped,
     corrections: {
       bursts: corrections,
       now,
