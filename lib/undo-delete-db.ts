@@ -271,12 +271,12 @@ export function detachRepointedLinks(
       child.table === "exercise_sets"
         ? db.prepare(
             `UPDATE exercise_sets SET ${column} = NULL
-          WHERE id = ? AND ${column} = ?
-            AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+            WHERE id = ? AND ${column} = ?
+              AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
           )
         : db.prepare(
             `UPDATE ${child.table} SET ${column} = NULL
-          WHERE id = ? AND ${column} = ? AND profile_id = ?`
+            WHERE id = ? AND ${column} = ? AND profile_id = ?`
           );
     for (const row of linked) detach.run(row.id, rootId, profileId);
   }

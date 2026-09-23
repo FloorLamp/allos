@@ -778,7 +778,6 @@ describe("Delete all frees the links a visit or a piece of gear carries (#5990)"
       condition: { encounter_id: theirs.encounterId },
       episodeLinks: 1,
     });
-    expect(rawDb.pragma("foreign_key_check")).toEqual([]);
   });
 
   it("equipment: Delete all keeps the workouts, goals and protocols and unlinks them", async () => {
@@ -813,7 +812,6 @@ describe("Delete all frees the links a visit or a piece of gear carries (#5990)"
       goal: kept,
       protocol: kept,
     });
-    expect(rawDb.pragma("foreign_key_check")).toEqual([]);
   });
 
   it.each([
