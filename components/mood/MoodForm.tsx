@@ -6,7 +6,7 @@ import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
 import { useOptionalDayContext } from "@/components/DayContext";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { daySwitcherLabel } from "@/lib/format-date";
+import { countDayWord } from "@/lib/day-word";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import IconButton from "@/components/IconButton";
 import {
@@ -329,14 +329,15 @@ export default function MoodForm({
 
   // Ruling 1's grammar, `<Thing> logged · <time>` (#5663): a check-in has a day and no
   // minute, so the slot is the day. Under the sheet's switcher it is the tab's own word
-  // in prose ("today", "yesterday", "Sat, Sep 13"); elsewhere the day's given label.
+  // in prose, through the one helper (ruling (a), 2026-09-16); elsewhere the day's
+  // given label.
   //
   // NO UNDO. `logMood` upserts the day's one statement in place and answers nothing
   // about what it replaced, so there is no complete inverse (lib/undo-offer.ts).
   function dayWord(attempt: MoodAttempt): string {
-    if (!dayContext) return attempt.label;
-    const day = daySwitcherLabel(attempt.date, dayContext.today, prefs);
-    return day.kind === "date" ? day.label : day.label.toLowerCase();
+    return dayContext
+      ? countDayWord(attempt.date, dayContext.today, prefs)
+      : attempt.label;
   }
 
   function complete(attempt: MoodAttempt, message?: string): void {

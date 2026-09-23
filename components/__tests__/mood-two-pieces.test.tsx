@@ -570,7 +570,7 @@ describe("the mood domain's two pieces", () => {
       fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
     );
 
-    expect(toasts).toContain("Good mood logged · Wed, Aug 19");
+    expect(toasts).toContain("Good mood logged · on Wed, Aug 19");
     expect(Object.fromEntries(posted.logMood[0])).toMatchObject({
       date: "2026-08-19",
       valence: "4",
