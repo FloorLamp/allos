@@ -11,7 +11,7 @@
 //     failure chain this issue removes);
 //   • a backfilled historical reading does not fire (latest-reading framing), and a
 //     crossing value with NO open episode sends nothing;
-//   • an ordinary reading never reaches the notification path (the cheap pre-check).
+//   • an ordinary reading sends nothing.
 //
 // Every value is synthetic (a fake HA webhook URL; no phones, no PHI).
 
@@ -220,7 +220,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("an ordinary reading never reaches the notification path (cheap pre-check)", async () => {
+  it("an ordinary reading sends nothing and sets no marker", async () => {
     const p = newProfile("TrfOrdinary");
     makeSick(p, 1);
     configureHA(p);
@@ -577,5 +577,57 @@ describe("a live reading across local midnight (#5984)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(getProfileSettingKeysWithPrefix(p, OWED)).toEqual([]);
     expect(getProfileSettingKeysWithPrefix(p, MARKER)).toHaveLength(1);
+  });
+});
+
+// A fever that falls and rises again on the same day is two pushes (#6018). Both
+// crossings share one marker key, so the normal reading between them must clear it
+// even when no tick runs in between.
+describe("a second crossing on the same day (#6018)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+
+  it("a crossing, a normal reading, then a crossing again gives two pushes", async () => {
+    const p = newProfile("TrfSecondCrossing");
+    setTimezone(p, TZ);
+    configureHA(p);
+    makeSick(p, 1);
+    const fetchMock = stubFetch();
+    const day = today(p);
+
+    for (const [hhmm, degF] of [
+      ["14:00", 104.5],
+      ["14:20", 99.1],
+      ["14:40", 104.5],
+    ] as const) {
+      at(day, hhmm);
+      logTemperatureCore(p, degF, "F", day, "page", hhmm);
+      await dispatchTempRedFlagForReading(p, degF);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    at(day, "15:00");
+    await runTempRedFlag(p, today(p));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a normal reading sends nothing, even for an unsent crossing still in force", async () => {
+    const p = newProfile("TrfNormalNoSend");
+    setTimezone(p, TZ);
+    makeSick(p, 1);
+    const day = today(p);
+    at(day, "14:00");
+    // No channel yet, so the crossing is never sent.
+    logTemperatureCore(p, 104.5, "F", day, "page", "14:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    configureHA(p);
+    const fetchMock = stubFetch();
+    at(day, "14:20");
+    // A normal reading backfilled before the crossing, which stays the latest.
+    logTemperatureCore(p, 99.1, "F", day, "page", "13:00");
+    await dispatchTempRedFlagForReading(p, 99.1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
