@@ -181,7 +181,7 @@ const ROW_UNLINK_SEAMS: Partial<Record<DeletableDatasetKey, RowUnlinkSeam>> = {
   // The follow-up pairs are freeFollowUpLinks'; this is the projected-med link.
   medical_records: unlinkIntakeItemsFromRecord,
   // Not an unlink: a symptom-day's photos are its own rows, deleted with it as the
-  // per-row delete does. Their files stay on disk.
+  // per-row delete does. Delete all then removes their files (wipedMediaFiles).
   symptom_logs: (profileId, rowId) =>
     deleteExplicitChildren(DATASET_UNDO_KIND.symptom_logs, profileId, rowId),
 } satisfies Partial<
