@@ -1110,10 +1110,8 @@ test("R-5 — a practice card does not claim a session the device refused to kee
     const tabB = await context.newPage();
     // The practice's row in the quick-log sheet (#5668); a zero count is not drawn.
     await tabB.goto("/?quick=log-practice");
-    const card = tabB
-      .getByTestId("quick-entry-practice-list")
-      .getByRole("listitem")
-      .filter({ hasText: practiceName });
+    const list = tabB.getByTestId("quick-entry-practice-list"); // testid-scope-ok: the quick-entry sheet portals to <body>, one copy
+    const card = list.getByRole("listitem").filter({ hasText: practiceName });
     await expect(card.getByTestId("practice-log-button")).toBeVisible({
       timeout: 20_000,
     });

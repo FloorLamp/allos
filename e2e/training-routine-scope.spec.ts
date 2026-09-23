@@ -117,11 +117,9 @@ test("both targets are still fully present on their own pages (#2888)", async ({
 
   // A practice's home is the quick-log sheet's practice list (#5668).
   await page.goto("/?quick=log-practice");
+  const list = page.getByTestId("quick-entry-practice-list"); // testid-scope-ok: the quick-entry sheet portals to <body>, one copy
   await expect(
-    page
-      .getByTestId("quick-entry-practice-list")
-      .getByRole("listitem")
-      .filter({ hasText: PRACTICE })
+    list.getByRole("listitem").filter({ hasText: PRACTICE })
   ).toBeVisible();
 });
 
