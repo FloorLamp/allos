@@ -116,12 +116,19 @@ describe("the table states what shipped", () => {
       minSamples: 1,
       centre: "median",
     });
+    expect(USUAL_KINDS.doseSlotClock).toEqual({
+      recentCount: null,
+      windowDays: 14,
+      minSamples: 3,
+      centre: "median",
+    });
   });
 
   it("names every kind the table holds, so a new one cannot arrive unstated", () => {
     // The assertions above are per-kind, so a kind added without a line of its own
     // would pass them all. This is the line that fails.
     expect(Object.keys(USUAL_KINDS).sort()).toEqual([
+      "doseSlotClock",
       "eventPhysiology",
       "illnessDuration",
       "practiceDuration",

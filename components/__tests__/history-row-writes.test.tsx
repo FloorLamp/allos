@@ -1380,6 +1380,27 @@ describe("the record's row disclosure", () => {
     );
   });
 
+  // #5407: a reading that states an instant shows its clock in the profile's format,
+  // as a stated time; a reading without one shows none.
+  it("states each timed reading's clock and leaves an untimed one bare", () => {
+    openRow([
+      labRow({
+        detailItems: [
+          { label: "Glucose", value: "96", unit: "mg/dL", clock: "20:05" },
+          { label: "HDL", value: "55", unit: "mg/dL" },
+        ],
+      }),
+    ]);
+    fireEvent.click(screen.getByTestId("history-row-disclosure"));
+    const [timed, untimed] = Array.from(
+      screen.getByTestId("history-row-panel").querySelectorAll("dd")
+    );
+    expect(timed.lastElementChild?.textContent).toBe(
+      historyClock("20:05", "stated", H24)
+    );
+    expect(untimed.textContent).not.toMatch(/\d{2}:\d{2}/);
+  });
+
   // THE HEADING'S TWO SPELLINGS ARE A PREFIX OF ONE ANOTHER (#2920), so this is
   // asserted as an EXACT text match and not a containment one: "From this visit"
   // is a substring of "From this visit's document", and a `toContain` assertion on

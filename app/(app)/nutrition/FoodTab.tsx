@@ -133,7 +133,8 @@ const FIBER_STATUS_CLASS: Record<FiberAdequacy["status"], string> = {
 // WEEKLY FIBER TARGET block down in the weekly section, and the intake/target figures
 // behind the methodology disclosure. The block and the figures are gone; what the block
 // alone knew — the week's average logged day, which is a different fact from today's —
-// is this ONE line, inside the fiber block it belongs to.
+// is this ONE line, inside the fiber block it belongs to. The label and the figures
+// never wrap inside themselves; at the rail's width the verdict is what drops (#5098).
 function WeeklyFiberLine({ adequacy }: { adequacy: FiberAdequacy }) {
   const { intake, target, status } = adequacy;
   return (
@@ -141,16 +142,18 @@ function WeeklyFiberLine({ adequacy }: { adequacy: FiberAdequacy }) {
       data-testid="nutrition-weekly-fiber"
       className="mt-1 flex items-baseline justify-between gap-3 text-xs text-slate-500 dark:text-slate-400"
     >
-      <span>Avg logged day this week</span>
-      <span className="inline-flex items-baseline gap-1 text-right tabular-nums">
-        <span
-          data-testid="nutrition-weekly-fiber-value"
-          className="font-semibold text-slate-700 dark:text-slate-200"
-        >
-          {Math.round(intake.grams)}g
-          {fiberBasisIsFloor(intake.basis) ? "+" : ""}
+      <span className="shrink-0">Avg logged day this week</span>
+      <span className="flex flex-wrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums">
+        <span>
+          <span
+            data-testid="nutrition-weekly-fiber-value"
+            className="font-semibold text-slate-700 dark:text-slate-200"
+          >
+            {Math.round(intake.grams)}g
+            {fiberBasisIsFloor(intake.basis) ? "+" : ""}
+          </span>{" "}
+          / {Math.round(target.grams)}g+ goal
         </span>
-        <span>/ {Math.round(target.grams)}g+ goal</span>
         <span
           data-testid="nutrition-weekly-fiber-status"
           className={`font-medium ${FIBER_STATUS_CLASS[status]}`}
@@ -570,6 +573,7 @@ export default async function FoodTab({
           fiberAdequacy={day.fiber}
           proteinPeriod={day.sentencePeriod}
           fiberPeriod={day.sentencePeriod}
+          proteinWeeklyVerdict={day.date === date}
         />
       ),
     }));
@@ -729,6 +733,7 @@ export default async function FoodTab({
                   <ProteinAdequacyCard
                     today={proteinToday}
                     adequacy={proteinAdequacy}
+                    weeklyVerdict
                   />
                 )}
                 {fiberToday && (

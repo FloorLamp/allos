@@ -82,11 +82,53 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
     expect(bursts.map((b) => b.ids)).toEqual([[1, 4], [2], [3]]);
   });
 
+  // #5613: a burst is one error only while its rows stand together. Three taps corrected
+  // −1h, then a fresh tap: the fresh tap starts its own row; corrected to stand with the
+  // three it rejoins them; moved far away it stays apart.
+  it.each([
+    [
+      "a fresh tap after a correction",
+      "2026-08-05T18:15:00Z",
+      [[1, 2, 3], [4]],
+    ],
+    [
+      "that tap corrected to stand with them",
+      "2026-08-05T17:15:00Z",
+      [[1, 2, 3, 4]],
+    ],
+    ["that tap moved far away", "2026-08-05T13:00:00Z", [[1, 2, 3], [4]]],
+  ])("splits on a stored-instant gap: %s", (_, fishAt, ids) => {
+    const bursts = collapseBursts([
+      corrected(1, "2026-08-05T18:10:00Z", "2026-08-05T17:10:00Z"),
+      corrected(2, "2026-08-05T18:11:00Z", "2026-08-05T17:11:00Z"),
+      corrected(3, "2026-08-05T18:12:00Z", "2026-08-05T17:12:00Z"),
+      corrected(4, "2026-08-05T18:15:00Z", fishAt, "Fatty fish"),
+    ]);
+    expect(bursts.map((b) => b.ids)).toEqual(ids);
+  });
+
+  it("labels the split rows apart after tap, tap, tap, −1h, tap", () => {
+    const now = new Date("2026-08-05T18:16:00Z");
+    const bursts = collapseBursts([
+      corrected(1, "2026-08-05T18:10:00Z", "2026-08-05T17:10:00Z"),
+      corrected(2, "2026-08-05T18:11:00Z", "2026-08-05T17:11:00Z"),
+      corrected(3, "2026-08-05T18:12:00Z", "2026-08-05T17:12:00Z"),
+      tap(4, "2026-08-05T18:15:00Z", "Fatty fish"),
+    ]);
+    expect(bursts.map((b) => burstLabel(b, "UTC", now))).toEqual([
+      "×3 17:10–17:12 (corrected)",
+      "Fatty fish 18:15",
+    ]);
+  });
+
   it("normalizes a practice act before its shared chip floor and day checks", () => {
     const now = new Date("2026-08-05T19:12:10Z");
     const burst = collapseBursts([
-      corrected(1, "2026-08-05T19:12:00Z", "2026-08-05T07:42:17Z"),
-      tap(2, "2026-08-05T19:12:00Z"),
+      {
+        ...corrected(1, "2026-08-05T19:12:00Z", "2026-08-05T07:42:17Z"),
+        bundleId: "act-precision",
+      },
+      { ...tap(2, "2026-08-05T19:12:00Z"), bundleId: "act-precision" },
     ])[0];
     burst.bundle = { id: "act-precision", practiceDays: [] };
     expect(burstLabel(burst, "UTC", now)).toBe(

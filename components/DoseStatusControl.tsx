@@ -338,8 +338,7 @@ export default function DoseStatusControl({
   // THE VERB NAMES THE ACT (#4753, owner ruling 2). The retired framing named the
   // BOOKKEEPING of the act — the checkbox, not the dose — and it goes with this
   // family's adoption: taking a dose is `Take`, and undoing one is spelled the way the
-  // skip beside it already spells its own undo. The scan in
-  // `lib/__tests__/chip-residual.test.ts` holds the whole FILE to it, which is why the
+  // skip beside it already spells its own undo. The
   // icon-only arms move with the chip arm rather than keeping a second vocabulary for
   // the same tap.
   const TAKE_VERB = "Take";

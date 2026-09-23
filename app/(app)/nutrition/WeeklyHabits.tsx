@@ -7,10 +7,7 @@ import {
 } from "@/lib/queries";
 import type { HabitWeekVerdict } from "@/lib/food-habit-trend";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import {
-  frequencyScopeLabel,
-  frequencyPaceLabel,
-} from "@/lib/frequency-targets";
+import { frequencyPaceLabel } from "@/lib/frequency-targets";
 import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import {
@@ -26,7 +23,7 @@ import Disclosure from "@/components/Disclosure";
 import { EmptyState } from "@/components/ui";
 import { StateCells } from "@/components/StateCells";
 import { chartAdherenceState } from "@/lib/chart-colors";
-import { foodGroupBySlug } from "@/lib/food-groups";
+import { foodGroupBySlug, foodGroupShortName } from "@/lib/food-groups";
 import type { GroupServingTotal } from "@/lib/food-daily-totals";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
@@ -92,12 +89,13 @@ export default function WeeklyHabits({
   // THE ONE LIST: every group with servings this week, plus every tracked group that
   // has none. Ordered servings-descending then by name, so the hierarchy is legible and
   // two weeks with the same contents read the same; a zero-serving habit lands at the
-  // end, which is where "you have not done this yet" belongs.
+  // end, which is where "you have not done this yet" belongs. A dense rail, so the
+  // short name (#5098); the full name stays on the ledger rows, where it is the record.
   const byHabit = new Map(habits.map((p) => [p.target.scope_value, p]));
   const rows = [
     ...rollup.map((g) => ({
       slug: g.slug,
-      name: g.name,
+      name: foodGroupShortName(g.slug),
       tier: g.tier,
       servings: g.servings,
     })),
@@ -107,9 +105,7 @@ export default function WeeklyHabits({
         const group = foodGroupBySlug(p.target.scope_value);
         return {
           slug: p.target.scope_value,
-          name:
-            group?.name ??
-            frequencyScopeLabel("food_group", p.target.scope_value),
+          name: foodGroupShortName(p.target.scope_value),
           tier: group?.tier ?? "neutral",
           servings: 0,
         };
@@ -147,10 +143,10 @@ export default function WeeklyHabits({
                 data-testid={`rollup-${row.slug}`}
                 className="text-sm"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-baseline gap-2">
                   <FoodGroupIcon
                     slug={row.slug}
-                    className={`h-4 w-4 shrink-0 ${FOOD_GROUP_TIER_TINT[row.tier]}`}
+                    className={`h-4 w-4 shrink-0 translate-y-0.5 ${FOOD_GROUP_TIER_TINT[row.tier]}`}
                   />
                   <span className="w-5 shrink-0 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                     {row.servings % 1 === 0
