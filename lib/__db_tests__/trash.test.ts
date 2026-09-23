@@ -13,7 +13,9 @@
 //      listed nor swept up by either by-hand purge;
 //   5. deleting the PROFILE reclaims the media its captures still hold (#5957) — it
 //      destroys them through a table sweep rather than a purge, so it is the path
-//      that can drop a holding row without reclaiming what the row pointed at.
+//      that can drop a holding row without reclaiming what the row pointed at;
+//   6. a purge unlinks only files inside the purging profile's own directory
+//      (#5997), whatever path its capture names.
 //
 // The rest of the clip-file half (a purge must unlink the captured video files) lives
 // in lib/__db_tests__/video-write.test.ts, where the video fixtures already are.
@@ -36,7 +38,11 @@ import {
   MAX_TRASH_RETENTION_DAYS,
 } from "@/lib/retention";
 import { BULK_CORRECTION_KIND } from "@/lib/bulk-correction";
-import { storeVideoFiles } from "@/lib/video/store";
+import {
+  storeVideoFiles,
+  unlinkVideoFiles,
+  videoDomainRoot,
+} from "@/lib/video/store";
 import { deleteProfile } from "@/app/(app)/settings/family/actions";
 import {
   actAs,
@@ -393,5 +399,79 @@ describe("deleting a profile reclaims the media its Trash still holds", () => {
     emptyTrash(gated(bystander.id));
     expect(fs.existsSync(bystanderFiles.clip)).toBe(false);
     expect(fs.existsSync(bystanderFiles.poster)).toBe(false);
+  });
+});
+
+describe("a purge unlinks only the purging profile's own files", () => {
+  // #5997: containment used to be the domain root, so a capture naming a path under
+  // another profile's directory destroyed that file — and the still-live probe cannot
+  // protect a row that is itself in the Trash.
+  const abs = (rel: string) => path.resolve(process.cwd(), rel);
+
+  function clip(profileId: number, tag: string) {
+    const stored = storeVideoFiles("activity", profileId, {
+      contentHash: `hash-${tag}`,
+      mime: "video/mp4",
+      bytes: Buffer.from(`clip-${tag}`),
+      poster: null,
+    });
+    return stored.storedPath;
+  }
+
+  function linkVideo(profileId: number, activityId: number, stored: string) {
+    db.prepare(
+      `INSERT INTO activity_videos
+         (profile_id, activity_id, stored_path, content_hash, mime_type)
+       VALUES (?, ?, ?, ?, 'video/mp4')`
+    ).run(profileId, activityId, stored, `row-${stored}`);
+  }
+
+  it("leaves another profile's trashed clip that a capture names", () => {
+    const a = createProfile("TRASH-CONTAIN A").id;
+    const b = createProfile("TRASH-CONTAIN B").id;
+
+    // B's clip, with B's own row in the Trash so no live row protects it.
+    const bActivity = newActivity(b, "B clip owner");
+    const bPath = clip(b, "contain-b");
+    linkVideo(b, bActivity, bPath);
+    expect(captureDelete("activity", b, bActivity)).toBeTruthy();
+
+    // A's capture names its own clip AND B's path.
+    const aActivity = newActivity(a, "A clip owner");
+    const aPath = clip(a, "contain-a");
+    linkVideo(a, aActivity, aPath);
+    linkVideo(a, aActivity, bPath);
+    const undoId = captureDelete("activity", a, aActivity);
+    expect(undoId).toBeTruthy();
+
+    expect(purgeDeletedRow(gated(a), undoId!)).toEqual({ kind: "purged" });
+    expect(fs.existsSync(abs(aPath))).toBe(false);
+    expect(fs.existsSync(abs(bPath))).toBe(true);
+  });
+
+  it("refuses a traversal, an absolute path, or a symlink out of the profile's dir", () => {
+    const a = createProfile("TRASH-TRAVERSE A").id;
+    const b = createProfile("TRASH-TRAVERSE B").id;
+    const bPath = abs(clip(b, "traverse-b"));
+    const aDir = path.join(videoDomainRoot("activity"), String(a));
+    fs.mkdirSync(aDir, { recursive: true });
+    fs.symlinkSync(path.dirname(bPath), path.join(aDir, "link"));
+    const name = path.basename(bPath);
+
+    unlinkVideoFiles("activity", a, [
+      path.join(
+        "data/uploads/activity-videos",
+        String(a),
+        "..",
+        String(b),
+        name
+      ),
+      bPath,
+      path.join(aDir, "link", name),
+    ]);
+    expect(fs.existsSync(bPath)).toBe(true);
+
+    fs.rmSync(aDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(bPath), { recursive: true, force: true });
   });
 });
