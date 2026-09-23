@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -222,6 +223,29 @@ describe("nvmrcMajorAt", () => {
     expect(nvmrcMajorAt("refs/remotes/origin/main", read)).toBeNull();
     expect(nvmrcMajorAt(undefined, read)).toBeNull();
     expect(asked).toEqual(["refs/remotes/origin/main", undefined]);
+  });
+});
+
+// TWO STATEMENTS OF ONE PIN (#6005). `engine-strict` refuses installs by
+// package.json's `engines.node`, and every other guard reads `.nvmrc`; a major
+// bump that updates only one leaves two pinned answers. The range is evaluated
+// by npm's own semver, not compared as text, so any spelling that admits exactly
+// `.nvmrc`'s major passes.
+describe("package.json engines", () => {
+  it("admits exactly the major .nvmrc pins", () => {
+    // semver has no type declarations here; npm resolves engines with it.
+    const semver = createRequire(import.meta.url)("semver") as {
+      satisfies: (version: string, range: string) => boolean;
+    };
+    const { engines } = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")
+    ) as { engines: { node: string } };
+    const major = Number(nvmrcMajorAt());
+    const admits = (v: string) => semver.satisfies(v, engines.node);
+    expect(admits(`${major}.0.0`)).toBe(true);
+    expect(admits(`${major}.999.0`)).toBe(true);
+    expect(admits(`${major - 1}.999.0`)).toBe(false);
+    expect(admits(`${major + 1}.0.0`)).toBe(false);
   });
 });
 
