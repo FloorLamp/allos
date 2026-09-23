@@ -33,7 +33,7 @@ export type FilterPillButtonOption<T extends FilterPillValue> =
     disabled?: boolean;
     /**
      * What a reader hears instead of the visible label, where they differ. There is
-     * deliberately no `title` beside it: `lib/__tests__/raw-title-boundary.test.ts`
+     * deliberately no `title` beside it: `RAW_TITLE_BAN` in eslint.config.mjs
      * keeps production free of hover-only explanatory titles (#3375), and a hint only
      * a pointer can reach is what that ratchet exists to refuse.
      */
