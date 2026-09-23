@@ -364,15 +364,7 @@ export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
 //                for one again would invite a retry that can never be accepted.
 //   inactive   — the item is paused/stopped; nothing written.
 export type AdministrationOutcome =
-  // `administrationId` names the row this write added, so a surface can offer to take
-  // exactly that row back (#5663); `occurredAt` is its canonical instant.
-  | {
-      kind: "logged";
-      count: number;
-      date: string;
-      administrationId: number;
-      occurredAt: string;
-    }
+  | { kind: "logged"; count: number; date: string }
   | { kind: "duplicate"; count: number; date: string }
   | { kind: "invalid-time" }
   | { kind: "stale-item" }

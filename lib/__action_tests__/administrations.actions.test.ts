@@ -95,7 +95,7 @@ describe("logMedicationAdministration action (#797)", () => {
     const res = await logMedicationAdministration(
       fd({ id: itemId, offset: "now" })
     );
-    expect(res).toMatchObject({ ok: true, outcome: "logged" });
+    expect(res).toEqual({ ok: true, outcome: "logged" });
     expect(adminRows(itemId)).toBe(1);
     expect(onHand(itemId)).toBe(9);
     expect(revalidate).toHaveBeenCalledWith("/medications");
@@ -195,7 +195,7 @@ describe("logMedicationAdministration action (#797)", () => {
     const res = await logMedicationAdministration(
       fd({ id: itemId, offset: "custom", time: "19:15", date: yesterday })
     );
-    expect(res).toMatchObject({ ok: true, outcome: "logged" });
+    expect(res).toEqual({ ok: true, outcome: "logged" });
 
     const doseId = (
       db
@@ -264,7 +264,7 @@ describe("logMedicationAdministration action (#797)", () => {
     const res = await logMedicationAdministration(
       fd({ id: itemId, offset: "now", date: today(profile.id) })
     );
-    expect(res).toMatchObject({ ok: true, outcome: "logged" });
+    expect(res).toEqual({ ok: true, outcome: "logged" });
     expect(adminRows(itemId)).toBe(1);
   });
 
@@ -378,7 +378,7 @@ describe("logMedicationAdministration on an item with no dose row (#5981)", () =
       await logMedicationAdministration(
         fd({ id: itemId, offset: "now", amount: "160 mg" })
       )
-    ).toMatchObject({ ok: true, outcome: "logged" });
+    ).toEqual({ ok: true, outcome: "logged" });
     expect(doseAmounts(itemId)).toEqual(["160 mg"]);
     expect(adminRows(itemId)).toBe(1);
     expect(loggedAmount(itemId)).toBe("160 mg");
@@ -405,7 +405,7 @@ describe("logMedicationAdministration on an item with no dose row (#5981)", () =
           profileId: member.id,
         })
       )
-    ).toMatchObject({ ok: true, outcome: "logged" });
+    ).toEqual({ ok: true, outcome: "logged" });
     expect(doseAmounts(itemId)).toEqual(["160 mg"]);
     expect(
       (

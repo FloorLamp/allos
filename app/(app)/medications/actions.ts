@@ -46,17 +46,8 @@ import {
   type StampedFormData,
 } from "@/lib/logged-via";
 
-// A LOGGED result names the row it wrote and its instant (#5663), so the surface can
-// state the minute and offer to take back exactly that row.
 export type MedicationAdministrationResult =
-  | {
-      ok: true;
-      outcome: "logged";
-      administrationId: number;
-      occurredAt: string;
-    }
-  | { ok: true; outcome: "duplicate" }
-  | { ok: false; error: string };
+  { ok: true; outcome: "logged" | "duplicate" } | { ok: false; error: string };
 
 // Medication-lifecycle write paths (#746): stop / restart / side effects for the
 // standalone Medications page. Split out of the former combined intake action
@@ -336,14 +327,8 @@ export async function logMedicationAdministration(
   revalidateRoute("/");
   switch (outcome.kind) {
     case "logged":
-      return {
-        ok: true,
-        outcome: "logged",
-        administrationId: outcome.administrationId,
-        occurredAt: outcome.occurredAt,
-      };
     case "duplicate":
-      return { ok: true, outcome: "duplicate" };
+      return { ok: true, outcome: outcome.kind };
     case "invalid-time":
       return formError(
         "That time is out of range — pick a recent day and time."

@@ -129,26 +129,8 @@ describe("administrationLastDoseLabel", () => {
 
 describe("administrationOutcomeText", () => {
   const cases: [AdministrationOutcome, string][] = [
-    [
-      {
-        kind: "logged",
-        count: 1,
-        date: "d",
-        administrationId: 1,
-        occurredAt: "d",
-      },
-      "Logged ✅ Ibuprofen",
-    ],
-    [
-      {
-        kind: "logged",
-        count: 3,
-        date: "d",
-        administrationId: 1,
-        occurredAt: "d",
-      },
-      "Logged ✅ Ibuprofen — 3 today",
-    ],
+    [{ kind: "logged", count: 1, date: "d" }, "Logged ✅ Ibuprofen"],
+    [{ kind: "logged", count: 3, date: "d" }, "Logged ✅ Ibuprofen — 3 today"],
     [{ kind: "duplicate", count: 1, date: "d" }, "Already logged"],
     [{ kind: "invalid-time" }, "out of range"],
     [{ kind: "inactive" }, "paused"],
@@ -172,8 +154,6 @@ describe("administrationOutcomeText", () => {
         kind: "logged",
         count: 1,
         date: "d",
-        administrationId: 1,
-        occurredAt: "d",
       })
     ).toBe(true);
     expect(
