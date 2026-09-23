@@ -53,7 +53,10 @@ test("a wheel over the page behind an open dialog moves nothing until it closes"
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => scrollY(page)).toBe(0);
 
-  await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByTestId("supplement-add-toggle")
+  );
   const dialog = page.getByRole("dialog", { name: "Add supplement" });
   await expect(dialog).toBeVisible();
 

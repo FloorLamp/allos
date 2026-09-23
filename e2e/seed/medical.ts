@@ -53,7 +53,6 @@ import {
   REPORTS_SOURCE_NAME,
   REPORTS_SOURCE_PROVIDER,
   REPORTS_SOURCE_DOCUMENT,
-  E2E_LOGIN_LONGEVITY_STALE,
   LONGEVITY_STALE_PROFILE,
 } from "../fixture-logins";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
@@ -1272,7 +1271,6 @@ export function seedLongevityStalePanel(): void {
   );
   ins.run(pid, drawn, "HDL Cholesterol", "70", 70, "mg/dL", "HDL Cholesterol");
   reconcileFlags(pid);
-  seedMemberLogin(E2E_LOGIN_LONGEVITY_STALE, pid, "write");
   console.log(
     `e2e: seeded old-only optimal-biomarker panel for profile ${pid} (${LONGEVITY_STALE_PROFILE}) (#2023)`
   );
