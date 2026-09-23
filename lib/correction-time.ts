@@ -295,7 +295,10 @@ function ms(iso: string): number {
 // each `messageRef` partition — null (web one-tap, offline replay, pruned message row)
 // its own — taps sort by tap instant (id breaks a tie, which is what an identical
 // stamp on two rows written in one transaction produces), and a gap wider than
-// BURST_GAP_MIN starts a new burst.
+// BURST_GAP_MIN starts a new burst — in tap time OR in stored instant (#5613). A burst
+// is one error only while its rows stand together: a fresh tap after a correction
+// stands apart and starts its own row. Chips move every member by one step and the
+// picker collapses a burst onto one instant, so a correction never splits its own burst.
 //
 // Partition-then-gap rather than a flush-on-change in one pass: two messages answered
 // alternately (A, B, A) inside one window must give A's two taps ONE row, and a
@@ -327,7 +330,9 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
       if (
         prev &&
         e.bundleId == null &&
-        ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS
+        (ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS ||
+          Math.abs(ms(rowInstant(e)) - ms(rowInstant(prev))) >
+            BURST_GAP_MIN * MIN_MS)
       )
         flush();
       current.push(e);

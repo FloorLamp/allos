@@ -20,6 +20,7 @@ import { revalidateRoute } from "@/lib/revalidate";
 import { isGiEffect } from "@/lib/gi-effects";
 import {
   isTriggerSlug,
+  TRIGGER_KINDS,
   type FoodSensitivity,
   type FoodSensitivityTriggerKind,
 } from "@/lib/food-sensitivities";
@@ -45,7 +46,12 @@ type Checked =
 function check(input: SensitivityFormInput): Checked {
   const slug = input.trigger_slug.trim();
   if (!slug) return { ok: false, error: "Pick what sets it off." };
-  if (!isTriggerSlug(input.trigger_kind, slug))
+  // The kind is posted too, so it is judged here rather than left to the CHECK
+  // constraint: a forged kind is a typed refusal, not a thrown INSERT.
+  if (
+    !(TRIGGER_KINDS as readonly string[]).includes(input.trigger_kind) ||
+    !isTriggerSlug(input.trigger_kind, slug)
+  )
     return { ok: false, error: "That isn’t a trigger this app knows." };
   const effect = input.effect.trim();
   if (!effect) return { ok: false, error: "Pick the effect." };
@@ -63,8 +69,8 @@ function check(input: SensitivityFormInput): Checked {
 }
 
 function refresh() {
-  // The declaration is listed on Nutrition → Manage, and (once slices 2 and 3 land)
-  // decides whether the food sheet shows a `This meal` chip at all.
+  // The declaration is listed on Nutrition → Manage, and decides whether the food
+  // bar shows a `This meal` chip at all.
   revalidateRoute("/nutrition");
 }
 

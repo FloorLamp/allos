@@ -41,6 +41,7 @@ import { summarizeExercise, type SetRow } from "./training-log-format";
 import { getTimezone, type UnitPrefs } from "./settings";
 import {
   compactList,
+  countedNames,
   countTone,
   dateFromCreatedAt,
   medicalGroupLabel,
@@ -508,9 +509,13 @@ function collectEvents(
   // `panel` column keeps its provenance role (it is never rewritten).
   //
   // The event id embeds this group key. It is computed per request and never
-  // persisted (no dismissal, saved item, URL, or localStorage entry keys on it —
-  // medical events carry no clock time, so they produce no intraday anchor
-  // either), so re-keying it needs no #203 migration.
+  // persisted (no dismissal, saved item, URL, or localStorage entry keys on it),
+  // so re-keying it needs no #203 migration.
+  //
+  // A group has a clock only when its rows state instants (`occurred_at`): its
+  // `sortTime` is the latest one's profile-local minute, and each reading carries
+  // its own. A day of dated-only labs stays clockless. The clock is the row's, not
+  // a day-chart tick (EXCLUDED_TICK_CATEGORIES, #5407).
   const medicalGroups = db
     .prepare(
       `WITH med AS (
@@ -534,9 +539,11 @@ function collectEvents(
                   COALESCE(NULLIF(TRIM(value), ''), CAST(value_num AS TEXT), '')
                 ) || '::' ||
                 COALESCE(NULLIF(TRIM(unit), ''), '') || '::' ||
-                COALESCE(NULLIF(TRIM(flag), ''), ''),
+                COALESCE(NULLIF(TRIM(flag), ''), '') || '::' ||
+                COALESCE(occurred_at, ''),
                 '||'
               ) AS result_details,
+              MAX(occurred_at) AS occurred_at,
               MAX(COALESCE(NULLIF(TRIM(canonical_name), ''), name)) AS first_name,
               MAX(document_id) AS document_id,
               MAX(source) AS source
@@ -556,6 +563,7 @@ function collectEvents(
     names: string | null;
     reported_count: number;
     result_details: string | null;
+    occurred_at: string | null;
     first_name: string | null;
     document_id: number | null;
     source: string | null;
@@ -568,7 +576,7 @@ function collectEvents(
     // "non-optimal" would be the wrong word for it — it is the lab's own range, not our
     // band. It shares non-optimal's amber tone, which is the tier flagTone puts it in.
     const reported = m.reported_count || 0;
-    const names = (m.names ?? "").split("||").filter(Boolean);
+    const names = countedNames((m.names ?? "").split("||").filter(Boolean));
     pushLimited(
       events,
       {
@@ -588,7 +596,8 @@ function collectEvents(
         detail: compactList(names, 5),
         href: clinicalObservationHref(m.document_id, names, m.first_name),
         tone: countTone(abnormal, nonoptimal + reported),
-        detailItems: parseDetailItems(m.result_details),
+        sortTime: timeFromCreatedAt(m.occurred_at, tz),
+        detailItems: parseDetailItems(m.result_details, tz),
         meta: m.document_id
           ? [`Document #${m.document_id}`]
           : m.source && m.source !== "manual"

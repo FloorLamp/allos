@@ -16,9 +16,11 @@
 // this row (#5865's invariant).
 
 import { db } from "./db";
-import type {
-  FoodSensitivity,
-  FoodSensitivityTriggerKind,
+import {
+  MEAL_PROPERTIES,
+  type FoodSensitivity,
+  type FoodSensitivityTriggerKind,
+  type MealProperty,
 } from "./food-sensitivities";
 
 const COLS = "id, trigger_kind, trigger_slug, effect, note, status";
@@ -55,6 +57,21 @@ export function getActiveFoodSensitivities(
   profileId: number
 ): FoodSensitivity[] {
   return getFoodSensitivities(profileId).filter((s) => s.status === "active");
+}
+
+/**
+ * The meal properties this profile is actively tracking, in vocabulary order: the food
+ * sheet's `This meal` chips. Empty is the common answer, and the sheet then shows no
+ * new control at all. Two declarations on one property (spicy → loose stools, spicy →
+ * bloating) are still one chip.
+ */
+export function declaredMealProperties(profileId: number): MealProperty[] {
+  const declared = new Set(
+    getActiveFoodSensitivities(profileId)
+      .filter((s) => s.trigger_kind === "property")
+      .map((s) => s.trigger_slug)
+  );
+  return MEAL_PROPERTIES.filter((p) => declared.has(p.slug));
 }
 
 export function getFoodSensitivity(

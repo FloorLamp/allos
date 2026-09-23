@@ -1,5 +1,6 @@
 "use server";
 
+import { parseMealProperties } from "@/lib/food-sensitivities";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import {
@@ -170,6 +171,8 @@ export async function logFoodServing(
   const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
+  const properties = parseMealProperties(formData.get("properties"));
+  if (!properties) return formError("Unknown meal mark.");
   // The eating-time statement (#2053), when the user made one. The wire shape, the day
   // rule and the acceptance gate are `judgePostedEatingTime`'s, shared with the composed
   // bundle on the same bar (#4438) — an absent or unusable statement records NO eating
@@ -202,7 +205,8 @@ export async function logFoodServing(
     // THE NOTE RIDES THE ADD (#5304). One serving, one note, on the row itself — the
     // day counter this tap bumps carries none. An absent or blank field is the common
     // answer and the core stores NULL for it.
-    String(formData.get("notes") ?? "")
+    String(formData.get("notes") ?? ""),
+    properties
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   // The core's own day bound (#4118), and it is NOT-FUTURE only: any real past day
