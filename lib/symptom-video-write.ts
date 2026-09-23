@@ -162,7 +162,7 @@ export function deleteSymptomVideoCore(
     db.prepare(
       `DELETE FROM symptom_videos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    unlinkVideoFiles("symptom", [row.stored_path, row.poster_path]);
+    unlinkVideoFiles("symptom", profileId, [row.stored_path, row.poster_path]);
     return true;
   });
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   HAPTIC_PATTERNS,
+  HAPTIC_TONES,
   hapticPattern,
   toastHaptic,
   type HapticEvent,
@@ -82,5 +83,19 @@ describe("toastHaptic", () => {
     HapticEvent | null,
   ][])("%s", (_name, options, expected) => {
     expect(toastHaptic(options)).toBe(expected);
+  });
+});
+
+describe("HAPTIC_TONES (#5900)", () => {
+  // The two answers to one tap differ in pitch AND length, and the confirmation is
+  // quieter and shorter than the countdown's alert, which is meant to be heard
+  // off-screen.
+  it("keeps commit, reject and alert apart, and commit the softest", () => {
+    const { commit, reject, alert } = HAPTIC_TONES;
+    expect(HAPTIC_TONES.select).toBeNull();
+    expect(commit.hz).not.toBe(reject.hz);
+    expect(commit.seconds).toBeLessThan(reject.seconds);
+    expect(commit.gain).toBeLessThan(alert.gain);
+    expect(commit.seconds).toBeLessThan(alert.seconds);
   });
 });
