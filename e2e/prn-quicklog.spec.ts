@@ -127,9 +127,7 @@ test("a Take tap states Taken on the row, toasts Dose logged, and undoes (#5663)
     await expect(row.getByTestId("prn-receipt")).toHaveText(
       /^Taken · \d{1,2}:\d{2}/
     );
-    await expect(
-      page.getByTestId("toast").filter({ hasText: /^Dose logged · / })
-    ).toBeVisible();
+    await expect(page.getByText(/^Dose logged · \d{1,2}:\d{2}/)).toBeVisible();
     // The row's Undo takes that dose back, and the receipt goes with it.
     await settledClick(page, row.getByTestId("prn-receipt-undo"));
     await expect(row.getByTestId("prn-receipt")).toHaveCount(0);
