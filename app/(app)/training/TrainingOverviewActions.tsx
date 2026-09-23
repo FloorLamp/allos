@@ -1,6 +1,7 @@
 "use client";
 
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import Button from "@/components/Button";
 import LogActivityButton from "@/components/LogActivityButton";
 import type { ReactNode } from "react";
 
@@ -54,15 +55,14 @@ export default function TrainingOverviewActions({
       data-testid="training-overview-actions"
     >
       {canStartWorkout && (
-        <button
-          type="button"
-          className="btn whitespace-nowrap"
+        <Button
+          variant="primary"
           data-testid="training-overview-start-workout"
-          data-workout-offer={workoutOffer.kind}
+          data={{ "data-workout-offer": workoutOffer.kind }}
           onClick={openLive}
         >
           {workoutOffer.label}
-        </button>
+        </Button>
       )}
       {secondary ? (
         // The ghost pair. Below `md` it is one wrapping line under the primary;
