@@ -68,6 +68,7 @@ import { logHeading } from "@/lib/log-manifest";
 import {
   HISTORY_KIND_LABELS,
   detailSegment,
+  historyClock,
   historyRowPick,
   type HistoryKind,
   type HistoryRollup,
@@ -1136,7 +1137,7 @@ export default function HistoryRows({
                       <dt className="font-medium text-slate-700 dark:text-slate-200">
                         {item.label}
                       </dt>
-                      <dd>
+                      <dd className={item.clock ? "flex gap-2" : undefined}>
                         {item.unit || item.flag ? (
                           <MedicalValue
                             value={item.value}
@@ -1146,6 +1147,11 @@ export default function HistoryRows({
                         ) : (
                           item.value
                         )}
+                        {item.clock ? (
+                          <span className="ml-auto text-slate-500 tabular-nums dark:text-slate-400">
+                            {historyClock(item.clock, "stated", prefs)}
+                          </span>
+                        ) : null}
                       </dd>
                     </div>
                   ))}

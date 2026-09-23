@@ -777,6 +777,19 @@ describe("buildIntradayModel — the tick rail", () => {
     expect(model.ticks.some((t) => t.category === "insight")).toBe(false);
   });
 
+  // #5407: a results fold's sortTime is its row clock, not a day-chart mark.
+  it("draws no tick for a results fold that states a clock", () => {
+    const fold: TimelineEvent = {
+      id: "medical:2026-08-18:glucose:manual",
+      date: DAY,
+      category: "medical",
+      title: "Metabolic results",
+      sortTime: "10:40",
+    };
+    const model = buildIntradayModel(input({ events: [...ticked, fold] }))!;
+    expect(model.ticks.some((t) => t.category === "medical")).toBe(false);
+  });
+
   it("is data-gated away when an insight is the only clock-timed event", () => {
     const model = buildIntradayModel(
       input({
