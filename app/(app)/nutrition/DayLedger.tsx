@@ -194,6 +194,10 @@ export default function DayLedger({
 
   const pending = (dose: PendingDayDose) =>
     !resolved.has(occurrenceKey(date, dose.doseId));
+  // The first due row that still draws, in the day's bucket order.
+  const nextDueId = groups
+    .flatMap((group) => group.rows)
+    .find((row) => row.kind === "due" && row.doses.some(pending))?.id;
 
   // Beyond `DOSE_LOG_DATE_WINDOW_DAYS` the write cores refuse, so the row states what
   // the day owed and offers nothing — a control whose every tap would be refused is
@@ -208,6 +212,7 @@ export default function DayLedger({
         // wrap this is inert.
         className={`${LOGGED_EVENT_ROW} flex-wrap`}
       >
+        {gutter(null)}
         <LoggedEventRow icon={<DoseGlyph />}>{dose.name}</LoggedEventRow>
         <span className={LOGGED_EVENT_TRAILING}>Not recorded</span>
       </li>
@@ -222,6 +227,7 @@ export default function DayLedger({
         data-testid={`ledger-due-dose-${dose.doseId}`}
         className={LOGGED_EVENT_ROW}
       >
+        {gutter(null)}
         <LoggedEventRow icon={<DoseGlyph />}>
           {dose.name}
           {dose.detail ? (
@@ -264,7 +270,8 @@ export default function DayLedger({
   // the bucket cannot be a heading over a frame of its own; it is a left column, printed
   // on the first row of each bucket's run and blank on the rest. That keeps "the bucket
   // is named once" true while removing a heading, a per-bucket count and a frame from
-  // between the page's chrome and its first fact.
+  // between the page's chrome and its first fact. EVERY row reserves it, the members
+  // a due or stack row expands to included, so one bucket's icons share one x (#5097).
   function gutter(label: string | null) {
     return (
       <span
@@ -433,14 +440,16 @@ export default function DayLedger({
     const expanded = open.has(row.id);
     return (
       // THE ONE ACCENT ON THE PAGE (#4477's blessed one-stream hierarchy). The record
-      // rows are the surface's ground; this is the only row anybody can still act on,
-      // so it — and nothing else in the ledger — takes the accent fill. The token is
-      // the palette's own `--accent-soft`, the same fill the active nav item wears, so
-      // this introduces no colour: both themes already define it.
+      // rows are the surface's ground; the NEXT due row — the first one still drawing —
+      // takes the accent fill, and a later bucket's due row reads as ground (#5097).
+      // The token is the palette's own `--accent-soft`, the same fill the active nav
+      // item wears, so this introduces no colour: both themes already define it.
       <li
         key={row.id}
         data-testid={`ledger-due-row-${row.bucket}`}
-        className="border-t border-(--divider) bg-(--accent-soft) first:border-t-0"
+        className={`border-t border-(--divider) first:border-t-0${
+          row.id === nextDueId ? " bg-(--accent-soft)" : ""
+        }`}
       >
         <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
           {gutter(label)}
@@ -539,6 +548,7 @@ export default function DayLedger({
                 data-status={dose.status}
                 className={LOGGED_EVENT_ROW}
               >
+                {gutter(null)}
                 {dose.status === "taken" ? (
                   <DayPickBox
                     kind="doses"
