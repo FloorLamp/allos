@@ -617,8 +617,8 @@ export async function saveRecommendationCadence(formData: FormData) {
 }
 
 // Shared-surface detail for this profile's MENTAL-HEALTH visits (#997). Off by
-// default (minimal on the Household page + family calendar); the owner may opt in
-// to show them in full detail on those shared surfaces.
+// default (minimal on the family calendar); the owner may opt in to show them in
+// full detail there.
 export async function saveMentalHealthShareFull(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const on =

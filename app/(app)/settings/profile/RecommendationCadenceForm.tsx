@@ -8,6 +8,7 @@ import {
 import { saveRecommendationCadence } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // AI recommendation-run cadence (issue #424) — PROFILE-scoped, following the active
 // profile, but ADMIN-EDITABLE ONLY (the admin pays for the API key). A member sees
@@ -36,9 +37,7 @@ export default function RecommendationCadenceForm({
   return (
     <div className="card space-y-3" data-testid="recommendation-cadence-form">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          AI recommendations
-        </h2>
+        <SectionHeading level={2}>AI recommendations</SectionHeading>
         {isAdmin && <SaveStatus {...status} />}
       </div>
 

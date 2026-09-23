@@ -8,6 +8,7 @@ import Button from "@/components/Button";
 import { saveAuditRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // GLOBAL, admin-only: how long the security audit trail (`audit_events` — logins,
 // PHI access, admin/family changes) is kept before the hourly notify tick prunes
@@ -28,9 +29,7 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
   return (
     <div data-testid="audit-retention-settings" className="card space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Audit-log retention
-        </h2>
+        <SectionHeading level={2}>Audit-log retention</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

@@ -5,9 +5,7 @@ import { settledClick } from "./helpers";
 import {
   E2E_LOGIN_DQ_GAPPY,
   E2E_LOGIN_DQ_COMPLETE,
-  E2E_LOGIN_DQ_CARE,
   DQ_GAPPY_PROFILE,
-  DQ_CARE_CHILD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
@@ -22,11 +20,10 @@ const SETUP_GAP_PREFIX = "home.setup:data-quality:";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // atomic dashboard statements (ranked by leverage, with no score), the
-// coaching surfaces (a dismiss anywhere silences everywhere through the shared bus),
-// and a household per-member gaps line. Since #1533 the dashboard shows each gap in
+// coaching surfaces (a dismiss anywhere silences everywhere through the shared bus).
+// Since #1533 the dashboard shows each gap
 // exactly once: data-quality and coaching-observation candidates are disjoint. The
-// seeded fixtures ship a gappy sole profile, a complete profile, and a caregiver
-// with a gappy child.
+// seeded fixtures ship a gappy sole profile and a complete profile.
 
 // Clears the gappy profile's data-quality dismissals so the atom is guaranteed
 // populated before each assertion, regardless of retries or a prior dismiss test
@@ -134,27 +131,6 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   // Dismissing the atom still writes to the shared suppression bus.
   await settledClick(page, atom.getByTestId("finding-dismiss"));
   await expect(gapRows).toHaveCount(0);
-
-  await page.context().close();
-});
-
-test("the household page shows a per-member data-quality gaps line (#1045)", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DQ_CARE,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  await page.goto("/household");
-
-  // Locate the gappy child's card by its avatar name, then assert its gaps line.
-  const childCard = page
-    .getByTestId("household-card")
-    .filter({ hasText: DQ_CARE_CHILD_PROFILE });
-  await expect(childCard).toBeVisible();
-  const gapsLine = childCard.getByTestId("household-data-quality");
-  await expect(gapsLine).toBeVisible();
-  await expect(gapsLine).toContainText("birthdate");
 
   await page.context().close();
 });

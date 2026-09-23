@@ -53,12 +53,7 @@ export const CHANGE_DETECTION_KIND_REGISTRY = {
   "streak-lapse": {
     ownerModule: "lib/intake-deltas.ts",
     ownerSymbol: "classifyIntakeDeltas",
-    surfaces: [
-      "Telegram digest",
-      "Weekly recap",
-      "Dashboard recap",
-      "Household card",
-    ],
+    surfaces: ["Telegram digest", "Weekly recap", "Dashboard recap"],
   },
   "verdict-transition": {
     ownerModule: "lib/dashboard-reading-promotions.ts",

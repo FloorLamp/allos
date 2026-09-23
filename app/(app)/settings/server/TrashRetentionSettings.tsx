@@ -8,6 +8,7 @@ import Button from "@/components/Button";
 import { saveTrashRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // GLOBAL, admin-only: how long a deleted row stays restorable under Data → Trash
 // before the hourly notify tick purges it for good (#2013). The audit-retention
@@ -31,9 +32,7 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
   return (
     <div data-testid="trash-retention-settings" className="card space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Trash retention
-        </h2>
+        <SectionHeading level={2}>Trash retention</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

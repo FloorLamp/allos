@@ -293,8 +293,8 @@ export interface AdherenceStripDose extends DoseCadence {
 // each day; a resolver that saw only declarations would score `na` on a day the app
 // itself offered the dose, and this function returns `na` BEFORE it consults the log, so
 // that day's take would be thrown away. `takenByDose` is the per-dose taken/skipped index from
-// `indexTakenByDose`. `lib/household.intakeAdherenceToday` is the today-only
-// sibling; this is the windowed version a weekly recap or history surface wants.
+// `indexTakenByDose`. This is the windowed version a weekly recap or history surface
+// wants.
 //
 // The window is clamped to each dose's LIFETIME (#430/#1442): a day is scored only
 // against the doses that already existed on it (doseExistsSince), and a day where
