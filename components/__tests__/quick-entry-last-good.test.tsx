@@ -783,7 +783,7 @@ describe("one quick-log visit", () => {
 
     expect(screen.getByTestId("visit-view").textContent).toBe("stool");
     expect(screen.getByTestId("quick-entry-stool")).toBeTruthy();
-    expect(screen.queryByText("Logged Good · Today")).toBeNull();
+    expect(screen.queryByText(/mood logged/)).toBeNull();
     expect(onDone).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("visit-back"));

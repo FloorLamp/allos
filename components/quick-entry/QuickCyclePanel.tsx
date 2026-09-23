@@ -60,12 +60,7 @@ export default function QuickCyclePanel({
           Period open since {state.openPeriodStart}.
         </div>
       )}
-      <PeriodOfferButton
-        state={state}
-        surface="sheet"
-        variant="compact"
-        onDone={onDone}
-      />
+      <PeriodOfferButton state={state} surface="sheet" onDone={onDone} />
       {/* Spread whole: the gathered payload IS the control's props, so a fourth
           reading added to the bar cannot be silently missing here. */}
       {ttc && <TtcLogControls {...ttc} />}
