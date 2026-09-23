@@ -55,6 +55,77 @@ describe("toOpenAiRequest", () => {
     ]);
   });
 
+  it("sends a PDF with Luna-compatible function tools", async () => {
+    let sentBody: unknown;
+    const client = createOpenAiCompatClient({
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "test",
+      fetchImpl: async (_url, init) => {
+        sentBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "ok" } }],
+          })
+        );
+      },
+    });
+    await client.messages.create({
+      model: "gpt-5.6-luna",
+      max_tokens: 1024,
+      tools: [
+        { name: "extract", input_schema: { type: "object", properties: {} } },
+      ],
+      tool_choice: { type: "tool", name: "extract" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: "JVBERi0xLjcK",
+              },
+            },
+            { type: "text", text: "Extract the results." },
+          ],
+        },
+      ],
+    });
+    expect(sentBody).toEqual({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1024,
+      reasoning_effort: "none",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "extract",
+            description: "",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "extract" } },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              file: {
+                filename: "document.pdf",
+                file_data: "data:application/pdf;base64,JVBERi0xLjcK",
+              },
+            },
+            { type: "text", text: "Extract the results." },
+          ],
+        },
+      ],
+    });
+  });
+
   it("translates tools + a forced tool_choice into OpenAI function-calling", () => {
     const body = toOpenAiRequest({
       model: "m",
@@ -158,64 +229,75 @@ describe("chatCompletionsUrl", () => {
 });
 
 describe("createOpenAiCompatClient (fetch-injected round trip)", () => {
-  it("presents messages.stream().finalMessage() over a fake fetch", async () => {
-    const calls: Array<{ url: string; body: unknown; auth?: string }> = [];
-    const fakeFetch: typeof fetch = (async (
-      url: string,
-      init?: RequestInit
-    ) => {
-      calls.push({
-        url: String(url),
-        body: JSON.parse(String(init?.body)),
-        auth: (init?.headers as Record<string, string>)?.authorization,
-      });
-      return {
-        ok: true,
-        json: async () => ({
-          choices: [
-            {
-              finish_reason: "tool_calls",
-              message: {
-                tool_calls: [
-                  {
-                    id: "c1",
-                    function: { name: "save_data", arguments: '{"ok":true}' },
-                  },
-                ],
+  it.each([
+    ["http://local/v1", "max_tokens"],
+    ["https://api.openai.com/v1/chat/completions", "max_completion_tokens"],
+  ])(
+    "sends the token limit for %s through the client",
+    async (baseUrl, tokenParameter) => {
+      const calls: Array<{ url: string; body: unknown; auth?: string }> = [];
+      const fakeFetch: typeof fetch = (async (
+        url: string,
+        init?: RequestInit
+      ) => {
+        calls.push({
+          url: String(url),
+          body: JSON.parse(String(init?.body)),
+          auth: (init?.headers as Record<string, string>)?.authorization,
+        });
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                finish_reason: "tool_calls",
+                message: {
+                  tool_calls: [
+                    {
+                      id: "c1",
+                      function: { name: "save_data", arguments: '{"ok":true}' },
+                    },
+                  ],
+                },
               },
-            },
-          ],
-          usage: { prompt_tokens: 2, completion_tokens: 1 },
-        }),
-      } as unknown as Response;
-    }) as unknown as typeof fetch;
+            ],
+            usage: { prompt_tokens: 2, completion_tokens: 1 },
+          }),
+        } as unknown as Response;
+      }) as unknown as typeof fetch;
 
-    const client = createOpenAiCompatClient({
-      baseUrl: "http://local/v1",
-      apiKey: "k",
-      fetchImpl: fakeFetch,
-    });
-    const msg = await (
-      client as unknown as {
-        messages: {
-          stream: (r: AnthropicRequest) => {
-            finalMessage: () => Promise<unknown>;
+      const client = createOpenAiCompatClient({
+        baseUrl,
+        apiKey: "k",
+        fetchImpl: fakeFetch,
+      });
+      const msg = await (
+        client as unknown as {
+          messages: {
+            stream: (r: AnthropicRequest) => {
+              finalMessage: () => Promise<unknown>;
+            };
           };
-        };
-      }
-    ).messages
-      .stream({
-        model: "m",
-        max_tokens: 5,
-        messages: [{ role: "user", content: "hi" }],
-      })
-      .finalMessage();
+        }
+      ).messages
+        .stream({
+          model: "gpt-5.6-luna",
+          max_tokens: 5,
+          messages: [{ role: "user", content: "hi" }],
+        })
+        .finalMessage();
 
-    expect(calls[0].url).toBe("http://local/v1/chat/completions");
-    expect(calls[0].auth).toBe("Bearer k");
-    expect(msg).toMatchObject({
-      content: [{ type: "tool_use", name: "save_data", input: { ok: true } }],
-      stop_reason: "tool_use",
-    });
-  });
+      expect(calls[0].url).toBe(chatCompletionsUrl(baseUrl));
+      expect(calls[0].body).toEqual({
+        model: "gpt-5.6-luna",
+        [tokenParameter]: 5,
+        messages: [{ role: "user", content: "hi" }],
+      });
+      expect(calls[0].auth).toBe("Bearer k");
+      expect(msg).toMatchObject({
+        content: [{ type: "tool_use", name: "save_data", input: { ok: true } }],
+        stop_reason: "tool_use",
+      });
+    }
+  );
 });

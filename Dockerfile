@@ -48,8 +48,9 @@ COPY . .
 # better-sqlite3 stays external (native addon, resolved from node_modules at
 # runtime). Must run before `npm prune --omit=dev`, while esbuild (via tsx) is
 # still present.
+# NODE_OPTIONS also reaches Next's TypeScript subprocess, unlike Node CLI flags.
 RUN mkdir -p public \
-  && npm run build \
+  && NODE_OPTIONS=--max-old-space-size=4096 npm run build \
   && npx esbuild scripts/notify.ts --bundle --platform=node --target=node20 \
        --format=cjs --external:better-sqlite3 --outfile=dist/notify.cjs \
   && npm prune --omit=dev
