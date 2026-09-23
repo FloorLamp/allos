@@ -9,6 +9,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { FitnessPictogram } from "@/components/fitness-pictograms";
+import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useWakeLock } from "@/components/useWakeLock";
@@ -163,11 +164,10 @@ export default function FitnessTestTimer({
   if (!expanded) {
     return (
       <div className="mt-2">
-        <button
-          type="button"
+        <Button
+          layout="block"
           onClick={openTakeover}
           data-testid={`${base}-launch`}
-          className="btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold"
         >
           <IconPlayerPlayFilled className="h-4 w-4" />
           {started
@@ -175,7 +175,7 @@ export default function FitnessTestTimer({
             : isCountdown
               ? `Start ${formatSeconds(windowSeconds!)} timer`
               : "Start timer"}
-        </button>
+        </Button>
       </div>
     );
   }
