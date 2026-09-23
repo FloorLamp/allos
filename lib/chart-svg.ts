@@ -8,7 +8,7 @@
 //   1. HOW BIG is this label on a real phone? A `fontSize={7}` in a 720-unit box
 //      rendered into a 358 px column paints at 7 × (358 ÷ 720) ≈ 3.5 CSS px. The
 //      number in the source is NOT the number on the page, which is why the px
-//      floor in `micro-text-size.test.ts` exempted these files outright — and why
+//      floor in the retired `micro-text-size` scan exempted these files outright — and why
 //      the intraday panel shipped sub-4px labels behind that exemption (#1518).
 //
 //   2. WHERE does the label go? A label anchored at a mark near the plot's right
@@ -282,7 +282,7 @@ const NUMERIC_FONT_SIZE =
  * Every numeric `fontSize` literal in `source` that paints below `minPx` once the
  * panel's viewBox is scaled into its narrowest container.
  *
- * This replaces the blanket exemption `micro-text-size.test.ts` used to grant
+ * This replaces the blanket exemption the retired `micro-text-size` scan granted
  * hand-drawn viewBox panels. The premise of that exemption was right — a raw 7 is
  * not 7px — but the conclusion (guard nothing) removed the floor from exactly the
  * charts whose type size is hardest to reason about. The ratio is the whole

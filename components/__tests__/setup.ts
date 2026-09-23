@@ -13,7 +13,14 @@
 // reset seam, but resetting them here would import them into every file in the tier
 // whether or not it uses them — so each test file resets what it drives.
 import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
+import { testTimeout } from "../../vitest.timeouts";
+
+// `waitFor` and `findBy*` otherwise wait testing-library's own flat 1000 ms, which no
+// timeout policy reaches, so a loaded machine fails a correct test (#5910). Half the
+// resolved per-test limit scales with the same override and stays below the ceiling,
+// so a real hang still fails as the wait, with its DOM printed, not as a test timeout.
+configure({ asyncUtilTimeout: testTimeout / 2 });
 
 // jsdom SHIPS NO `matchMedia`, and the app reads it wherever a preference is a media
 // query: `usePrefersReducedMotion` (#1307) and `useStandaloneDisplayMode` both call it

@@ -20,6 +20,7 @@ export default function ProteinAdequacyCard({
   today,
   adequacy,
   periodLabel,
+  weeklyVerdict = false,
 }: {
   // The band-gauge model (#974) — today so far + weekly average + goal band.
   today: ProteinToday | null;
@@ -28,6 +29,9 @@ export default function ProteinAdequacyCard({
   // "Today" by default; historical date views pass "Yesterday" / the formatted
   // weekday so the gauge never labels an older estimate as today's.
   periodLabel?: string;
+  // Whether `adequacy` judges the week rather than the day the gauge leads with.
+  // Then the verdict names its period, so the card never states two (#5099).
+  weeklyVerdict?: boolean;
 }) {
   if (!today && !adequacy) return null;
   // The accent follows the WEEKLY verdict, never today's in-progress figure.
@@ -38,7 +42,12 @@ export default function ProteinAdequacyCard({
       title="Protein"
       status={status}
       basis={adequacy?.intake.basis ?? today?.todayIntake?.basis ?? ""}
-      statusLabel={status && STATUS_LABEL[status]}
+      statusLabel={
+        status &&
+        (weeklyVerdict
+          ? `This week ${STATUS_LABEL[status].toLowerCase()}`
+          : STATUS_LABEL[status])
+      }
     >
       {today && <ProteinGauge today={today} periodLabel={periodLabel} />}
     </AdequacyRow>
