@@ -39,6 +39,7 @@
 // EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
 // step-aside rests on that reading.
 
+import type { MealPropertySlug } from "./food-sensitivities";
 import type { WriteAuthorizedProfileId } from "./auth";
 import { db, readTx, today, writeTx } from "./db";
 import {
@@ -270,7 +271,10 @@ export function logFoodServingCore(
   // it is created — never on the day that rolls the uses up. Absent or blank is the
   // commonest answer and stores NULL; `normalizedNote` is the one place that decision
   // is made, so "  " and "" and undefined cannot mean three things.
-  notes?: string | null
+  notes?: string | null,
+  // THE MEAL'S MARKS (#5865): the `This meal` chips pressed for this tap, stored on the
+  // event row so the tap's Undo takes them with it. None stores NULL.
+  properties: readonly MealPropertySlug[] = []
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
@@ -304,8 +308,8 @@ export function logFoodServingCore(
       .prepare(
         `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id, logged_via, bundle_id, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via, bundle_id, notes, properties)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -318,7 +322,8 @@ export function logFoodServingCore(
         origin?.notifyMessageId ?? null,
         loggedVia,
         origin?.bundleId ?? null,
-        normalizedNote(notes)
+        normalizedNote(notes),
+        properties.length > 0 ? JSON.stringify(properties) : null
       );
     return {
       kind: "logged",
