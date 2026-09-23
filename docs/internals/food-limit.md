@@ -1,14 +1,9 @@
-# The curated limit direction (#2377)
+# The curated limit direction
 
-Status: shipped
-
-"Which foods should I eat more of?" has been answered from a LOW-flagged biomarker
-since #577, and its high-side twin — which foods a HIGH flag says to limit — has
-existed since #775 as `meta.reduceEntries` in the curated nutrient-food map. (#2754
-later added the one declared exception to that pairing: the `soluble-fiber` ADD
-entry fires on a HIGH LDL/ApoB — the trigger direction is per-entry, declared, and
-honored by the resolver.) Four
-entries, each with a plain-language evidence line and a public source:
+A HIGH-flagged biomarker can name foods to limit through `meta.reduceEntries` in
+the curated nutrient-food map, the twin of the LOW flag's foods to eat more of.
+Each entry declares its trigger direction. Four entries, each with an evidence
+line and a public source:
 
 | key        | families                | groups it names                                  |
 | ---------- | ----------------------- | ------------------------------------------------ |
@@ -17,16 +12,10 @@ entries, each with a plain-language evidence line and a public source:
 | `urate`    | Uric Acid               | `alcohol`, `sugary_drinks`                       |
 | `sodium`   | Sodium                  | `processed_meat`                                 |
 
-The map is deliberately small. An uncovered family simply has no limit answer, and
-that is measurable rather than hidden — the same posture #2378 took for the curated
-supplement route. Nothing here is generated: the engine is
-`suggestFoods` (`lib/food-suggest.ts`), the curated table is committed and
-human-reviewable, and there is no AI path on the limit direction at all.
-
-What #2377 adds is **reach, not knowledge**. The limit direction rendered only on the
-biomarker detail page and the coaching tab — surfaces you visit when thinking about
-labs, not when deciding what to eat. It now also reaches the **log tap** and the
-**morning digest**.
+The map is deliberately small: an uncovered family has no limit answer. Nothing
+is generated; `suggestFoods` (`lib/food-suggest.ts`) reads the committed table,
+and no AI path touches the limit direction. It renders on the biomarker page,
+the coaching tab, the log tap and the morning digest.
 
 ## The modules
 
@@ -46,8 +35,7 @@ its guard test is file-scoped — it does not reach this module.
 This is a different act. A curated, general statement ("published guidance for a high
 LDL/ApoB lists fried food among the foods to limit") is a **lookup** in a human-reviewed
 table with a cited source. It is true of everyone with that result and asserts nothing
-about this person's diet. That is the shape #577 has shipped for years, pointed the
-other way. A **correlation the app invents** from two of one person's own data series is
+about this person's diet. A **correlation the app invents** from two of one person's own data series is
 the forbidden thing.
 
 The border is drawn structurally, in the same idiom as the incumbent guard:
@@ -63,9 +51,8 @@ The border is drawn structurally, in the same idiom as the incumbent guard:
   renderer downstream cannot cross the line by choosing to, because it is never handed
   a result.
 
-Pinned by `lib/__tests__/food-limit-note.test.ts` (a source scan, an import census, a
-structural key check and an assertion that no reduce entry's biomarker name can reach
-the digest head) and by a DB fixture with both halves of the forbidden sentence on file.
+Pinned by `lib/__tests__/food-limit-note.test.ts` and a DB fixture holding both
+halves of the forbidden sentence.
 
 ## Frequency discipline, with no stored marker
 
@@ -78,9 +65,8 @@ the log the app already keeps — no new table, no marker to sweep, nothing that
    the group logged on or since the day the flagged reading was collected. A note shown
    and not acted on is not re-shown by logging again; a new result re-arms it once.
 
-The interaction note is per-**day** rather than per-activation, matching the granularity
-its own dedupe key already declares (`foodDrugEventKey(item, rule, date)` — "a second
-course is a second signal"), which is the right cadence for a safety-adjacent rule.
+The interaction note is per-**day**, matching its dedupe key
+(`foodDrugEventKey(item, rule, date)`).
 
 When both fire, the interaction wins the single slot and the dietary claim is **not**
 re-queued: by tomorrow the group has been logged since the flag. The ceiling is one note
@@ -133,9 +119,6 @@ spent "under" a limit.
   belongs to dose reminders and missed-dose escalations.
 
 ## How this would learn it should stop (#2385)
-
-Prose, in the issue and in the module header. No registry, no scoring engine, no
-telemetry.
 
 - **What would show it working** — for profiles that received a note, that group's
   servings per **logged day** falls over the following weeks while the number of days

@@ -22,7 +22,7 @@ import {
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "@/lib/date";
-import { getTimezone, setStoredAge } from "@/lib/settings";
+import { getTimezone, setStoredAge, setTimezone } from "@/lib/settings";
 import { isCompletedSessionRow } from "@/lib/workout-presence";
 import {
   STALE_QUEUED_DOSE_REASON,
@@ -1059,6 +1059,40 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     expect(noTime.body.results?.[0].status).toBe("done");
     expect(noTime.body.results?.[0].timeNotice).toBeUndefined();
     expect(statedAt(silentDay)).toBeNull();
+  });
+
+  // #5865: a `This meal` chip pressed offline is not lost on replay.
+  it("carries the tap's meal marks through replay, and dead-letters an unknown one", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodMarks ${uniqueKey()}`);
+    actAs(admin, profile);
+    setTimezone(profile.id, "UTC");
+    const date = today(profile.id);
+    const marked = (properties: unknown) => ({
+      ...servingIntent(
+        profile.id,
+        date,
+        "legumes",
+        "Evening",
+        `${date}T00:00:00.000Z`
+      ),
+      payload: {
+        entry: "serving" as const,
+        groupKey: "legumes",
+        mealSlot: "Evening",
+        grams: null,
+        properties: properties as string[],
+      },
+    });
+    const { body } = await replay([marked(["spicy"]), marked(["vibe"])]);
+    expect(body.results?.map((r) => r.status)).toEqual(["done", "rejected"]);
+    expect(
+      db
+        .prepare(
+          "SELECT properties FROM food_log_events WHERE profile_id = ? AND date = ?"
+        )
+        .all(profile.id, date)
+    ).toEqual([{ properties: '["spicy"]' }]);
   });
 
   it("dead-letters an unknown food group with a reason, writing nothing", async () => {
