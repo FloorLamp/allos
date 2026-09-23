@@ -2019,11 +2019,10 @@ const household: SeedPersona = {
     "his mother Margaret (six meds, T2D + AFib + CKD 3), and 22-month-old " +
     "Dave and twins Riley and Rowan who are currently sick — active illness " +
     "episodes, day-by-day symptoms, and a fever curve. Stresses the " +
-    "household roll-ups, cross-profile timeline/calendar, family settings, " +
+    "cross-profile timeline/calendar, family settings, " +
     "and every multi-profile merge surface the solo personas can't reach.",
   routes: [
     "/",
-    "/household",
     "/upcoming",
     "/history",
     "/settings/family",
@@ -2150,7 +2149,6 @@ const pregnant: SeedPersona = {
     "/nutrition",
     "/appointments",
     "/records",
-    "/household",
   ],
   gaps: [
     "Pregnancy is only a risk-attribute flag plus a condition row — no " +
@@ -2492,7 +2490,6 @@ const diabeticCgm: SeedPersona = {
     "/trends",
     "/longevity",
     "/data",
-    "/household",
   ],
   gaps: [
     "Continuous glucose has a HOME but no way in and no way to look at it: " +

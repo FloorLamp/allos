@@ -51,12 +51,13 @@ const mocks = vi.hoisted(() => ({
   addMeasurements: vi.fn(async (_formData: FormData) => ({})),
   deleteAdministration: vi.fn(),
   confirm: vi.fn(),
+  toast: vi.fn(),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (formData: FormData) => formData,
 }));
-vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
+vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/TimezoneProvider", () => ({
   useTimezone: () => "UTC",
 }));
@@ -946,6 +947,103 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fd.offset).toBe("custom");
     expect(fd.time).toBe("23:30");
     expect(fd.date).toBe(YESTERDAY_UTC);
+  });
+});
+
+// THE ROW STATES WHAT LANDED (#5663 ruling 1, #5900 problem 2). A PRN tap used to
+// answer with nothing on the row: the toast named the medicine, and the revalidated
+// "N today · last …" line arrived with the response. The row now says "Taken", with
+// the minute when one was stated, the toast reads the one grammar, and the chip
+// settles once — only for a write that landed.
+describe("the PRN row states the dose it logged (#5663/#5900)", () => {
+  function row(): void {
+    render(
+      <QuickLogPrnControl
+        identity={{ name: "Ibuprofen", rxcui: null }}
+        itemId={31}
+        name="Ibuprofen"
+        doseAmount="200 mg"
+        dayLabel="1 today · last 4:02pm"
+        tz="UTC"
+      />
+    );
+  }
+
+  it("states Taken and settles once after a now-tap, with no minute nobody stated", async () => {
+    row();
+    expect(screen.queryByTestId("prn-receipt")).toBeNull();
+    expect(screen.getByTestId("prn-settle").dataset.settling).toBe("false");
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(screen.getByTestId("prn-receipt").textContent).toBe("Taken");
+    expect(mocks.toast).toHaveBeenCalledWith("Dose logged");
+    const settle = screen.getByTestId("prn-settle");
+    expect(settle.dataset.settling).toBe("true");
+    expect(settle.className).toContain("motion-settle");
+  });
+
+  it("names the stated minute on the row and in the toast", async () => {
+    row();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-when-toggle"))
+    );
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "08:05" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    expect(screen.getByTestId("prn-receipt").textContent).toBe("Taken · 08:05");
+    expect(mocks.toast).toHaveBeenCalledWith("Dose logged · 08:05");
+  });
+
+  it("drops the receipt when the day or the subject moves", async () => {
+    // A live day, so the tap writes rather than asking for the minute.
+    const NOW_DAY = new Date().toISOString().slice(0, 10);
+    const PREV_DAY = new Date(Date.now() - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const props = {
+      identity: { name: "Ibuprofen", rxcui: null },
+      itemId: 31,
+      name: "Ibuprofen",
+      doseAmount: "200 mg",
+      dayLabel: "1 today · last 4:02pm",
+      tz: "UTC",
+    };
+    const view = render(<QuickLogPrnControl {...props} date={NOW_DAY} />);
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(screen.getByTestId("prn-receipt")).toBeTruthy();
+    view.rerender(<QuickLogPrnControl {...props} date={PREV_DAY} />);
+    expect(screen.queryByTestId("prn-receipt")).toBeNull();
+
+    view.rerender(<QuickLogPrnControl {...props} date={NOW_DAY} />);
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(screen.getByTestId("prn-receipt")).toBeTruthy();
+    view.rerender(
+      <QuickLogPrnControl {...props} date={NOW_DAY} profileId={4} />
+    );
+    expect(screen.queryByTestId("prn-receipt")).toBeNull();
+  });
+
+  it("states nothing and does not settle when the write is refused or a duplicate", async () => {
+    mocks.logMedicationAdministration.mockImplementationOnce(async () => ({
+      ok: false,
+      error: "This medication is paused — resume it to log a dose.",
+    }));
+    row();
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(screen.queryByTestId("prn-receipt")).toBeNull();
+    expect(screen.getByTestId("prn-settle").dataset.settling).toBe("false");
+
+    mocks.logMedicationAdministration.mockImplementationOnce(async () => ({
+      ok: true,
+      outcome: "duplicate",
+    }));
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(screen.queryByTestId("prn-receipt")).toBeNull();
+    expect(screen.getByTestId("prn-settle").dataset.settling).toBe("false");
   });
 });
 

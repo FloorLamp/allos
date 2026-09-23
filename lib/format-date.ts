@@ -7,6 +7,9 @@ import {
   WEEKDAYS_SHORT,
   zonedDateParts,
 } from "./date";
+// "This year" is the app clock's year (lib/clock), so a frozen e2e clock and the
+// server agree on when a date needs its year (#6015).
+import { now as clockNow } from "./clock";
 
 // ---- Display-format preferences (login tier, issue #964) ----
 // Two closed-enum display preferences that let a login choose how times and dates
@@ -203,7 +206,7 @@ export function formatDateShape(
 // passing an explicit todayStr (server: today() from lib/db; client:
 // dateStrInTz(useTimezone())) so day math follows the app's timezone.
 function localTodayStr(): string {
-  const n = new Date();
+  const n = clockNow();
   const pad = (x: number) => String(x).padStart(2, "0");
   return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
 }
@@ -251,7 +254,7 @@ export function formatLongDate(
       weekday: WEEKDAYS_LONG[d.getDay()],
       year:
         options.year === "always" ||
-        d.getFullYear() !== new Date().getFullYear(),
+        d.getFullYear() !== clockNow().getFullYear(),
     }
   );
 }
@@ -287,7 +290,7 @@ export function formatMonthDay(
       monthStyle: "short",
       year:
         d.getFullYear() !==
-        (Number.isFinite(refYear) ? refYear : new Date().getFullYear()),
+        (Number.isFinite(refYear) ? refYear : clockNow().getFullYear()),
     }
   );
 }
@@ -336,7 +339,7 @@ export function formatWeekdayDate(
     {
       monthStyle: "short",
       weekday: WEEKDAYS_SHORT[d.getDay()],
-      year: d.getFullYear() !== new Date().getFullYear(),
+      year: d.getFullYear() !== clockNow().getFullYear(),
     }
   );
 }
