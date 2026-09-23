@@ -265,9 +265,9 @@ export type QuickEntryData =
       others?: QuickEntryOthers;
     }
   | {
-      // The tracked practices, each with the standing the shared card shows (#1633).
-      // Plain rows, not a second opinion: they come from the same weekly-progress
-      // computation the Wellness page reads.
+      // The tracked practices, each with its weekly standing (#1633). Plain rows, not
+      // a second opinion: they come from the same weekly-progress computation Upcoming
+      // and the practice nudge read.
       form: "practice";
       practices: TrackedPractice[];
       // The acting profile's today (YYYY-MM-DD): the row's log button asks a

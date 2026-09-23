@@ -325,6 +325,8 @@ function PracticeRowMenu({
     if (!ok) return;
     await undoable(deletePractice, fd(), {
       deletedMessage: `${practice.name} deleted.`,
+      // The list holds its own rows, so an Undo must re-read them like the delete did.
+      onRestored: onChanged,
     });
     onChanged();
   }

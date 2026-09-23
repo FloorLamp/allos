@@ -37,12 +37,13 @@ import type {
 } from "../types";
 import type { FrequencyPace } from "../frequency-targets";
 import { pageCount, pageOffset } from "../pagination";
+import type { DayHistoryGroupMeta, DayHistoryValue } from "../day-history";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,
 } from "./frequency-targets";
 
-const WELLNESS_CARD_SESSION_LIMIT = 200;
+const PRACTICE_SESSION_LIMIT = 200;
 
 export {
   groupPracticeSpellings,
@@ -417,7 +418,7 @@ export interface TrackedPractice {
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
   // The quick sheet's inline duration stepper starts here (#2204) — the canonical
-  // identity-wide usual-duration vote the Wellness card and protocol row also use.
+  // identity-wide usual-duration vote the protocol row and Upcoming also use.
   // Null means blank: the sheet does not invent a duration without history.
   previousDurationMin: number | null;
   liveSession: LivePracticeSession | null;
@@ -429,12 +430,13 @@ export interface TrackedPractice {
 // declaration that this is something they mean to keep doing, which is exactly what a
 // one-tap logger should offer. An untracked practice keeps its history on History; it
 // just doesn't claim a row in a surface that has to stay scannable — and an untracked
-// practice reappearing here would quietly undo the untrack. It is also the finite preimage the palette matches typed input
-// against (the #394 posture), so both quick surfaces offer exactly the same set.
+// practice reappearing here would quietly undo the untrack. It is also the finite
+// preimage the palette matches typed input against (the #394 posture), so both quick
+// surfaces offer exactly the same set.
 //
 // Two bounded reads regardless of how many practices exist: the shared weekly progress
 // computation (the same getFrequencyTargetProgress every cadence surface reads, so the
-// overlay can never disagree with the Wellness card) plus one grouped tally of today's
+// overlay can never disagree with Upcoming or the nudge) plus one grouped tally of today's
 // logs, folded by practiceIdentity in JS — SQL cannot call that normalizer, and today's
 // rows are a bounded set.
 export function getTrackedPractices(
@@ -513,8 +515,8 @@ export function getTrackedPractices(
       atCeiling: targetProgress?.atCeiling ?? false,
       pace: targetProgress?.pace ?? "quiet",
       todayCount: todayByIdentity.get(identity) ?? 0,
-      // The SAME pure resolution the Wellness card's expanded form reads — one
-      // question, one computation. A practice with no logs at all resolves through
+      // The SAME pure resolution the protocol row reads — one question, one
+      // computation. A practice with no logs at all resolves through
       // the empty list rather than being special-cased here.
       previousDurationMin: getPracticeUsualDuration(
         profileId,
@@ -680,7 +682,7 @@ export function getPracticeSearchRows(profileId: number): PracticeSearchRow[] {
 export function getAllPracticeSessions(
   profileId: number,
   name: string,
-  limit = WELLNESS_CARD_SESSION_LIMIT
+  limit = PRACTICE_SESSION_LIMIT
 ): PracticeLog[] {
   return getPracticeSessions(profileId, name, limit);
 }
@@ -833,6 +835,31 @@ export function getPracticeDays(
     }
   }
   return [...byDayKey.values()];
+}
+
+// The cross-practice heat map's two inputs, from getPracticeDays' rows: one value per
+// day and practice, and the practices ordered by how often each was done.
+export function practiceDayHistory(days: readonly PracticeDay[]): {
+  values: DayHistoryValue[];
+  groups: DayHistoryGroupMeta[];
+} {
+  const totals = new Map<string, { label: string; total: number }>();
+  for (const d of days) {
+    const t = totals.get(d.key) ?? { label: d.label, total: 0 };
+    t.total += d.count;
+    totals.set(d.key, t);
+  }
+  return {
+    values: days.map((d) => ({
+      date: d.date,
+      group: d.key,
+      value: d.count,
+      detail: d.minutes,
+    })),
+    groups: [...totals.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([key, v]) => ({ key, label: v.label })),
+  };
 }
 
 // ---- Practice-time correction rows (issue #2875) ----------------------------

@@ -36,7 +36,9 @@ export function useUndoableDelete() {
       | { undoIds: number[]; error?: string }
     >,
     fd: FormData,
-    opts: { deletedMessage: string }
+    // `onRestored` runs after a successful Undo, for a surface that holds its own copy
+    // of the rows and must re-read them — a page re-render cannot reach it (#5668).
+    opts: { deletedMessage: string; onRestored?: () => void }
   ): Promise<void> {
     const result = await action(fd);
     if (result.error) {
@@ -70,6 +72,7 @@ export function useUndoableDelete() {
             tokens.length === 1
               ? (await undoDelete(tokens[0])).ok
               : (await undoDeletes(tokens)).restored > 0;
+          if (ok) opts.onRestored?.();
           // A capture that will not restore has been swept or has passed its window —
           // the delete half has exactly one refusal, and it is that one.
           return ok ? { ok: true } : { ok: false, reason: "expired" };

@@ -140,8 +140,9 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
     source: "practice-logs",
     grain: "distinct-days",
     direction: "floor",
-    // The Wellness page's practice cards (#1259) — their own pace-aware channel, with
-    // the range editor the training routine editor cannot represent.
+    // Practices (#1259) — their own pace-aware channel, edited from the quick-log
+    // sheet's practice rows (#5668) with the range the training routine editor cannot
+    // represent. `home` is the domain, not a page.
     home: "wellness",
     note: "distinct days a session was logged into practice_logs, day-distinct so a second same-day session never double-counts",
   },

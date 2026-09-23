@@ -58,8 +58,12 @@ export function stillGoingMarkerKey(
   return `${prefix}${rowId}`;
 }
 
-// What the nudge needs to know about one open episode, whatever kind it is.
-export interface StillGoingEpisode {
+// What the nudge needs to know about one open episode, whatever kind it is. Only a
+// practice carries its profile-local `day`, which its deep link opens on History.
+export type StillGoingEpisode = StillGoingEpisodeFacts &
+  ({ kind: "workout" } | { kind: "practice"; day: string });
+
+interface StillGoingEpisodeFacts {
   kind: StillGoingKind;
   rowId: number;
   // The practice's own name. A workout draft has no name a person would recognise
@@ -81,8 +85,6 @@ export interface StillGoingEpisode {
   // that still takes the promise away is the person's own save past the minute it names,
   // which is the detector's own cancel and is re-applied at the tap (#5194, ninth pass).
   detectedEnd: string | null;
-  // The practice session's profile-local day, which the deep link opens on History.
-  day?: string;
 }
 
 // The message. Two buttons that RESOLVE the episode in place (the two-way principle —
@@ -126,7 +128,7 @@ export function renderStillGoingMessage(
   if (base)
     actions.push({
       label: practice ? "Open practice" : "Open workout",
-      url: `${base}${practice ? historyHref({ kind: "practice", day: episode.day }) : "/training"}`,
+      url: `${base}${episode.kind === "practice" ? historyHref({ kind: "practice", day: episode.day }) : "/training"}`,
     });
 
   return {

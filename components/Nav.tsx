@@ -160,13 +160,12 @@ const RECORDS: Group = {
 
 // The episodic group (#3079). Five top-level rows measured at ZERO deliberate
 // visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming,
-// Household (retired in #5667), Wellness (retired in #5668), Longevity — plus
-// Progress photos, which shares their shape. The measurement did not find six
-// redundant pages: each holds writes that exist nowhere else (protocol creation only
-// at /longevity#protocols, retro symptom entry for an arbitrary past day only at
-// /history?day=, restore / preventive-override / care-plan completion only at
-// /upcoming). No URL moves, and every gate below keeps the semantics it had as a
-// top-level row.
+// Household, Wellness, Longevity — plus Progress photos, which shares their shape.
+// Household and Wellness have since retired (#5667, #5668), their writes moved to
+// other surfaces. Each remaining child holds writes that exist nowhere else
+// (protocol creation only at /longevity#protocols, restore / preventive-override /
+// care-plan completion only at /upcoming), and every gate below keeps the semantics
+// it had as a top-level row.
 //
 // What the measurement found is FOUR DIFFERENT CAUSES, and the per-child notes
 // below are the point of this group — only one of the six is a defect, and a
@@ -198,9 +197,9 @@ const PLAN_REVIEW: Group = {
     // Upcoming note above). Icon and relevance behaviour are unchanged (no
     // relevanceKey; the page stays reachable by URL either way).
     { href: "/trends", label: "Trends", icon: IconTrendingUp },
-    // LONGEVITY — an episodic management surface. Still adult-only (ADULT_ONLY_HREFS); NavGroup runs the
-    // same isNavLeafVisible predicate as the top level, so the life-stage boundary
-    // is unchanged by the move.
+    // LONGEVITY — an episodic management surface. Still adult-only
+    // (ADULT_ONLY_HREFS); NavGroup runs the same isNavLeafVisible predicate as the
+    // top level, so the life-stage boundary is unchanged by the move.
     { href: "/longevity", label: "Longevity", icon: IconHourglass },
     // PROGRESS PHOTOS (#1119) — not one of the zero-use five, and included on shape
     // rather than on measurement: a data-gated visual review surface opened in

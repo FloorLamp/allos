@@ -168,6 +168,19 @@ test("from the quick-log sheet a person adds a practice, edits it and logs it wi
         .getByRole("button", { name: "Delete practice" })
     );
     await expect(renamedRow).toHaveCount(0);
+
+    // UNDO brings it back into the open sheet — the list holds its own rows, so the
+    // restore has to re-read them just as the delete did.
+    await settledClick(
+      page,
+      page
+        .getByTestId("toast")
+        .filter({ hasText: `${renamed} deleted.` })
+        .getByRole("button", { name: "Undo" })
+    );
+    await expect(renamedRow.getByTestId("practice-row-facts")).toHaveText(
+      "1 today · 1 of 2 this week"
+    );
   } finally {
     const db = openDb();
     try {

@@ -4,9 +4,8 @@
 // fixture-profile name for THIS domain here, beside the fixtures that use it.
 
 // #3066 — the practice ZERO STATE. A dedicated adult profile with no practice
-// target and no practice log, which is the whole fixture: the defect is that the
-// #1620 nav gate hides /wellness for exactly this profile while every other door
-// onto practices needs a practice to already exist.
+// target and no practice log, which is the whole fixture: every door onto practices
+// but the quick-log sheet's first-practice form needs a practice to already exist.
 //
 // It needs its OWN profile because the state under test is an ABSENCE on the shared
 // seed's most-used domain — profile 1 tracks practices, and a spec that deleted them

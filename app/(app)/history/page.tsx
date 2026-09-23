@@ -35,6 +35,7 @@ import {
 import {
   getPracticeDays,
   getPracticeRhythms,
+  practiceDayHistory,
   getTrackedPractices,
 } from "@/lib/queries/wellness";
 import DayHistory from "@/components/DayHistory";
@@ -553,12 +554,6 @@ async function renderHistory(
           dayHistoryStart(todayStr, PRACTICE_HISTORY_WEEKS, practiceWeekStart),
           todayStr
         );
-  const practiceTotals = new Map<string, { label: string; total: number }>();
-  for (const d of practiceDays) {
-    const t = practiceTotals.get(d.key) ?? { label: d.label, total: 0 };
-    t.total += d.count;
-    practiceTotals.set(d.key, t);
-  }
   const trackedPractices = offers("practice")
     ? getTrackedPractices(actingProfileId)
     : [];
@@ -1174,15 +1169,7 @@ async function renderHistory(
               <DayHistory
                 domain="practice"
                 addHref="/history"
-                values={practiceDays.map((d) => ({
-                  date: d.date,
-                  group: d.key,
-                  value: d.count,
-                  detail: d.minutes,
-                }))}
-                groups={[...practiceTotals.entries()]
-                  .sort((a, b) => b[1].total - a[1].total)
-                  .map(([key, v]) => ({ key, label: v.label }))}
+                {...practiceDayHistory(practiceDays)}
                 end={todayStr}
                 weeks={PRACTICE_HISTORY_WEEKS}
                 weekStart={practiceWeekStart}
