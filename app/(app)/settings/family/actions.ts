@@ -44,7 +44,11 @@ import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
 import { deleteApiTokensForLogin } from "@/lib/api-tokens";
 import { deleteProfileData } from "@/lib/profile-delete";
-import { capturedFilesOf, unlinkPurgedFiles } from "@/lib/undo-delete-db";
+import {
+  capturedFilesOf,
+  unlinkPurgedFiles,
+  type CaptureRow,
+} from "@/lib/undo-delete-db";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { photoDomainRoot, thumbSiblingPath } from "@/lib/photo/store";
 import { recordAudit } from "@/lib/audit";
@@ -301,11 +305,13 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   // it — leaving the clip and its poster on disk with nothing pointing at them. Read
   // the payloads here, while the captures still exist, and reclaim them after the
   // transaction through the Trash purges' own helpers, which contain each path under
-  // its domain root and skip any file a live row still references.
+  // this profile's own directory (#5997) and skip any file a live row still references.
   const capturedTrashFiles = capturedFilesOf(
     db
-      .prepare(`SELECT payload FROM deleted_rows WHERE profile_id = ?`)
-      .all(id) as { payload: string }[]
+      .prepare(
+        `SELECT profile_id, payload FROM deleted_rows WHERE profile_id = ?`
+      )
+      .all(id) as CaptureRow[]
   );
 
   // Disable foreign_keys for the whole subtree sweep (issue #729). The app

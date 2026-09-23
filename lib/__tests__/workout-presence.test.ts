@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   computeWorkoutPresence,
-  householdPresenceChip,
   isCompletedSessionRow,
   FINISHED_WINDOW_MIN,
   type PresenceActivityRow,
@@ -385,23 +384,5 @@ describe("isCompletedSessionRow", () => {
       const p = presence([row({ ...over, updated_at: sql("09:59") })]);
       expect(p.state).not.toBe("active");
     }
-  });
-});
-
-describe("householdPresenceChip", () => {
-  it("labels an active session with elapsed minutes, live-only", () => {
-    const p = presence([
-      row({ start_time: "09:00", updated_at: sql("09:55") }),
-    ]);
-    expect(householdPresenceChip(p)).toBe("mid-workout · 60 min");
-  });
-
-  it("returns null for idle and finished (no live telemetry to show)", () => {
-    expect(householdPresenceChip(presence([]))).toBeNull();
-    const finished = presence([
-      row({ start_time: "09:00", end_time: "09:30" }),
-    ]);
-    expect(finished.state).toBe("finished");
-    expect(householdPresenceChip(finished)).toBeNull();
   });
 });

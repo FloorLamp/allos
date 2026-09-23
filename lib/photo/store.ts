@@ -5,7 +5,7 @@
 // writeTx and records the returned repo-relative paths on the row; every later
 // unlink (single delete, profile delete) re-contains the stored path before
 // touching disk, so a corrupt/hostile stored_path can never rm outside the
-// domain's root.
+// owning profile's dir (#5997).
 //
 // Phase 3 (#1844) migrated the lesion + symptom photo domains onto this store.
 // Their dir names are the ones those domains already used, so the migration moves
@@ -50,6 +50,10 @@ export function photoDomainRoot(domain: PhotoDomain): string {
   return path.join(process.cwd(), "data", "uploads", DOMAIN_DIRS[domain]);
 }
 
+function photoProfileDir(domain: PhotoDomain, profileId: number): string {
+  return path.join(photoDomainRoot(domain), String(profileId));
+}
+
 export interface StoredPhotoPaths {
   storedPath: string; // repo-relative, e.g. data/uploads/progress-photos/3/ab12….jpg
   thumbPath: string;
@@ -63,7 +67,7 @@ export function storeProcessedPhoto(
   profileId: number,
   photo: ProcessedPhoto
 ): StoredPhotoPaths {
-  const dir = path.join(photoDomainRoot(domain), String(profileId));
+  const dir = photoProfileDir(domain, profileId);
   fs.mkdirSync(dir, { recursive: true });
   const base = photo.contentHash.slice(0, 16);
   const fileName = `${base}.jpg`;
@@ -76,22 +80,42 @@ export function storeProcessedPhoto(
   return { storedPath: rel(fileName), thumbPath: rel(thumbName) };
 }
 
-// Best-effort, path-contained unlink of stored photo files. A path resolving
-// outside the domain root is skipped, never followed; a missing/locked file
-// never throws (the DB row delete must not fail on fs state).
-export function unlinkPhotoFiles(
-  domain: PhotoDomain,
+// Best-effort unlink of stored files, contained to ONE profile's directory (#5997).
+// The profile is the containment boundary, not the domain root: a path naming
+// another profile's file in the same domain is skipped, so a household member's
+// media survives whatever this profile's rows claim. Containment is checked on the
+// REAL path of the file's parent, so `..`, an absolute path, or a symlinked
+// directory cannot reach outside `dir`. A missing/locked file never throws (the DB
+// row delete must not fail on fs state). Shared with the video store.
+export function unlinkContainedFiles(
+  dir: string,
   relPaths: readonly (string | null | undefined)[]
 ): void {
-  const root = path.resolve(photoDomainRoot(domain));
+  let root: string;
+  try {
+    root = fs.realpathSync(dir);
+  } catch {
+    return; // no directory, nothing of this profile's to unlink
+  }
   for (const rel of relPaths) {
     if (!rel) continue;
     const abs = path.resolve(process.cwd(), rel);
-    if (abs === root || !abs.startsWith(root + path.sep)) continue;
     try {
-      fs.rmSync(abs, { force: true });
+      const parent = fs.realpathSync(path.dirname(abs));
+      if (parent !== root && !parent.startsWith(root + path.sep)) continue;
+      fs.rmSync(path.join(parent, path.basename(abs)), { force: true });
     } catch {
       // best-effort — the row is authoritative
     }
   }
+}
+
+// Unlink a profile's stored photo files; anything outside
+// data/uploads/<domain-dir>/<profileId>/ is skipped, never followed.
+export function unlinkPhotoFiles(
+  domain: PhotoDomain,
+  profileId: number,
+  relPaths: readonly (string | null | undefined)[]
+): void {
+  unlinkContainedFiles(photoProfileDir(domain, profileId), relPaths);
 }

@@ -558,8 +558,8 @@ describe("goalPct cross-surface parity", () => {
         ? { [f.goal.id]: f.prog }
         : {};
 
-      // Household goalHighlights passes the progress-map lookup directly.
-      const household = goalPct(f.goal, progressMap.get(f.goal.id));
+      // The direct progress-map lookup the dashboard row reads.
+      const direct = goalPct(f.goal, progressMap.get(f.goal.id));
 
       // GoalsManager only passes progress for goals it classifies as `auto`
       // (exercise-linked or body-metric); freeform goals get undefined.
@@ -570,13 +570,13 @@ describe("goalPct cross-surface parity", () => {
         auto ? progressRecord[f.goal.id] : undefined
       );
 
-      expect(goalsPage).toBe(household);
+      expect(goalsPage).toBe(direct);
 
       // The dashboard row states its percent through goalProgressStatement, which
-      // is goalPct underneath (#5396) — so the three surfaces agree by construction.
+      // is goalPct underneath (#5396) — so the surfaces agree by construction.
       expect(
         goalProgressStatement(f.goal, progressMap.get(f.goal.id), "kg").percent
-      ).toBe(household == null ? null : `${household}%`);
+      ).toBe(direct == null ? null : `${direct}%`);
     });
   }
 });

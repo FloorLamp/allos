@@ -5,7 +5,7 @@
 // storeVideoFiles inside its writeTx and records the returned repo-relative paths
 // on the row; every later unlink (single delete, profile delete) re-contains the
 // stored path before touching disk, so a corrupt/hostile stored_path can never rm
-// outside the domain's root.
+// outside the owning profile's dir (#5997).
 //
 // Unlike the photo core, the ORIGINAL video is stored AS-IS (no re-encode — the
 // no-native-dependency line, #1224). The POSTER is a client-extracted JPEG run
@@ -15,6 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { unlinkContainedFiles } from "../photo/store";
 
 export type VideoDomain = "symptom" | "activity";
 
@@ -45,6 +46,10 @@ export function videoDomainRoot(domain: VideoDomain): string {
   return path.join(process.cwd(), "data", "uploads", DOMAIN_DIRS[domain]);
 }
 
+function videoProfileDir(domain: VideoDomain, profileId: number): string {
+  return path.join(videoDomainRoot(domain), String(profileId));
+}
+
 export interface StoredVideoPaths {
   storedPath: string; // repo-relative, e.g. data/uploads/symptom-videos/3/ab12….mp4
   posterPath: string | null;
@@ -63,7 +68,7 @@ export function storeVideoFiles(
     poster: Buffer | null;
   }
 ): StoredVideoPaths {
-  const dir = path.join(videoDomainRoot(domain), String(profileId));
+  const dir = videoProfileDir(domain, profileId);
   fs.mkdirSync(dir, { recursive: true });
   const base = input.contentHash.slice(0, 16);
   const videoName = `${base}${videoExtForMime(input.mime)}`;
@@ -79,22 +84,12 @@ export function storeVideoFiles(
   return { storedPath: rel(videoName), posterPath };
 }
 
-// Best-effort, path-contained unlink of stored video files. A path resolving
-// outside the domain root is skipped, never followed; a missing/locked file never
-// throws (the DB row delete must not fail on fs state).
+// Unlink a profile's stored video files; anything outside
+// data/uploads/<domain-dir>/<profileId>/ is skipped, never followed (#5997).
 export function unlinkVideoFiles(
   domain: VideoDomain,
+  profileId: number,
   relPaths: readonly (string | null | undefined)[]
 ): void {
-  const root = path.resolve(videoDomainRoot(domain));
-  for (const rel of relPaths) {
-    if (!rel) continue;
-    const abs = path.resolve(process.cwd(), rel);
-    if (abs === root || !abs.startsWith(root + path.sep)) continue;
-    try {
-      fs.rmSync(abs, { force: true });
-    } catch {
-      // best-effort — the row is authoritative
-    }
-  }
+  unlinkContainedFiles(videoProfileDir(domain, profileId), relPaths);
 }

@@ -3,7 +3,7 @@
 import "./load-env";
 
 import { db, today, writeTx } from "../lib/db";
-import { now as clockNow } from "../lib/clock";
+import { now as clockNow, sqlNow } from "../lib/clock";
 import { shiftDateStr, utcInstant } from "../lib/date";
 import { episodesForSituation } from "../lib/symptom-episode";
 import { zonedWallTimeToUtc } from "../lib/calendar-ics";
@@ -685,14 +685,17 @@ exGoal.run(
 // mode and the "Goals reached" line has something to render. `achieved_at` is the canonical UTC instant setStatus writes; the goal carries
 // no target date on purpose — a deadline-free goal is the ordinary case, and it is
 // exactly the case the pre-#2394 line could never report.
+// `created_at` from the app clock: with no target date, the record dates this goal by
+// it, and SQL's own default reads the real clock rather than a frozen one (#6015).
 db.prepare(
-  `INSERT INTO goals (profile_id, title, category, status, achieved_at)
-   VALUES (1, ?, ?, 'achieved', ?)`
+  `INSERT INTO goals (profile_id, title, category, status, achieved_at, created_at)
+   VALUES (1, ?, ?, 'achieved', ?, ?)`
 ).run(
   "Sleep 7 hours on 5 nights a week",
   "recovery",
   // Through lib/date's minter, like every other canonical stamp the seed writes.
-  utcInstant(new Date(`${daysAgo(1)}T20:14:00Z`))
+  utcInstant(new Date(`${daysAgo(1)}T20:14:00Z`)),
+  sqlNow()
 );
 
 // Weekly frequency targets ("hit X at least N×/week"). Counts distinct training

@@ -56,7 +56,7 @@ const CHECKLIST_TASKS: Record<
     label: "Review profiles and access",
     benefit:
       "Make sure each person’s information stays with the right profile.",
-    href: "/household",
+    href: "/settings/family",
   },
   explore: {
     label: "Add emergency details",

@@ -8,6 +8,7 @@ import {
   disable2fa,
   regenerate2faRecoveryCodes,
 } from "./actions";
+import SectionHeading from "@/components/SectionHeading";
 
 // Two-factor authentication (issue #23), login-scoped. Enrollment is a three-step
 // flow: generate a secret (begin2fa) → show the otpauth:// URI + manual key →
@@ -114,9 +115,7 @@ export default function TwoFactorSettings({
   return (
     <div className="card space-y-4" data-testid="twofa-card">
       <div>
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Two-factor authentication
-        </h2>
+        <SectionHeading level={2}>Two-factor authentication</SectionHeading>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Add a time-based one-time code (TOTP) from an authenticator app as a
           second step at sign-in. Strongly recommended, especially for admins.

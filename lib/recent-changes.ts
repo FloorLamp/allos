@@ -2,11 +2,10 @@
 // can consume it — the sequencing the issues agreed: "whichever lands first creates
 // the collector, the other adopts it").
 //
-// ONE definition of "what changed", several windows. The Household member card
-// (#1463) asks it at 7 days; the morning digest (#1713) asks the SAME collector at
+// ONE definition of "what changed". The morning digest (#1713) asks the collector at
 // 24 hours. The alternative — a second set of per-category `DigestInput` fields —
-// mints a second definition that drifts from the card's, which is exactly the #221
-// failure mode this repository keeps paying for.
+// mints a second definition that drifts, which is exactly the #221 failure mode this
+// repository keeps paying for.
 //
 // This module holds the shape, the ranker and the cap. The DB gather (which readers
 // produce which category) lives in lib/queries/recent-changes.ts, auth-blind and
@@ -166,8 +165,8 @@ const RECENT_CHANGE_TABLE = defineRankTable<string, RecentChangeContext>({
 });
 
 // The window's first INCLUSIVE date for a `sinceDays` window ending at `today`.
-// The digest's 24h window is sinceDays 1 → yesterday and today; the household card's
-// 7-day window is sinceDays 7. Both edges are computed in the SUBJECT's timezone by
+// The digest's 24h window is sinceDays 1 → yesterday and today. Both edges are
+// computed in the SUBJECT's timezone by
 // the caller resolving `today` there (#1463 §3) — never the viewer's.
 export function recentChangeWindowStart(
   today: string,
@@ -304,8 +303,7 @@ export function renderRecentChanges(
   ranked: readonly RecentChange[],
   opts: {
     max?: number;
-    // "this week" for the household card, "since yesterday" for the digest. Omitted
-    // ⇒ a bare "+N more".
+    // "since yesterday" for the digest. Omitted ⇒ a bare "+N more".
     overflowLabel?: string;
     // Appended to the overflow line when the surface can carry a link. A typed route
     // (or an absolute deep-link base + route the notification channels build), never a

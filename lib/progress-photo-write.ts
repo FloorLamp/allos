@@ -214,7 +214,7 @@ export function deleteProgressPhotoCore(
     db.prepare(
       `DELETE FROM progress_photos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    unlinkPhotoFiles("progress", [row.stored_path, row.thumb_path]);
+    unlinkPhotoFiles("progress", profileId, [row.stored_path, row.thumb_path]);
     return true;
   });
 }

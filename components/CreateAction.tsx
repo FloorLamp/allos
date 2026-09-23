@@ -6,6 +6,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import SectionHeading from "@/components/SectionHeading";
 
 export type CreateActionHousing = "page" | "section";
 
@@ -135,9 +136,9 @@ export function SectionCreateHeader({
       <div className="flex min-w-0 items-start gap-3">
         {leading ? <div className="shrink-0">{leading}</div> : null}
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+          <SectionHeading level={2} size="lg">
             {title}
-          </h2>
+          </SectionHeading>
           {subtitle ? (
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
               {subtitle}

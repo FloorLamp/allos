@@ -5,6 +5,7 @@ import type { Finding } from "../findings";
 import {
   composeHomeList,
   composeHomeSetup,
+  pickNextAppointment,
   type HomeListInput,
   type HomeNowSeat,
   type HomeSubject,
@@ -724,5 +725,49 @@ describe("a day that is not today", () => {
       })
     );
     expect(list).toEqual({ later: null, now: null });
+  });
+});
+
+describe("pickNextAppointment", () => {
+  const appt = (id: number, dueDate: string | null): UpcomingItem => ({
+    key: `appointment:${id}`,
+    domain: "appointment",
+    title: `Visit ${id}`,
+    href: "/records/history/visits",
+    dueDate,
+  });
+
+  it("returns null for an empty list", () => {
+    expect(pickNextAppointment([])).toBeNull();
+  });
+
+  it("picks the soonest by calendar date", () => {
+    const chosen = pickNextAppointment([
+      appt(1, "2026-07-20"),
+      appt(2, "2026-07-11"),
+      appt(3, "2026-08-01"),
+    ]);
+    expect(chosen?.key).toBe("appointment:2");
+  });
+
+  it("surfaces a still-scheduled past visit ahead of a future one", () => {
+    const chosen = pickNextAppointment([
+      appt(1, "2026-07-15"),
+      appt(2, "2026-07-01"), // overdue but still scheduled
+    ]);
+    expect(chosen?.key).toBe("appointment:2");
+  });
+
+  it("prefers a dated visit over one missing a due date", () => {
+    const chosen = pickNextAppointment([appt(1, null), appt(2, "2026-07-15")]);
+    expect(chosen?.key).toBe("appointment:2");
+  });
+
+  it("keeps the first item on a same-day tie (feeds ordered by date, time)", () => {
+    const chosen = pickNextAppointment([
+      appt(5, "2026-07-15"),
+      appt(6, "2026-07-15"),
+    ]);
+    expect(chosen?.key).toBe("appointment:5");
   });
 });

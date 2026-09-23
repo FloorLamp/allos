@@ -218,12 +218,11 @@ describe("nav ↔ route consistency", () => {
   //
   // "/trends", not "/history": #4965 swapped the two — the day view's #4918
   // promotion earned History a top-level row, and Trends took the vacated
-  // group slot. Six members either way.
+  // group slot. Household left the group when its page retired (#5667).
   const GROUPED_HREFS = [
     "/upcoming",
     "/trends",
     "/longevity",
-    "/household",
     "/progress",
   ];
 
@@ -240,7 +239,7 @@ describe("nav ↔ route consistency", () => {
     return src.slice(start, end);
   }
 
-  it("the six demoted surfaces are group children, not top-level rows (#3079)", () => {
+  it("the demoted surfaces are group children, not top-level rows (#3079)", () => {
     const group = navDeclaration("PLAN_REVIEW", "}");
     const topLevel = navDeclaration("entries", "]");
 

@@ -167,7 +167,6 @@
   "e2e/home-assistant-notify.spec.ts": 2.903,
   "e2e/home-location.spec.ts": 4.088,
   "e2e/household-history.spec.ts": 7.352,
-  "e2e/household-rollup.spec.ts": 36.533,
   "e2e/household-round.spec.ts": 2.498,
   "e2e/household-setup.spec.ts": 5.203,
   "e2e/ia-nutrition-medications.spec.ts": 9.859,

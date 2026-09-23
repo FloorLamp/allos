@@ -3,7 +3,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenNow, frozenDayThisYear } from "./worker-env";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -48,8 +48,9 @@ function shiftedDay(days: number): string {
 
 // +45 / −100 days: far enough from both boundaries that no profile timezone can move
 // either across the "after today" or the 14-day edge.
+// −100 is held inside the frozen year so OLD_MONTH stays a top-level month fold.
 const AHEAD_DATE = shiftedDay(45);
-const OLD_DATE = shiftedDay(-100);
+const OLD_DATE = frozenDayThisYear(-100);
 const OLD_MONTH = OLD_DATE.slice(0, 7);
 
 // −7 days: inside the 14-day recent band in ANY timezone. Every fixture plants one

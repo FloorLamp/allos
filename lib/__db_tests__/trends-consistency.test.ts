@@ -1,13 +1,10 @@
 // DB INTEGRATION TIER (not the pure unit suite in lib/__tests__).
 //
 // The trends-consistency cluster (#395/#396/#397): every "one question, one
-// computation" regression where a Trends/dashboard/household surface re-derived a
-// value the canonical query already answers.
+// computation" regression where a Trends/dashboard surface re-derived a value the
+// canonical query already answers.
 //   • #395 — buildMetricSeries (Overview tiles / Compare / digest) charts the
 //     one-source-per-day reconciled series, not raw all-source rows.
-//   • #396 — the household card takes its current weight from the same primary-
-//     source-aware reader the dashboard uses, and its trend arrow compares deduped
-//     DAYS, not two devices on one day.
 //   • #397 — the Trends zone card's "this week" Zone 2 stat honors week_mode via
 //     the shared weekWindow(), matching the weekly recap for the same target.
 //
@@ -34,7 +31,6 @@ import {
   getTrainingZoneData,
   getZone2MinutesInWindow,
 } from "@/lib/queries";
-import { weightTrend } from "@/lib/household";
 import { zone2Adherence } from "@/lib/training-zones";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import { weekWindow } from "@/lib/week-window";
@@ -124,28 +120,6 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     expect(byKey.get("metric:bodyfat")).toBe("/trends/metric/body-fat");
     expect(byKey.get("metric:resting_hr")).toBe("/trends/metric/resting-hr");
     expect(byKey.get("metric:volume")).toBe("/training?tab=analyze");
-  });
-
-  it("household current weight + trend arrow use the canonical value and compare DAYS not devices (#396)", () => {
-    expect(getLatestBodyMetricDated(profileId, "weight")?.value).toBe(80);
-
-    // …and the arrow from the two newest days of the deduped series. Both days are
-    // 80 (primary), so the arrow is FLAT — not the ordering-dependent 80→80.6 "↑"
-    // the old raw two-newest-rows read produced.
-    const daily = getBodyMetricDailySeries(profileId, "weight");
-    const n = daily.length;
-    const trend = weightTrend(daily[n - 1]?.value, daily[n - 2]?.value);
-    expect(trend?.dir).toBe("flat");
-
-    // Pin the pre-fix bug: the raw two-newest-rows read WOULD have disagreed —
-    // the same-day scale row is a distinct row, so it becomes the "latest".
-    const rawTwo = db
-      .prepare(
-        "SELECT weight_kg FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date DESC, id DESC LIMIT 2"
-      )
-      .all(profileId) as { weight_kg: number }[];
-    const rawTrend = weightTrend(rawTwo[0]?.weight_kg, rawTwo[1]?.weight_kg);
-    expect(rawTrend?.dir).not.toBe("flat"); // the device offset masquerading as a change
   });
 });
 

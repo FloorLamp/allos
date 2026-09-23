@@ -70,7 +70,6 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/sleep", label: "Sleep" },
   { href: "/progress", label: "Progress photos" },
   { href: "/upcoming", label: "Upcoming" },
-  { href: "/household", label: "Household" },
   { href: "/longevity", label: "Longevity" },
   { href: "/records", label: "Health record" },
   { href: "/results", label: "Results" },
