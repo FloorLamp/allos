@@ -42,10 +42,15 @@ let removeResult: { ok: boolean; undoId?: number | null; error?: string } = {
 // The staged mapping the text-intake mock answers with, when a test sets one.
 let staged: unknown = null;
 let removeWait: Promise<void> | undefined;
+// Writes the server refuses, when a test names them.
+const refusedSymptoms = new Set<string>();
+let temperatureRefused = false;
 
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
     record("log")(fd);
+    if (refusedSymptoms.has(String(fd.get("symptom"))))
+      return { ok: false as const, error: "Refused" };
     return {
       ok: true as const,
       symptom: String(fd.get("symptom")),
@@ -79,6 +84,7 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
   },
   logTemperature: async (fd: FormData) => {
     record("temperature")(fd);
+    if (temperatureRefused) return { ok: false as const, error: "Refused" };
     return { ok: true as const, degF: 100.1, flag: null, redFlag: null };
   },
   activateIllnessForSymptoms: async () => ({ ok: true as const }),
@@ -116,6 +122,8 @@ const MANY = [...ONE, { key: "cough", label: "Cough" }];
 beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
+  refusedSymptoms.clear();
+  temperatureRefused = false;
   removeResult = { ok: true, undoId: 9 };
   staged = null;
   removeWait = undefined;
@@ -429,10 +437,10 @@ describe("SymptomLogBar mounts both pieces", () => {
     );
   });
 
-  // THE READING TIME IS THE SHARED CONTROL'S, which is what retires this bar's raw
-  // <input type="time"> from the #2236 allowlist. Stated as a wall clock, posted as
-  // one — the wire and the core's stated-time path are untouched by the migration.
-  it("posts the time the shared when-control states, and none when nothing is stated", async () => {
+  // THE READING TIME IS STATED THROUGH THE WHEN DOOR (#5663 ruling 3). Closed, it
+  // states nothing and the action stamps the minute; opened, it posts the wall clock
+  // the reveal states — the wire and the core's stated-time path are unchanged.
+  it("posts the time the When door states, and none when nothing is stated", async () => {
     bar();
     await act(async () =>
       fireEvent.click(screen.getByTestId("temp-quick-toggle"))
@@ -454,7 +462,9 @@ describe("SymptomLogBar mounts both pieces", () => {
     fireEvent.change(screen.getByTestId("temp-quick-input"), {
       target: { value: "101.4" },
     });
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    expect(screen.queryByTestId("temp-quick-when-time")).toBeNull();
+    fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "07:15" },
     });
     await act(async () =>
@@ -560,6 +570,27 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
     }
   );
 
+  // THE CONTRACT'S RECEIPT (#5663 ruling 1, #5900 problem 2): a landed save is
+  // confirmed by one toast in the `<Thing> logged` grammar, the line beneath the rows
+  // states the day's count, and that line settles once.
+  it("confirms a landed save with the toast and one settling receipt", async () => {
+    await openPicker();
+    expect(screen.queryByTestId("symptom-log-receipt")).toBeNull();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-picker-save"))
+    );
+    expect(toasts).toEqual(["Cough logged · today"]);
+    const receipt = screen.getByTestId("symptom-log-receipt");
+    expect(receipt.textContent).toMatch(/^Logged 1 · \d{1,2}:\d{2}/);
+    expect(receipt.className).toContain("motion-settle");
+    expect(receipt.querySelector('[data-motion="count"]')?.textContent).toBe(
+      "1"
+    );
+  });
+
   it("puts the lit chip back down, leaving nothing staged", async () => {
     await openPicker();
     const chip = () => screen.getByTestId("symptom-pick-cough");
@@ -655,22 +686,23 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
     await openTemp("98.6");
-    // The control carries the requirement natively, so the browser refuses the
-    // submission before the handler runs — which is what the user meets. The
-    // handler's own guard is the belt beneath it, for a programmatic submit.
-    expect(
-      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
-    ).toBe(true);
+    // The statement is required there: it stays open with no door to close it, and
+    // a save without a minute is refused with the reason.
+    expect(screen.queryByTestId("temp-quick-when-toggle")).toBeNull();
+    screen.getByTestId("temp-quick-when-time");
     await saveTemp();
     expect(posted.temperature).toBeUndefined();
+    expect(screen.getByTestId("temp-quick-error").textContent).toBe(
+      "Add the time this reading was taken."
+    );
   });
 
   it("does NOT require a time on the primary day — thermometer-to-phone is one step", async () => {
     toggledBar();
     await openTemp("101.4");
-    expect(
-      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
-    ).toBe(false);
+    // The door is closed, so nothing is asked for.
+    screen.getByTestId("temp-quick-when-toggle");
+    expect(screen.queryByTestId("temp-quick-when-time")).toBeNull();
     await saveTemp();
     expect(payload("temperature").date).toBe(TODAY);
     expect(payload("temperature").time).toBeUndefined();
@@ -682,7 +714,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
     await openTemp("98.6");
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "23:00" },
     });
     await saveTemp();
@@ -700,9 +732,11 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     );
     await openTemp("101.4");
     if (side === "alt") {
-      fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
         target: { value: "19:10" },
       });
+    } else {
+      fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
     }
     // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
     // draws it as text rather than a picker and the pair rule holds by construction.
@@ -710,7 +744,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     // raw `date` — one card, one day, two spellings, one of them a storage format —
     // because the arm asked the clock instead of the surface. Read off the toggle
     // rather than restated here, so the two cannot be fixed apart.
-    expect(screen.getByTestId("temp-quick-date").textContent).toBe(
+    expect(screen.getByTestId("temp-quick-when-date").textContent).toBe(
       screen.getByTestId(`symptom-day-${side}`).textContent
     );
     // …and what it WRITES is that same day.
@@ -754,14 +788,15 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("temp-quick-toggle"))
     );
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "19:10" },
     });
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
     expect(
-      (screen.getByTestId("temp-quick-time") as HTMLInputElement).value
+      (screen.getByTestId("temp-quick-when-time") as HTMLInputElement).value
     ).toBe("");
   });
 
@@ -775,7 +810,9 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
   // composite must not invent one — beside the day it did state.
   it("a confirmed sentence posts a day and states no time", async () => {
     staged = {
-      symptoms: [{ slug: "headache", severity: 2, note: null }],
+      symptoms: [
+        { slug: "headache", label: "Headache", severity: 2, note: null },
+      ],
       temperature: { value: 99.2, unit: "F" },
       unmapped: [],
       dayOffset: -1,
@@ -800,5 +837,106 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     const temp = payload("temperature");
     expect(temp.date).toBe(FOUND_DAY);
     expect(temp.time).toBeUndefined();
+    // Confirmed in the one grammar, and the landed row joins yesterday's list.
+    // FOUND_DAY is an earlier weekday, so the slot takes the switcher's date word.
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toMatch(/^Headache logged · on \w{3}, /);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    screen.getByTestId("symptom-headache");
+  });
+
+  // THE RECEIPT BELONGS TO THE DAY THAT EARNED IT (#5663). A past day has no minute
+  // of today's to name, and the line goes when the bar is re-pointed.
+  async function saveCough(): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-picker-save"))
+    );
+  }
+
+  it("states no minute on a past day's receipt", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await saveCough();
+    expect(screen.getByTestId("symptom-log-receipt").textContent).toBe(
+      "Logged 1"
+    );
+  });
+
+  it("hides the receipt when the day changes", async () => {
+    toggledBar();
+    await saveCough();
+    screen.getByTestId("symptom-log-receipt");
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    expect(screen.queryByTestId("symptom-log-receipt")).toBeNull();
+  });
+
+  it("hides the receipt when the subject changes", async () => {
+    const props = {
+      date: TODAY,
+      initial: {},
+      initialNotes: {},
+      symptoms: PICKER_SYMPTOMS,
+      customNames: [],
+      suggestActivateIllness: false,
+      temperatureUnit: "F" as const,
+      showTitle: false,
+    };
+    const { rerender } = render(
+      <SymptomLogBar {...props} profileId={SUBJECT} />
+    );
+    await saveCough();
+    screen.getByTestId("symptom-log-receipt");
+    rerender(<SymptomLogBar {...props} profileId={SUBJECT + 1} />);
+    expect(screen.queryByTestId("symptom-log-receipt")).toBeNull();
+  });
+
+  // A REFUSAL IS NEVER COUNTED AS LOGGED, and a partial one is said, not dropped.
+  it("counts only what landed from a sentence and says what was refused", async () => {
+    staged = {
+      symptoms: [
+        { slug: "headache", label: "Headache", severity: 2, note: null },
+        { slug: "cough", label: "Cough", severity: 1, note: null },
+      ],
+      temperature: { value: 99.2, unit: "F" },
+      unmapped: [],
+      dayOffset: 0,
+    };
+    refusedSymptoms.add("headache");
+    temperatureRefused = true;
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("symptom-text-input"), {
+      target: { value: "headache, cough, 99.2" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-suggest"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-confirm"))
+    );
+    expect(toasts).toEqual([
+      "Cough logged · today",
+      "Couldn't log the temperature. Try again.",
+      "Couldn't log 1 symptom. Try again.",
+    ]);
+    expect(screen.getByTestId("symptom-log-receipt").textContent).toMatch(
+      /^Logged 1 · /
+    );
+    screen.getByTestId("symptom-cough");
+    expect(screen.queryByTestId("symptom-headache")).toBeNull();
   });
 });
