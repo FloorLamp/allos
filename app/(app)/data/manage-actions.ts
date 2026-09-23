@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import {
   DELETE_POLICY,
   type DatasetDeletePolicy,
@@ -14,8 +14,9 @@ import {
   cleanupOrphanPrDismissals,
   sweepImmunizationDismissals,
 } from "@/lib/queries";
-import { undoKindForTable } from "@/lib/dataset-undo";
-import { captureDelete } from "@/lib/undo-delete-db";
+import { DATASET_UNDO_KIND, undoKindForTable } from "@/lib/dataset-undo";
+import { captureDelete, detachRepointedLinks } from "@/lib/undo-delete-db";
+import { nullEncounterLinks } from "@/lib/queries/visit-links";
 import {
   unlinkFollowUpsForClinicalObservation,
   unlinkFollowUpsForImagingStudy,
@@ -116,8 +117,8 @@ const FOLLOWUP_SOURCE_LINKS: Partial<
 // link to a row the delete is not removing. Read off this profile's own rows, every
 // id the seam is handed is a row the delete removes.
 //
-// The seam is not in a transaction with the delete that follows it: a delete that
-// failed afterwards would leave these links already freed.
+// Delete all runs it inside the wipe's transaction. The selected-rows delete does not,
+// so a delete that failed afterwards would leave these links already freed.
 function freeFollowUpLinks(
   table: DeletableDatasetKey,
   profileId: number,
@@ -138,6 +139,38 @@ function freeFollowUpLinks(
     )
     .all(profileId, ...(ids ?? [])) as { id: number }[];
   for (const { id } of linked) link.unlink(profileId, id);
+}
+
+// ---- Freeing every other blocking link before Delete all (#5990) -------------
+
+// A dataset with an undo kind deletes selected rows through captureDelete, which
+// frees each row's inbound links first: the linked records stay and lose the link.
+// Delete all takes no capture, so it runs the same per-row seam over every row it
+// removes (owner ruling on #5990: Delete all does what deleting each row does; no
+// cascade, no refusal). Keyed on DATASET_UNDO_KIND so an entry can only name a
+// dataset whose per-row path is that capture.
+//
+// A dataset absent here runs no seam, and a NO ACTION inbound link still blocks its
+// wipe. #5990 records which remain.
+type RowUnlinkSeam = (profileId: number, rowId: number) => void;
+
+const ROW_UNLINK_SEAMS: Partial<Record<DeletableDatasetKey, RowUnlinkSeam>> = {
+  // Appointments, the nine record domains, lab/vital readings and episode links.
+  encounters: nullEncounterLinks,
+  // Sets, sessions, protocols and goals keep their history; the gear link goes.
+  equipment: (profileId, rowId) =>
+    detachRepointedLinks(DATASET_UNDO_KIND.equipment, profileId, rowId),
+} satisfies Partial<Record<keyof typeof DATASET_UNDO_KIND, RowUnlinkSeam>>;
+
+// Run the dataset's seam over every one of this profile's rows, read off the table
+// being deleted — the same anchoring freeFollowUpLinks keeps.
+function freeRowLinks(table: DeletableDatasetKey, profileId: number): void {
+  const seam = ROW_UNLINK_SEAMS[table];
+  if (!seam) return;
+  const rows = db
+    .prepare(`SELECT id FROM ${table} WHERE profile_id = ?`)
+    .all(profileId) as { id: number }[];
+  for (const { id } of rows) seam(profileId, id);
 }
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
@@ -317,39 +350,46 @@ export async function deleteAllDatasetRows(
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 
-  // Capture the vaccine codes about to be un-backed before wiping the table (#376).
-  const removedVaccines = resolved.policy.cleanupImmunizations
-    ? (
-        db
-          .prepare(
-            `SELECT DISTINCT vaccine FROM ${resolved.table} WHERE profile_id = ?`
-          )
-          .all(profile.id) as { vaccine: string }[]
-      ).map((r) => r.vaccine)
-    : [];
-  // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
-  // resurrect the whole set (#653). Captured before the delete.
-  const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
-  // A row this wipe removes can be named by a care-plan follow-up (#5409, #5966), and
-  // this wipe takes no capture, so captureDelete's seam does not run for it. Run the
-  // domain's seam here instead, over this profile's linked rows.
-  //
-  // WHAT THE SCHEMA DOES INSTEAD DIFFERS BY PAIR, and only one of the two outcomes is
-  // survivable. `metric_samples` is ON DELETE SET NULL: the wipe would not throw, it
-  // would null the id and leave `source_kind` standing over an all-null source.
-  // `medical_records` and `imaging_studies` are NO ACTION, so with foreign keys on the
-  // wipe raises SQLITE_CONSTRAINT_FOREIGNKEY and rolls back — a person who tracked one
-  // follow-up could not bulk-delete the dataset at all (#5966).
-  freeFollowUpLinks(resolved.table, profile.id, null);
-  // "Delete all" is still scoped to this profile — never wipe another profile's
-  // rows from the shared table. It is intentionally NOT undoable (the confirm
-  // says so): capturing an entire table into the holding store could be huge.
-  const info = db
-    .prepare(`DELETE FROM ${resolved.table} WHERE profile_id = ?`)
-    .run(profile.id);
-  for (const row of tombstoneRows)
-    writeImportTombstoneForRow(profile.id, resolved.table, row);
+  // One transaction from the first pre-image to the last tombstone: a seam that
+  // freed links for a wipe that then failed would otherwise leave them freed.
+  const { deleted, removedVaccines } = writeTx(() => {
+    // Capture the vaccine codes about to be un-backed before wiping the table (#376).
+    const removedVaccines = resolved.policy.cleanupImmunizations
+      ? (
+          db
+            .prepare(
+              `SELECT DISTINCT vaccine FROM ${resolved.table} WHERE profile_id = ?`
+            )
+            .all(profile.id) as { vaccine: string }[]
+        ).map((r) => r.vaccine)
+      : [];
+    // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
+    // resurrect the whole set (#653). Captured before the delete.
+    const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
+    // A row this wipe removes can be named by a care-plan follow-up (#5409, #5966), and
+    // this wipe takes no capture, so captureDelete's seam does not run for it. Run the
+    // domain's seam here instead, over this profile's linked rows.
+    //
+    // WHAT THE SCHEMA DOES INSTEAD DIFFERS BY PAIR, and only one of the two outcomes is
+    // survivable. `metric_samples` is ON DELETE SET NULL: the wipe would not throw, it
+    // would null the id and leave `source_kind` standing over an all-null source.
+    // `medical_records` and `imaging_studies` are NO ACTION, so with foreign keys on the
+    // wipe raises SQLITE_CONSTRAINT_FOREIGNKEY and rolls back — a person who tracked one
+    // follow-up could not bulk-delete the dataset at all (#5966).
+    freeFollowUpLinks(resolved.table, profile.id, null);
+    // Every other blocking link captureDelete frees per row (#5990).
+    freeRowLinks(resolved.table, profile.id);
+    // "Delete all" is still scoped to this profile — never wipe another profile's
+    // rows from the shared table. It is intentionally NOT undoable (the confirm
+    // says so): capturing an entire table into the holding store could be huge.
+    const info = db
+      .prepare(`DELETE FROM ${resolved.table} WHERE profile_id = ?`)
+      .run(profile.id);
+    for (const row of tombstoneRows)
+      writeImportTombstoneForRow(profile.id, resolved.table, row);
+    return { deleted: info.changes, removedVaccines };
+  });
 
   afterDelete(key, resolved.policy, profile.id, removedVaccines);
-  return { ok: true, deleted: info.changes, undoIds: [] };
+  return { ok: true, deleted, undoIds: [] };
 }

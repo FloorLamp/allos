@@ -1196,16 +1196,21 @@ export function reapplyVisitLinkDecisions(profileId: number): void {
   }
 }
 
-// NULL every record/episode back-link to an encounter about to be deleted (the
-// row-ops convention — encounter_id carries no ON DELETE, so the FK would otherwise
-// block the delete). Called by deleteEncounter and by the import delete/reprocess
-// clear. Also sweeps the encounter's decision rows. `encounterExternalId` is passed
-// so the decision sweep can match `ext:` tokens too (the encounter row is gone by the
-// time a later reapply would run).
+// NULL every appointment/record/episode back-link to an encounter about to be deleted
+// (the row-ops convention — encounter_id carries no ON DELETE, so the FK would
+// otherwise block the delete). Called by captureDelete for one visit and by Data →
+// Manage's Delete all for each visit it removes. Also sweeps the encounter's episode
+// decision rows.
 export function nullEncounterLinks(
   profileId: number,
   encounterId: number
 ): void {
+  // An appointment names the encounter it was kept as (#288) — the one inbound link
+  // that is not a record domain.
+  db.prepare(
+    `UPDATE appointments SET encounter_id = NULL
+      WHERE encounter_id = ? AND profile_id = ?`
+  ).run(encounterId, profileId);
   for (const domain of RECORD_DOMAIN_LIST) {
     const table = RECORD_DOMAINS[domain].table;
     db.prepare(
