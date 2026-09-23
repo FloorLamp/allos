@@ -58,8 +58,7 @@ const PATHS: Record<number, React.ReactNode> = {
   // 6 — mushy, ragged edges.
   //
   // The issue's sketch drew the raggedness with a dash pattern. A dash pattern is
-  // chart VOCABULARY here (components/chart-scaffold.tsx owns the named ones, and
-  // lib/__tests__/chart-scaffold-scan.test.ts holds the line), and borrowing it for a
+  // chart VOCABULARY here (components/chart-scaffold.tsx owns the named ones), and borrowing it for a
   // glyph would put an annotation/reference mark in an icon. The ragged edge is drawn
   // instead: a soft blob outline with short flecks breaking off it, which is what
   // "fluffy pieces with ragged edges" looks like and needs no shared pattern.
