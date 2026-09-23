@@ -5,7 +5,7 @@
 // clause and the correction offer, and the N-week habit trend. Reads the ledger
 // module's shared range readers rather than re-deriving them. Profile-scoped.
 
-import { utcInstant } from "../../date";
+import { shiftDateStr, utcInstant } from "../../date";
 import { db, today } from "../../db";
 import { now as clockNow } from "../../clock";
 import { getTimezone, getWeekMode, getWeekStart } from "../../settings";
@@ -37,6 +37,12 @@ import { ALCOHOL_FOOD_GROUP } from "../../substance-use";
 import { FOOD_CHECK_LOOKBACK_MIN } from "../../food-timing-check";
 import { profileFoodSlotBoundaries } from "../../profile-food-slot";
 import { foodEventWindow, type FoodLedgerEvent } from "../../food-slot-count";
+import {
+  FOOD_WINDOW_HABIT_DAYS,
+  todayFoodWindowGapRows,
+  type FoodWindowGapRow,
+  type LocalNow,
+} from "../../food-window-gap";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../../protein-nudge";
 import { USUAL_BACKFILL } from "../../logged-via";
 import { CORRECTION_FRESH_MIN } from "../../correction-time";
@@ -326,6 +332,25 @@ export function getLoggedFoodWindows(
     set.add(slot);
   }
   return byDate;
+}
+
+// Home's record states the gap the food nudge states (#6011), from the same ledger
+// slice and boundaries, for the profile's own today.
+export function getTodayFoodWindowGapRows(
+  profileId: number,
+  now: LocalNow
+): FoodWindowGapRow[] {
+  return todayFoodWindowGapRows({
+    profileId,
+    tz: getTimezone(profileId),
+    now,
+    boundaries: profileFoodSlotBoundaries(profileId),
+    logged: getLoggedFoodWindows(
+      profileId,
+      shiftDateStr(now.date, -FOOD_WINDOW_HABIT_DAYS),
+      now.date
+    ),
+  });
 }
 
 // ---- The live food-ledger check behind a dose's declared timing (issue #2022) ----

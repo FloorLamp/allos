@@ -92,11 +92,12 @@ import {
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { solarDay } from "@/lib/sun";
 import { historyMemberFeed } from "@/lib/history";
+import { mergeMemberTimelines } from "@/lib/timeline-multi";
+import { getTodayFoodWindowGapRows } from "@/lib/queries/nutrition/regularity";
 import {
   HISTORY_DEFAULT_SHOW,
   historyRowPick,
   layoutHistoryDay,
-  type HistoryRow,
 } from "@/lib/history-format";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
@@ -758,9 +759,23 @@ async function renderHome(
     day: on,
     limit: HISTORY_DEFAULT_SHOW,
   });
-  const dayRows = feed.gather.rows as HistoryRow[];
-  const rowCount = dayRows.length;
-  const layout = layoutHistoryDay(dayRows, { rollup: false });
+  // THE HISTORY DAY VIEW'S ORDER (#6010), from its own engine: newest first, untimed
+  // rows last. Today's closed-empty habitual meal windows (#6011) sort in at their close
+  // minute; they are not records, so the day bar does not count them.
+  const gapRows = foodLoggingApplicable
+    ? getTodayFoodWindowGapRows(profile.id, {
+        date: on,
+        minuteOfDay: nowMinutes,
+      })
+    : [];
+  const rowCount = feed.gather.rows.length;
+  const [day] = mergeMemberTimelines([
+    { ...feed, events: [...feed.events, ...gapRows] },
+  ]);
+  const layout = layoutHistoryDay(day?.events ?? [], { rollup: false });
+  const receiptRow = layout.visible.find(
+    (row) => !gapRows.some((gap) => gap === row)
+  );
 
   // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
   // in the day bar, its boxes on the rows below, over the same per-row correction cores.
@@ -978,7 +993,7 @@ async function renderHome(
                   boundary: the read that feeds it is the day bar's own count, so a
                   boundary here would stream markup with no gather left behind it. */}
               <div data-testid="home-record">
-                {rowCount === 0 ? (
+                {layout.visible.length === 0 ? (
                   <p
                     className="text-sm text-slate-500 dark:text-slate-400"
                     data-testid="history-empty-filtered"
@@ -989,9 +1004,7 @@ async function renderHome(
                   <>
                     <HomeReceipt
                       rowId={
-                        layout.visible[0]
-                          ? timelineEntryAnchorId(layout.visible[0].id)
-                          : null
+                        receiptRow ? timelineEntryAnchorId(receiptRow.id) : null
                       }
                     />
                     <HistoryRows
@@ -1005,6 +1018,7 @@ async function renderHome(
                       maxDates={{ [profile.id]: on }}
                       defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
                       subjectNames={{}}
+                      foodGaps={gapRows}
                     />
                   </>
                 )}
