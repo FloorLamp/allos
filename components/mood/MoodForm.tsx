@@ -61,7 +61,6 @@ interface MoodAttempt {
   readonly id: number;
   readonly ledgerKey: string;
   readonly date: string;
-  readonly label: string;
   readonly values: MoodFormValue;
   readonly dayUnseen: boolean;
   readonly subjectProfileId?: number;
@@ -72,7 +71,6 @@ interface MoodAttempt {
 
 interface MoodControllerState {
   readonly date: string | null;
-  readonly label: string;
   readonly values: MoodDraftValues;
   readonly touched: MoodTouched;
   readonly complete: boolean;
@@ -129,7 +127,6 @@ function initialController(
   const selected = days.find((entry) => entry.date === selectedDate) ?? days[0];
   return {
     date: selected?.date ?? null,
-    label: selected?.label ?? "that day",
     values: rowValues(selected),
     touched: UNTOUCHED,
     complete,
@@ -167,7 +164,6 @@ function moodController(
       const fresh = rowValues(fallback);
       return {
         ...state,
-        label: fallback.label,
         values: {
           valence: state.touched.valence ? state.values.valence : fresh.valence,
           energy: state.touched.energy ? state.values.energy : fresh.energy,
@@ -328,26 +324,29 @@ export default function MoodForm({
   const { valence, energy, anxiety, factors, notes } = controller.values;
 
   // Ruling 1's grammar, `<Thing> logged · <time>` (#5663): a check-in has a day and no
-  // minute, so the slot is the day. Under the sheet's switcher it is the tab's own word
-  // in prose, through the one helper (ruling (a), 2026-09-16); elsewhere the day's
-  // given label.
+  // minute, so the slot is the day, in the day switcher's own word through the one
+  // helper (ruling (a), 2026-09-16). Every mount has a day context (the sheet's, or
+  // `RouteDayBoundary` on History); without one the slot drops, as an unstated minute
+  // does on the stool and measurements bodies.
   //
   // NO UNDO. `logMood` upserts the day's one statement in place and answers nothing
   // about what it replaced, so there is no complete inverse (lib/undo-offer.ts).
-  function dayWord(attempt: MoodAttempt): string {
+  //
+  // NO SETTLE (#5900): the sheet and History's record rows close on save, so it would
+  // never be seen there. History's add door is the exception while `repeatAfterSave`
+  // keeps it open; once that is retired, every mount closes.
+  function logged(attempt: MoodAttempt): string {
+    const thing = `${moodLabel(attempt.values.valence)} mood logged`;
     return dayContext
-      ? countDayWord(attempt.date, dayContext.today, prefs)
-      : attempt.label;
+      ? `${thing} · ${countDayWord(attempt.date, dayContext.today, prefs)}`
+      : thing;
   }
 
   function complete(attempt: MoodAttempt, message?: string): void {
     if (attempt.presentation !== presentation.current) return;
     dispatch({ kind: "finished", id: attempt.id });
     writing.current = false;
-    toast(
-      message ??
-        `${moodLabel(attempt.values.valence)} mood logged · ${dayWord(attempt)}`
-    );
+    toast(message ?? logged(attempt));
     onSaved?.();
     if (repeatAfterSave) dispatch({ kind: "reset" });
     else onDone?.();
@@ -427,7 +426,6 @@ export default function MoodForm({
       id: ++attemptId.current,
       ledgerKey,
       date: controller.date,
-      label: controller.label,
       values,
       dayUnseen: !controller.complete,
       subjectProfileId,

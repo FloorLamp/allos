@@ -1,5 +1,12 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickCyclePanel from "@/components/quick-entry/QuickCyclePanel";
 import type { QuickEntryTtc } from "@/app/(app)/quick-entry-actions";
 import { cycleControlState } from "@/lib/cycle-plausibility";
@@ -23,8 +30,24 @@ import { cycleControlState } from "@/lib/cycle-plausibility";
 // convenience: if a later change means to alter what the sheet shows a non-TTC profile,
 // it has to say so by editing this string.
 
-const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
+const { toast, announce, motion, actions } = vi.hoisted(() => ({
+  toast: vi.fn(),
+  announce: vi.fn(),
+  motion: { reduced: false },
+  actions: {
+    startPeriodAction: vi.fn(),
+    endPeriodAction: vi.fn(),
+    reopenPeriodAction: vi.fn(),
+    undoEndPeriodAction: vi.fn(),
+  },
+}));
 vi.mock("@/components/Toast", () => ({ useToast: () => toast }));
+vi.mock("@/components/useUndoableAction", () => ({
+  useUndoableAction: () => announce,
+}));
+vi.mock("@/components/usePrefersReducedMotion", () => ({
+  usePrefersReducedMotion: () => motion.reduced,
+}));
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (fd: FormData) => fd,
 }));
@@ -32,16 +55,20 @@ vi.mock("@/components/useOptimisticLedger", () => ({
   useOptimisticLedger: () => ({
     pending: () => false,
     blocked: () => false,
-    tap: vi.fn(),
+    // The ledger's one job this file leans on: run the write, hand its answer to
+    // `settle`. Absorption and cooldown are the ledger's own suite's.
+    tap: async ({
+      write,
+      settle,
+    }: {
+      write: () => Promise<unknown>;
+      settle: (result: unknown) => unknown;
+    }) => settle(await write()),
   }),
 }));
-// The two server-action modules the two halves post to. Never called here — this file
-// asks what is RENDERED — but importing them for real would drag the database in.
-vi.mock("@/app/(app)/medical/cycles/actions", () => ({
-  startPeriodAction: vi.fn(),
-  endPeriodAction: vi.fn(),
-  reopenPeriodAction: vi.fn(),
-}));
+// The two server-action modules the two halves post to. Importing them for real would
+// drag the database in; the period offer's tap below answers through these stubs.
+vi.mock("@/app/(app)/medical/cycles/actions", () => actions);
 vi.mock("@/app/(app)/medical/cycles/ttc-actions", () => ({
   logLhTestAction: vi.fn(),
   logBbtAction: vi.fn(),
@@ -93,5 +120,86 @@ describe("the sheet's cycle overlay is unchanged for a profile that has not decl
     expect(html.indexOf("period-started-button")).toBeLessThan(
       html.indexOf("ttc-log-bar")
     );
+  });
+});
+
+// #5900 B and #5663 ruling 1, at the tier that can see them: one settle after a landed
+// write and none otherwise, and the end's toast carrying an Undo that names its row.
+describe("the period offer after a tap", () => {
+  const OPEN = cycleControlState(
+    [
+      {
+        id: 7,
+        period_start: "2026-04-18",
+        period_end: null,
+        flow: null,
+        note: null,
+      },
+    ],
+    "2026-04-20",
+    null
+  );
+  const wrapper = () => screen.getByTestId("period-offer-sheet");
+
+  beforeEach(() => {
+    motion.reduced = false;
+    announce.mockReset();
+    actions.endPeriodAction.mockReset();
+    actions.undoEndPeriodAction.mockReset();
+  });
+
+  it("settles once after an end that landed, and its toast offers the Undo", async () => {
+    actions.endPeriodAction.mockResolvedValue({
+      ok: true,
+      id: 7,
+      end: "2026-04-20",
+    });
+    actions.undoEndPeriodAction.mockResolvedValue({ ok: true });
+    render(<QuickCyclePanel state={OPEN} onDone={() => {}} />);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("period-ended-button"))
+    );
+
+    expect(wrapper().className).toContain("motion-settle");
+    await waitFor(() =>
+      expect(wrapper().className).not.toContain("motion-settle")
+    );
+
+    expect(announce).toHaveBeenCalledOnce();
+    const { message, undo } = announce.mock.calls[0][0];
+    expect(message).toBe("Period end logged · today");
+    expect(await undo.run()).toEqual({ ok: true });
+    const posted = actions.undoEndPeriodAction.mock.calls[0][0] as FormData;
+    expect(Object.fromEntries(posted)).toEqual({ id: "7", end: "2026-04-20" });
+  });
+
+  it("does not settle or announce on a refusal", async () => {
+    actions.endPeriodAction.mockResolvedValue({
+      ok: false,
+      error: "Couldn't end the period. No period is open.",
+    });
+    render(<QuickCyclePanel state={OPEN} onDone={() => {}} />);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("period-ended-button"))
+    );
+
+    expect(wrapper().className).not.toContain("motion-settle");
+    expect(announce).not.toHaveBeenCalled();
+    expect(screen.getByText(/No period is open/)).toBeTruthy();
+  });
+
+  it("does not settle under reduced motion, and a start offers no Undo", async () => {
+    motion.reduced = true;
+    actions.startPeriodAction.mockResolvedValue({ ok: true });
+    render(<QuickCyclePanel state={STATE} onDone={() => {}} />);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("period-started-button"))
+    );
+
+    expect(wrapper().className).not.toContain("motion-settle");
+    expect(announce).toHaveBeenCalledWith({
+      message: "Period start logged · today",
+      undo: null,
+    });
   });
 });

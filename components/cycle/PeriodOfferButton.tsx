@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useToast } from "@/components/Toast";
+import { useUndoableAction } from "@/components/useUndoableAction";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import InlineError from "@/components/InlineError";
 import {
@@ -13,6 +13,9 @@ import {
   startPeriodAction,
   endPeriodAction,
   reopenPeriodAction,
+  undoEndPeriodAction,
+  type CycleActionResult,
+  type EndPeriodResult,
 } from "@/app/(app)/medical/cycles/actions";
 import Button from "@/components/Button";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -40,7 +43,7 @@ import { microMotionPlan } from "@/lib/micro-motion";
 
 const ACTIONS: Record<
   CyclePeriodWrite,
-  (fd: FormData) => Promise<{ ok: boolean; error?: string }>
+  (fd: FormData) => Promise<CycleActionResult | EndPeriodResult>
 > = {
   start: startPeriodAction,
   end: endPeriodAction,
@@ -52,9 +55,12 @@ const ACTIONS: Record<
 // grammar, `<Thing> logged · <time>` (#5663): a one-tap write is always today's, so the
 // slot is the day. A reopen logs nothing new; it takes an end back, and says so.
 //
-// NO UNDO. A start has no inverse action, and a reopen's would end the period today
-// rather than on the day it had ended. An end's inverse is the reopen, which this
-// control itself offers next ("Still bleeding") in the same slot.
+// UNDO ON AN END ONLY (lib/undo-offer.ts). An end writes only `period_end`, so clearing
+// it is complete, and `undoEndPeriodAction` refuses once that row has moved on. A
+// reopen's inverse would need the end it cleared, which `reopenPeriodCore` does not
+// return. A start's would be `deleteCycleAction`, which captures the row to Trash;
+// whether that counts as a complete inverse for a one-tap log is an open owner
+// question, so the start offers none for now.
 const TOASTS: Record<CyclePeriodWrite, string> = {
   start: "Period start logged · today",
   end: "Period end logged · today",
@@ -88,7 +94,7 @@ export default function PeriodOfferButton({
   // Called after a write that actually happened (the sheet closes itself).
   onDone?: () => void;
 }) {
-  const toast = useToast();
+  const announce = useUndoableAction();
   // The declared one-tap affordance (#2130): `startPeriodAction` is a real
   // insert guarded only server-side, so the tap runs through the shared ledger
   // for #2007's double-tap absorption — the second half of a fat-fingered tap is
@@ -145,7 +151,21 @@ export default function PeriodOfferButton({
           setError(result.error ?? "Couldn't update the period.");
           return { kind: "rollback" };
         }
-        toast(TOASTS[write]);
+        announce({
+          message: TOASTS[write],
+          undo:
+            "id" in result
+              ? {
+                  undoneMessage: "Period end undone",
+                  run: () => {
+                    const fd = new FormData();
+                    fd.set("id", String(result.id));
+                    fd.set("end", result.end);
+                    return undoEndPeriodAction(fd);
+                  },
+                }
+              : null,
+        });
         settleConfirm();
         onDone?.();
         return { kind: "keep" };

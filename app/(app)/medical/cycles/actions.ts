@@ -6,6 +6,7 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { isFlowLevel, type FlowLevel } from "@/lib/cycle";
+import type { UndoOutcome } from "@/lib/undo-offer";
 import {
   checkPeriodWrite,
   cycleRefusalMessage,
@@ -22,6 +23,7 @@ import {
   startPeriodCore,
   endPeriodCore,
   reopenPeriodCore,
+  undoEndPeriodCore,
 } from "@/lib/cycle-write";
 
 // Server Actions for the menstrual-cycle log (issue #714). Per-profile: each action
@@ -39,6 +41,10 @@ import {
 // is posted — which is exactly what this page's own form posts, so nothing here moves.
 
 export type CycleActionResult = { ok: true } | { ok: false; error: string };
+// An end answers which row it closed and on which day, so its toast's Undo can name
+// exactly that write.
+export type EndPeriodResult =
+  { ok: true; id: number; end: string } | { ok: false; error: string };
 export type CycleCreateResult =
   { ok: true; id: number } | { ok: false; error: string };
 
@@ -94,10 +100,11 @@ export async function startPeriodAction(
 // One-tap "period ended" (today, active profile).
 export async function endPeriodAction(
   formData: FormData
-): Promise<CycleActionResult> {
+): Promise<EndPeriodResult> {
   const { writeProfileId } = await requireWriteAccess();
   void formData;
-  const outcome = endPeriodCore(writeProfileId, today(writeProfileId));
+  const end = today(writeProfileId);
+  const outcome = endPeriodCore(writeProfileId, end);
   if (outcome.kind === "none-open") {
     return { ok: false, error: "Couldn't end the period. No period is open." };
   }
@@ -105,7 +112,24 @@ export async function endPeriodAction(
     return { ok: false, error: "Enter an end on or after the period start." };
   }
   revalidateCycle();
-  return { ok: true };
+  return { ok: true, id: outcome.id, end };
+}
+
+// The Undo on that end's toast (active profile, like the tap). Refused as `changed`
+// unless the row is still exactly as the end left it (`undoEndPeriodCore`).
+export async function undoEndPeriodAction(
+  formData: FormData
+): Promise<UndoOutcome> {
+  const { writeProfileId } = await requireWriteAccess();
+  const id = parseId(formData);
+  const end = String(formData.get("end") ?? "");
+  if (id == null || !isRealIsoDate(end))
+    return { ok: false, reason: "changed" };
+  const outcome = undoEndPeriodCore(writeProfileId, id, end);
+  revalidateCycle();
+  return outcome.kind === "reopened"
+    ? { ok: true }
+    : { ok: false, reason: "changed" };
 }
 
 // One-tap "Still bleeding" (today, active profile) — reopens the most recently ended

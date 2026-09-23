@@ -9,6 +9,7 @@ import {
   startPeriodAction,
   endPeriodAction,
   reopenPeriodAction,
+  undoEndPeriodAction,
   saveCycleAction,
   deleteCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
@@ -115,10 +116,47 @@ describe("cycle actions", () => {
 
     await startPeriodAction(fd({}));
     const ended = await endPeriodAction(fd({}));
-    expect(ended).toEqual({ ok: true });
-    expect(getOpenPeriod(profileId)).toBeNull();
     const row = listCyclePeriods(profileId)[0];
+    expect(ended).toEqual({ ok: true, id: row.id, end: today(profileId) });
+    expect(getOpenPeriod(profileId)).toBeNull();
     expect(row.period_end).toBe(today(profileId));
+  });
+
+  it("the end's Undo reopens exactly that row, and is refused once it has changed (#5663)", async () => {
+    await startPeriodAction(fd({}));
+    const ended = await endPeriodAction(fd({}));
+    if (!ended.ok) throw new Error(ended.error);
+    const undo = () =>
+      undoEndPeriodAction(fd({ id: ended.id, end: ended.end }));
+
+    expect(await undo()).toEqual({ ok: true });
+    expect(getOpenPeriod(profileId)?.id).toBe(ended.id);
+    // Already undone: the row is open again, so there is no end to take back.
+    expect(await undo()).toEqual({ ok: false, reason: "changed" });
+
+    // Ended again, then its end corrected elsewhere: the Undo names a write that no
+    // longer stands, so it writes nothing.
+    await endPeriodAction(fd({}));
+    const corrected = shiftDateStr(today(profileId), -1);
+    db.prepare(`UPDATE cycles SET period_end = ? WHERE id = ?`).run(
+      corrected,
+      ended.id
+    );
+    expect(await undo()).toEqual({ ok: false, reason: "changed" });
+    expect(getCycleRow(profileId, ended.id)?.period_end).toBe(corrected);
+  });
+
+  it("the end's Undo never reaches another profile's row", async () => {
+    await startPeriodAction(fd({}));
+    const ended = await endPeriodAction(fd({}));
+    if (!ended.ok) throw new Error(ended.error);
+
+    const login = createLogin({ role: "admin" });
+    actAs(login, createProfile("Someone Else", login.id));
+    expect(
+      await undoEndPeriodAction(fd({ id: ended.id, end: ended.end }))
+    ).toEqual({ ok: false, reason: "changed" });
+    expect(getCycleRow(profileId, ended.id)?.period_end).toBe(ended.end);
   });
 
   it("saveCycleAction creates then edits a period", async () => {

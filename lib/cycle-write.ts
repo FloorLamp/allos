@@ -100,6 +100,35 @@ export function endPeriodCore(
   });
 }
 
+export type UndoEndPeriodOutcome = { kind: "reopened" } | { kind: "changed" };
+
+// The Undo on the "Period ended" toast (#5663 ruling 1). An end writes only
+// `period_end` on the open row, so clearing it is the complete inverse, but only while
+// the world is as that tap left it: the row is still this profile's last end, on the
+// same day, and nothing has opened since. Anything else is `changed`, and nothing is
+// written (lib/undo-offer.ts: an inverse re-derives, it never trusts the client).
+export function undoEndPeriodCore(
+  profileId: WriteAuthorizedProfileId,
+  id: number,
+  end: string
+): UndoEndPeriodOutcome {
+  return writeTx(() => {
+    const periods = listCyclePeriods(profileId);
+    const last = lastEndedPeriodIn(periods);
+    if (openPeriodIn(periods) || last?.id !== id || last.period_end !== end)
+      return { kind: "changed" };
+    updateCycleRow(
+      profileId,
+      last.id,
+      last.period_start,
+      null,
+      last.flow,
+      last.note
+    );
+    return { kind: "reopened" };
+  });
+}
+
 export type ReopenPeriodOutcome =
   | { kind: "reopened"; id: number }
   | { kind: "not-found" }

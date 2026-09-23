@@ -189,7 +189,7 @@ describe("a STALE tap is refused, never double-logged (#1892)", () => {
     seedPeriod(profileId, 3, null);
     expect(offeredLabel(profileId)).toBe(END_PERIOD_LABEL);
     // Closed on the Cycle page in another tab.
-    expect(await endPeriodAction(fd({}))).toEqual({ ok: true });
+    expect(await endPeriodAction(fd({}))).toMatchObject({ ok: true });
 
     const stale = await endPeriodAction(fd({}));
     expect(stale.ok).toBe(false);
