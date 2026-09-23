@@ -1672,19 +1672,17 @@ describe("the quick sheet's fold writes through the dated core (#5808)", () => {
 // no amount and still draws an ordinary chip, which is the distinction the old
 // `?? null` spellings could not make.
 describe("a PRN row whose item has no dose row asks for the amount (#5981)", () => {
+  const base = {
+    identity: { name: "Acetaminophen", rxcui: null },
+    itemId: 31,
+    name: "Acetaminophen - Kids",
+    dayLabel: "None today",
+    tz: "UTC",
+  };
   function row(
     over: Partial<Parameters<typeof QuickLogPrnControl>[0]> = {}
   ): void {
-    render(
-      <QuickLogPrnControl
-        identity={{ name: "Acetaminophen", rxcui: null }}
-        itemId={31}
-        name="Acetaminophen - Kids"
-        dayLabel="None today"
-        tz="UTC"
-        {...over}
-      />
-    );
+    render(<QuickLogPrnControl {...base} {...over} />);
   }
 
   const give = () => screen.getByTestId("prn-log-now") as HTMLButtonElement;
@@ -1736,6 +1734,18 @@ describe("a PRN row whose item has no dose row asks for the amount (#5981)", () 
     row({ doseAmount });
     expect(screen.queryByTestId("prn-first-dose-amount")).toBeNull();
     expect(give().disabled).toBe(false);
+  });
+
+  it("asks from blank when the row loses its dose row again", async () => {
+    const { rerender } = render(<QuickLogPrnControl {...base} />);
+    await act(async () =>
+      fireEvent.change(field(), { target: { value: "160 mg" } })
+    );
+    rerender(<QuickLogPrnControl {...base} doseAmount="160 mg" />);
+    expect(screen.queryByTestId("prn-first-dose-amount")).toBeNull();
+    rerender(<QuickLogPrnControl {...base} />);
+    expect(field().value).toBe("");
+    expect(give().disabled).toBe(true);
   });
 
   // The band statement is the reason there is no amount on file; asking for one beside

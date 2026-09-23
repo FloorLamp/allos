@@ -2195,9 +2195,7 @@ function QuickEntryBody({
   const dayContext = useOptionalDayContext();
   const subjectTimeZone = useTimezone();
   if (state.status === "loading") return QUICK_ENTRY_LOADING;
-  if (state.status === "error") {
-    return <QuickEntryError onRetry={onRetry} />;
-  }
+  if (state.status === "error") return <QuickEntryError onRetry={onRetry} />;
 
   const data = state.data;
   const selectedDay = dayContext?.parts.day;
@@ -2271,6 +2269,7 @@ function QuickEntryBody({
             }
             subjectProfileId={subjectProfileId}
             showDayContext={false}
+            mealProperties={data.mealProperties}
           />
         </FoodProjectionProvider>
       );

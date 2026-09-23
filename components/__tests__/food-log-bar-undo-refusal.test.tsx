@@ -235,6 +235,7 @@ function barTree({
       }
     | undefined,
   showDayContext = true,
+  mealProperties = undefined as { slug: string; label: string }[] | undefined,
 } = {}) {
   const offered = days ?? [day];
   return (
@@ -265,6 +266,7 @@ function barTree({
                 proteinQuickAdd={proteinQuickAdd}
                 subjectProfileId={subjectProfileId}
                 showDayContext={showDayContext}
+                mealProperties={mealProperties}
               />
               {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
               {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
@@ -416,6 +418,26 @@ describe("FoodLogBar projection publication", () => {
     });
     const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
     expect(sent.has("occurred_at")).toBe(false);
+  });
+
+  // #5865: no declaration, no chip; a pressed chip marks every tap of the meal.
+  it("marks each tap while `This meal` is pressed, and shows no chip without a declaration", async () => {
+    const plain = mountBar();
+    screen.getByTestId("log-cruciferous");
+    expect(screen.queryByTestId("food-meal-marks")).toBeNull();
+    plain.unmount();
+
+    mountBar({ mealProperties: [{ slug: "spicy", label: "Spicy" }] });
+    fireEvent.click(screen.getByRole("button", { name: "Spicy" }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const posted = actions.logFoodServing.mock.calls.map(([form]) =>
+      (form as FormData).get("properties")
+    );
+    expect(posted).toEqual(["spicy", "spicy"]);
+    await screen.findByText(/today · Spicy$/);
   });
 
   it("retires the private header and leaves one quiet day total under sheet rows", () => {

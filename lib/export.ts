@@ -152,8 +152,9 @@ const qCount =
 
 // Assemble a dataset backed by a single profile-scoped SELECT (complete through
 // ORDER BY): full export via rows(), bounded display via page(), total via
-// count(). `countSql` is a COUNT over the same FROM/WHERE (child datasets pass a
-// JOINed COUNT so it still filters the parent's profile_id).
+// count(). `countSql` defaults to the profile's rows in `table`; a dataset whose
+// SELECT narrows further, or a child dataset (a JOINed COUNT still filtering the
+// parent's profile_id), passes its own.
 //
 // `shape` is the JS step a dataset that folds a CHILD table needs (#5324). It runs
 // on whatever the declared statement returned — full read and bounded page alike,
@@ -175,7 +176,7 @@ function tableDataset<
     table: string;
     columns: string[];
     select: string;
-    countSql: string;
+    countSql?: string;
     deletable?: boolean;
   } & (
     | { shape: ShapeHook<T>; jsBuilt: JsBuiltCell[] }
@@ -201,7 +202,10 @@ function tableDataset<
       ? (profileId, limit, offset) =>
           shape(readPage(profileId, limit, offset) as T[], profileId)
       : readPage,
-    count: qCount(cfg.countSql),
+    count: qCount(
+      cfg.countSql ??
+        `SELECT COUNT(*) AS n FROM ${cfg.table} WHERE profile_id = ?`
+    ),
   };
 }
 
@@ -481,7 +485,6 @@ export const DATASETS: ExportDataset[] = [
     label: "Activities",
     table: "activities",
     select: ACTIVITIES_SELECT,
-    countSql: `SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`,
     shape: (acts, profileId) =>
       shapeActivities(
         acts,
@@ -600,8 +603,6 @@ export const DATASETS: ExportDataset[] = [
                     heart_rate_zones_json, power_zones_json, snapshot_at
                FROM activity_telemetry
               WHERE profile_id = ? ORDER BY activity_id DESC`,
-    countSql:
-      "SELECT COUNT(*) AS n FROM activity_telemetry WHERE profile_id = ?",
   }),
   tableDataset({
     key: "activity_laps",
@@ -633,7 +634,6 @@ export const DATASETS: ExportDataset[] = [
                     average_cadence, average_watts, average_heartrate, max_heartrate
                FROM activity_laps
               WHERE profile_id = ? ORDER BY activity_id DESC, lap_index`,
-    countSql: "SELECT COUNT(*) AS n FROM activity_laps WHERE profile_id = ?",
   }),
   tableDataset({
     key: "activity_segment_efforts",
@@ -664,8 +664,6 @@ export const DATASETS: ExportDataset[] = [
                     average_heartrate, max_heartrate, pr_rank, kom_rank
                FROM activity_segment_efforts
               WHERE profile_id = ? ORDER BY activity_id DESC, start_index`,
-    countSql:
-      "SELECT COUNT(*) AS n FROM activity_segment_efforts WHERE profile_id = ?",
   }),
   tableDataset({
     key: "body_metrics",
@@ -688,7 +686,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes,
               bundle_id
        FROM body_metrics WHERE profile_id = ? ORDER BY date DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "medical_records",
@@ -713,7 +710,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, category, name, canonical_name, value, value_num,
               unit, reference_range, flag, panel, source, document_id, edited, notes
        FROM medical_records WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?`,
   }),
   tableDataset({
     // Correction lineage (#1404): a reading's prior values as they stood before a
@@ -766,7 +762,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, vaccine, dose_label, notes,
               lot_number, route, site, reaction
        FROM immunizations WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM immunizations WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "goals",
@@ -786,7 +781,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, title, description, category, target_value, current_value,
               unit, target_date, status, created_at
        FROM goals WHERE profile_id = ? ORDER BY created_at DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM goals WHERE profile_id = ?`,
   }),
   tableDataset({
     // User-declared injuries (#838) — user-entered training-context data a migrating
@@ -806,7 +800,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, label, regions, muscles, status, since, resolved_date, notes, created_at
        FROM injuries WHERE profile_id = ? ORDER BY COALESCE(since, substr(created_at, 1, 10)) DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM injuries WHERE profile_id = ?`,
   }),
   tableDataset({
     // Niggles (#2948) — the self-expiring tier below injury, one row per body region +
@@ -829,7 +822,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, region, laterality, body_term, source_activity_id,
                     source_exercise, reported_at, last_reported_at
        FROM niggles WHERE profile_id = ? ORDER BY last_reported_at DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM niggles WHERE profile_id = ?`,
   }),
   tableDataset({
     // Events (#839, generalized by #3285) — user-entered events a migrating family
@@ -855,7 +847,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, kind, event_name, discipline, event_date, target_distance_km, target_time_sec,
               status, notes, completed_on, created_at
        FROM endurance_plans WHERE profile_id = ? ORDER BY event_date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM endurance_plans WHERE profile_id = ?`,
   }),
   tableDataset({
     // Menstrual cycle log (#714) — the user-entered periods (start/inclusive end, flow,
@@ -867,7 +858,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["period_start", "period_end", "flow", "note", "created_at"],
     select: `SELECT id, period_start, period_end, flow, note, created_at
        FROM cycles WHERE profile_id = ? ORDER BY period_start DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM cycles WHERE profile_id = ?`,
   }),
   tableDataset({
     // Daily wellbeing check-ins (#992) — one row per day: valence 1–5 plus the
@@ -887,7 +877,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, date, valence, energy, anxiety, factors, notes, created_at
        FROM mood_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM mood_logs WHERE profile_id = ?`,
   }),
   tableDataset({
     // Wellness-practice session log (#1259): one row per logged session (red light,
@@ -913,7 +902,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, practice, date, start_time, end_time, duration_min, notes,
               created_at, bundle_id
        FROM practice_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = ?`,
   }),
   tableDataset({
     // Supplements + medications (the parent intake_items rows), one per row, with
@@ -927,7 +915,6 @@ export const DATASETS: ExportDataset[] = [
     label: "Supplements & Medications",
     table: "intake_items",
     select: ITEMS_SELECT,
-    countSql: `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ?`,
     shape: (items, profileId) =>
       shapeSupplements(
         items,
@@ -1046,7 +1033,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, substance, reaction, severity, status,
               criticality, verification_status, onset_date, notes
        FROM allergies WHERE profile_id = ? ORDER BY substance`,
-    countSql: `SELECT COUNT(*) AS n FROM allergies WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "conditions",
@@ -1071,7 +1057,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, name, code, code_system, status, laterality, severity, stage,
               onset_date, resolved_date, edited, notes
        FROM conditions WHERE profile_id = ? ORDER BY name`,
-    countSql: `SELECT COUNT(*) AS n FROM conditions WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "encounters",
@@ -1088,7 +1073,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, date, end_date, type, class_code, reason, diagnoses, notes
        FROM encounters WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM encounters WHERE profile_id = ?`,
   }),
   tableDataset({
     // Integration-synced daily/scalar samples (steps, distance, calories, HRV,
@@ -1109,7 +1093,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, metric, value, started_at, ended_at, source, origin
        FROM metric_samples WHERE profile_id = ?
        ORDER BY date DESC, metric, started_at DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ?`,
   }),
   tableDataset({
     // Per-minute heart-rate buckets (integration-synced). Keyed by
@@ -1123,7 +1106,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["ts", "bpm", "bpm_min", "bpm_max", "n", "source"],
     select: `SELECT ts, bpm, bpm_min, bpm_max, n, source
        FROM hr_minutes WHERE profile_id = ? ORDER BY ts DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM hr_minutes WHERE profile_id = ?`,
   }),
   tableDataset({
     // The continuous-glucose trace (#2810). Same posture as hr_minutes one row
@@ -1140,7 +1122,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["ts", "mgdl", "source"],
     select: `SELECT ts, mgdl, source
        FROM glucose_trace WHERE profile_id = ? ORDER BY ts DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM glucose_trace WHERE profile_id = ?`,
   }),
   // ── Clinical passport domains that used to be absent from the full export (#465).
   // Each was in OWNED_TABLES with a dedicated page but no dataset/FHIR resource, so a
@@ -1154,7 +1135,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "name", "code", "code_system", "notes"],
     select: `SELECT id, date, name, code, code_system, notes
        FROM procedures WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM procedures WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "genomic_variants",
@@ -1177,7 +1157,6 @@ export const DATASETS: ExportDataset[] = [
               result_type, interpretation, source_lab, report_date, notes
        FROM genomic_variants WHERE profile_id = ?
        ORDER BY COALESCE(report_date, '') DESC, gene, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM genomic_variants WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "imaging_studies",
@@ -1200,7 +1179,6 @@ export const DATASETS: ExportDataset[] = [
               study_date, impression, report_narrative, indication, status, notes
        FROM imaging_studies WHERE profile_id = ?
        ORDER BY COALESCE(study_date, '') DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM imaging_studies WHERE profile_id = ?`,
   }),
   // ── The two specialty record types that shipped in NO bundle (#1846) ──────────
   // Both were export-allowlisted on the argument that they have no FHIR builder —
@@ -1255,7 +1233,6 @@ export const DATASETS: ExportDataset[] = [
        FROM dental_procedures dp LEFT JOIN providers p ON p.id = dp.provider_id
        WHERE dp.profile_id = ?
        ORDER BY COALESCE(dp.procedure_date, '') DESC, dp.id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM dental_procedures WHERE profile_id = ?`,
   }),
   tableDataset({
     // Structured skin-lesion records (#715) — the same shape one specialty over, and
@@ -1297,7 +1274,6 @@ export const DATASETS: ExportDataset[] = [
        FROM skin_lesions sl LEFT JOIN providers p ON p.id = sl.provider_id
        WHERE sl.profile_id = ?
        ORDER BY COALESCE(sl.observed_date, '') DESC, sl.id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM skin_lesions WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "optical_prescriptions",
@@ -1326,7 +1302,6 @@ export const DATASETS: ExportDataset[] = [
               base_curve, diameter, brand, issued_date, expiry_date, notes
        FROM optical_prescriptions WHERE profile_id = ?
        ORDER BY COALESCE(issued_date, '') DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM optical_prescriptions WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "family_history",
@@ -1348,7 +1323,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, relation, relation_type, lineage, condition, code, code_system,
               onset_age, deceased, age_at_death, cause_of_death, notes
        FROM family_history WHERE profile_id = ? ORDER BY condition, id`,
-    countSql: `SELECT COUNT(*) AS n FROM family_history WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "care_plan_items",
@@ -1365,7 +1339,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, description, category, code, code_system, planned_date, status, notes
        FROM care_plan_items WHERE profile_id = ? ORDER BY planned_date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM care_plan_items WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "care_goals",
@@ -1381,7 +1354,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, description, code, code_system, target_date, status, notes
        FROM care_goals WHERE profile_id = ? ORDER BY target_date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM care_goals WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "appointments",
@@ -1391,7 +1363,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, time_of_day, title, location, status, notes
        FROM appointments WHERE profile_id = ?
        ORDER BY date DESC, time_of_day DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM appointments WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "immunization_overrides",
@@ -1400,7 +1371,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["vaccine", "kind", "reason", "exemption_type", "note"],
     select: `SELECT id, vaccine, kind, reason, exemption_type, note
        FROM immunization_overrides WHERE profile_id = ? ORDER BY vaccine`,
-    countSql: `SELECT COUNT(*) AS n FROM immunization_overrides WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "preventive_events",
@@ -1409,7 +1379,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["rule_key", "date", "source"],
     select: `SELECT id, rule_key, date, source
        FROM preventive_events WHERE profile_id = ? ORDER BY date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM preventive_events WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "preventive_overrides",
@@ -1418,7 +1387,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["rule_key", "kind", "note"],
     select: `SELECT id, rule_key, kind, note
        FROM preventive_overrides WHERE profile_id = ? ORDER BY rule_key`,
-    countSql: `SELECT COUNT(*) AS n FROM preventive_overrides WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "preventive_record_decisions",
@@ -1428,7 +1396,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, medical_record_id, rule_key, decision, confirmed_date
        FROM preventive_record_decisions WHERE profile_id = ?
        ORDER BY rule_key, medical_record_id`,
-    countSql: `SELECT COUNT(*) AS n FROM preventive_record_decisions WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "protocols",
@@ -1444,7 +1411,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, name, start_date, end_date, situation, outcome_keys, notes
        FROM protocols WHERE profile_id = ? ORDER BY start_date DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM protocols WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "milestones",
@@ -1453,7 +1419,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["kind", "threshold", "title", "detail", "achieved_on"],
     select: `SELECT id, key, kind, threshold, title, detail, achieved_on
        FROM milestones WHERE profile_id = ? ORDER BY achieved_on DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "equipment",
@@ -1462,7 +1427,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["name", "weight_kg", "category"],
     select: `SELECT id, name, weight_kg, category
        FROM equipment WHERE profile_id = ? ORDER BY name`,
-    countSql: `SELECT COUNT(*) AS n FROM equipment WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "frequency_targets",
@@ -1471,7 +1435,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["scope_kind", "scope_value", "per_week"],
     select: `SELECT id, scope_kind, scope_value, per_week
        FROM frequency_targets WHERE profile_id = ? ORDER BY scope_kind, scope_value`,
-    countSql: `SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?`,
   }),
   // Situations vocabulary (#560): the profile's situational-context labels + active
   // state. Not deletable as a set — intake_items.situation_id links reference these
@@ -1485,7 +1448,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "group_key", "servings", "notes"],
     select: `SELECT id, date, group_key, servings, notes
        FROM food_daily_totals WHERE profile_id = ? ORDER BY date DESC, group_key`,
-    countSql: `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
@@ -1503,11 +1465,11 @@ export const DATASETS: ExportDataset[] = [
       "recorded_at",
       "meal_slot",
       "notes",
+      "properties",
       "bundle_id",
     ],
-    select: `SELECT id, date, group_key, recorded_at, meal_slot, notes, bundle_id
+    select: `SELECT id, date, group_key, recorded_at, meal_slot, notes, properties, bundle_id
        FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // Declared food sensitivities (#5865): "after <trigger>, I get <effect>", written by
@@ -1522,7 +1484,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, trigger_kind, trigger_slug, effect, note, status
        FROM food_sensitivities WHERE profile_id = ?
        ORDER BY trigger_kind, trigger_slug, effect`,
-    countSql: `SELECT COUNT(*) AS n FROM food_sensitivities WHERE profile_id = ?`,
   }),
   tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
@@ -1548,7 +1509,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "substance", "units", "recorded_at", "notes"],
     select: `SELECT id, date, substance, units, recorded_at, notes
        FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
-    countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // The substance EVENT ledger (#5026 phase 2): one append-only row per use, carrying
@@ -1571,7 +1531,6 @@ export const DATASETS: ExportDataset[] = [
     ],
     select: `SELECT id, date, substance, recorded_at, occurred_at, time_source, notes
        FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // The stool ledger (#5872): one row per movement, with the Bristol type NULLABLE
@@ -1585,7 +1544,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "type", "recorded_at", "occurred_at", "time_source"],
     select: `SELECT id, date, type, recorded_at, occurred_at, time_source
        FROM stool_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
@@ -1598,7 +1556,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "grams"],
     select: `SELECT id, date, grams
        FROM protein_daily_totals WHERE profile_id = ? ORDER BY date DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM protein_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Fasting log (#2756): one row per claimed fast — the two instants and an optional
@@ -1625,7 +1582,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["started_at", "ended_at", "note", "created_at"],
     select: `SELECT id, started_at, ended_at, note, created_at
        FROM fasts WHERE profile_id = ? ORDER BY started_at DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM fasts WHERE profile_id = ?`,
   }),
   tableDataset({
     // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
@@ -1637,7 +1593,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["date", "symptom", "severity", "note"],
     select: `SELECT id, date, symptom, severity, note
        FROM symptom_logs WHERE profile_id = ? ORDER BY date DESC, symptom COLLATE NOCASE`,
-    countSql: `SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?`,
   }),
   tableDataset({
     key: "situations",
@@ -1646,7 +1601,6 @@ export const DATASETS: ExportDataset[] = [
     columns: ["name", "active", "illness_type"],
     select: `SELECT id, name, active, illness_type
        FROM situations WHERE profile_id = ? ORDER BY name COLLATE NOCASE`,
-    countSql: `SELECT COUNT(*) AS n FROM situations WHERE profile_id = ?`,
     deletable: false,
   }),
   tableDataset({
@@ -1671,7 +1625,6 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, filename, doc_type, source, document_date, mime_type,
               size_bytes, extraction_status, extracted_count, uploaded_at
        FROM medical_documents WHERE profile_id = ? ORDER BY uploaded_at DESC, id DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM medical_documents WHERE profile_id = ?`,
   }),
   tableDataset({
     // Medication start/stop history (a child of intake_items via item_id, so

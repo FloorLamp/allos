@@ -49,6 +49,7 @@
 // per-item business, because reconstructing a fortnight is not one tap's worth of
 // remembering.
 
+import type { MealPropertySlug } from "./food-sensitivities";
 import { instantNow } from "./clock";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
@@ -156,7 +157,9 @@ export function logUsualFoodCore(
   // why no surface may pass this without saying where the servings land; it is also why
   // the composed Telegram tap, whose label is the only thing naming the window there,
   // does not pass it at all.
-  statedAt?: FoodEatingTime
+  statedAt?: FoodEatingTime,
+  // The `This meal` marks (#5865): one act, so every member carries them.
+  properties?: readonly MealPropertySlug[]
 ): UsualFoodOutcome {
   const t = today(profileId);
   if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
@@ -200,7 +203,9 @@ export function logUsualFoodCore(
           via,
           loggedAt,
           statedAt ?? window,
-          origin
+          origin,
+          undefined,
+          properties
         );
         // Unreachable in practice — the offer only ever contains catalog slugs — but a
         // refusal must not be swallowed into a half-written set, so it THROWS to reach
