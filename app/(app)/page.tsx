@@ -57,7 +57,10 @@ import { FOOD_SLOTS } from "@/lib/food-slot";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
 import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
-import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import {
+  TIME_BUCKET_LABELS,
+  TIME_BUCKET_OPENS_AT,
+} from "@/lib/intake-schedule";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
@@ -707,18 +710,23 @@ async function renderHome(
   });
 
   // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
-  // of its own. Asked for the LATEST seated dose slot's window, not the clock's food
-  // window (#6013): a Morning tapped past the Morning/Midday midpoint still files Morning
-  // food and takes the Morning doses. An earlier slot still owed keeps Take all.
-  // Read-only access renders no control at all.
-  const seatedSlots = new Set(
-    (homeList.now?.rows ?? []).map((row) =>
-      row.content.kind === "dose-slot" ? row.content.bucket : null
-    )
+  // of its own. Asked for the food slot the DOSE clock sits in (the same opening times
+  // that seat the slots), not the food window (#6013): past the Morning/Midday food
+  // midpoint, a Morning whose doses are still current still files Morning food and takes
+  // the Morning doses. An earlier slot still owed keeps Take all, so logging the current
+  // slot collapses the control. Read-only access renders no control at all.
+  const currentSlot = FOOD_SLOTS.findLast(
+    (slot) => TIME_BUCKET_OPENS_AT[slot] <= nowMinutes
   );
   const routineWindow =
-    foodLoggingApplicable && writable
-      ? (FOOD_SLOTS.findLast((slot) => seatedSlots.has(slot)) ?? null)
+    foodLoggingApplicable &&
+    writable &&
+    currentSlot != null &&
+    homeList.now?.rows.some(
+      (row) =>
+        row.content.kind === "dose-slot" && row.content.bucket === currentSlot
+    )
+      ? currentSlot
       : null;
   const routineOffer =
     routineWindow != null

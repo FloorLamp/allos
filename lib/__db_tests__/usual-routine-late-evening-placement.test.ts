@@ -335,4 +335,27 @@ describe("the usual routine follows the seated dose slot (#6013)", () => {
     expect((midday.props as { window: string }).window).toBe("Midday");
     expect(slotControl(seated, "Morning").type).toBe(DoseSlotTakeAll);
   });
+
+  // Once the current slot is logged the control collapses: it does not jump back to the
+  // earlier slot still owed (#2458's collapse, e2e/routine-usual.spec.ts).
+  it("does not move the control back to Morning once Midday is logged", async () => {
+    vi.setSystemTime(new Date(MIDDAY_DUE));
+    const profileId = seedSlotHoursProfile("Midday logged");
+    actAs(profileId);
+    const props = slotControl(await renderRows(), "Midday")
+      .props as React.ComponentProps<typeof UsualRoutineControl>;
+    expect(
+      logUsualRoutineCore(
+        profileId,
+        "Midday",
+        today(profileId),
+        props.food.map((member) => member.slug),
+        props.doses.map((dose) => dose.id),
+        "dashboard-widget"
+      ).kind
+    ).toBe("logged");
+    const seated = await renderRows();
+    expect(seated.has("attention.fact:dose-slot:Midday")).toBe(false);
+    expect(slotControl(seated, "Morning").type).toBe(DoseSlotTakeAll);
+  });
 });
