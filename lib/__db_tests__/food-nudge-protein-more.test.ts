@@ -378,7 +378,7 @@ describe("'Show less' collapse (#1807)", () => {
     const before = labelsAt(lastRebuiltKeyboard());
     const tally = lastRebuiltText();
     expect(tally).toMatch(/<b>Greens<\/b> ×\d+/);
-    expect(before).toContain("🥬 Greens");
+    expect(before).toContain("🥬 Greens ✅");
 
     await handleCallbackQuery(
       cqWithFoodButtons(

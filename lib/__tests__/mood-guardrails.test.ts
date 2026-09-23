@@ -13,7 +13,7 @@ import canonical from "@/lib/canonical-result-definitions.json";
 import { stripComments } from "./strip-comments";
 
 // The #992 sensitivity guardrails, pinned STRUCTURALLY (the source-scan pattern of
-// profile-scoping / telegram-chokepoint / e2e-hygiene):
+// profile-scoping / e2e-hygiene):
 //
 //   1. NEVER FLAGGED / NEVER RETESTED — a mood value is a subjective self-rating,
 //      not a lab. mood_logs must stay outside the reference-range/flag engine and
