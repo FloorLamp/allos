@@ -585,6 +585,7 @@ describe("Home's one list, rendered", () => {
     // ── THE POOLED LOW-SUPPLY RENDER, on its own profile for the same reasons.
     const poolBefore = new Set(allProfileIds());
     const poolProfileId = newProfile(`dashboard:${POOL_REFILL_FIXTURE}`);
+    // Pin the zone so `today()` for the fixture's relative days and Home's day agree.
     setTimezone(poolProfileId, "UTC");
     seedShapedPools(poolProfileId);
     // THE NEGATIVE CONTROL ON THE SAME RENDER: one PRIVATE run-out item, which keeps

@@ -7,14 +7,17 @@
 // so a cue and its control are joined on the identity the producer stamped rather than
 // by parsing one back out of a string.
 //
-// PURE, AND PARAMETERISED ON ITS INPUTS rather than on a profile id: the caller hands in
-// the snapshot-cached `getIntakeItems` result it already took, the cue keys it has
-// already raised, and a lookup for a bottle's own remembered fill, so every claim below
-// is checkable against `poolRefillItems` without a page or a request.
+// `refillCueTargets` is the one production path: it reads the snapshot-cached
+// `getIntakeItems` list (no statement of its own) and a LOW shared bottle's own fill.
+// `projectRefillCueTargets` is the pure projection under it, so every claim below is
+// checkable against `poolRefillItems` without a page or a request.
 
 import { rememberedFillFor } from "@/lib/refill";
 import { poolRefillSignalKey, refillSignalKey } from "@/lib/refill-nudge";
 import type { IntakeItem } from "@/lib/types";
+import type { UpcomingItem } from "@/lib/upcoming";
+import { getIntakeItems } from "../intake/schedule";
+import { getSharedSupply } from "../intake/supply-pool";
 
 // One cue's refill target. `supplyId` is the bottle when the cue is a pooled one and
 // null for a private supply; `lastFillSize` is the remembered fill, whose ABSENCE is
@@ -25,15 +28,32 @@ export interface RefillCueTarget {
   lastFillSize: number | null;
 }
 
-// The targets for every cue key this profile's items can raise, private and pooled.
-// A pooled target is emitted only for a bottle whose cue is in `raised` (it is low or
-// due), and only then is `bottleFill` asked for that bottle's OWN remembered fill, once
-// per bottle. A profile with no low shared bottle costs no lookup.
+// The targets for the refill cues `attention` has raised for this profile. Costs no
+// read unless a shared bottle is low, then one per such bottle.
 export function refillCueTargets(
+  profileId: number,
+  attention: readonly UpcomingItem[]
+): Map<string, RefillCueTarget> {
+  return projectRefillCueTargets(
+    getIntakeItems(profileId),
+    attention,
+    (supplyId) => getSharedSupply(supplyId)?.last_fill_size ?? null
+  );
+}
+
+// The targets for every cue key this profile's items can raise, private and pooled.
+// A pooled target is emitted only for a bottle whose refill cue is in `attention` (it
+// is low or due), and only then is `bottleFill` asked for that bottle's OWN remembered
+// fill, once per bottle. A private target is not gated that way because it costs no
+// read, and the composer admits only a key that is both a raised cue and a target.
+export function projectRefillCueTargets(
   items: readonly IntakeItem[],
-  raised: ReadonlySet<string>,
+  attention: readonly UpcomingItem[],
   bottleFill: (supplyId: number) => number | null
 ): Map<string, RefillCueTarget> {
+  const raised = new Set(
+    attention.filter((cue) => cue.domain === "refill").map((cue) => cue.key)
+  );
   const refillTargets = new Map<string, RefillCueTarget>();
   for (const item of items) {
     // A MEMBER OF A POOL GETS NO PRIVATE KEY. Its `refill:<id>` entry carried the
