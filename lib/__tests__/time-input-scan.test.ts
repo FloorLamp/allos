@@ -626,16 +626,16 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
     }
   );
 
-  // THE SHARED CONTROL'S OWN DEFINITION SPELLS THE QUESTION, and must. It is the one
-  // place the words are written — as the door's accessible name — so this is asserted
-  // rather than assumed: if the exclusion above ever stopped excluding it, the rule
-  // would fire on the very control it exists to protect.
+  // THE SHARED CONTROL DRAWS THE DOOR'S OWN CLOCK, and must. It is the one place the
+  // glyph is written, so this is asserted rather than assumed: if the exclusion above
+  // ever stopped excluding it, the rule would fire on the very control it exists to
+  // protect.
   it("does not range over the control that owns the question", () => {
     const control = scanStatementSurface(
       STATEMENT_CONTROL,
       fs.readFileSync(path.join(REPO, STATEMENT_CONTROL), "utf8")
     );
-    expect(control.retired.length).toBeGreaterThan(0);
+    expect(control.clock.length).toBeGreaterThan(0);
     expect(surfaces.map(([rel]) => rel)).not.toContain(STATEMENT_CONTROL);
   });
 
