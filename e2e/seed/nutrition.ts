@@ -441,11 +441,12 @@ export function seedFoodSlots(): void {
        VALUES (?, 'food_group', 'fatty_fish', 2, ?)`
     ).run(foodSlotId, `${shiftDateStr(foodSlotAnchor, -63)} 09:00:00`);
     // A freshly-created "leafy greens 3×/week" habit → an HONEST cold-start trend (weeks
-    // before it existed render not-applicable, not misses). created_at defaults to now.
+    // before it existed render not-applicable, not misses). created_at is the frozen
+    // now, not SQL's real-clock default (#6015).
     db.prepare(
-      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
-       VALUES (?, 'food_group', 'leafy_greens', 3)`
-    ).run(foodSlotId);
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+       VALUES (?, 'food_group', 'leafy_greens', 3, ?)`
+    ).run(foodSlotId, utcSqlString(clockNow()));
   }
   seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
   console.log(
