@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import { workerDbPath } from "./worker-env";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -37,7 +37,7 @@ import {
 //      show. It ran on the acting profile's dose until the #4067 review: the row was
 //      the caller's, so a page that had ignored the row's profile entirely would have
 //      passed. It is MEMBER's row now.
-//   4. The mode is DEEP-LINKED, not chipped — reached from the household page (#1463),
+//   4. The mode is DEEP-LINKED, not chipped (#1463),
 //      with nothing on /history's own filter row advertising it. #3958 rules that out
 //      explicitly: the sidebar is the app's one profile switcher, and a second
 //      selection vocabulary is the parallel concept CLAUDE.md forbids.
@@ -148,7 +148,7 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
   test("attributes every row and gates the ⋯ on the row's own profile", async ({
     browser,
   }) => {
-    // Local `next dev` compiles /history and /household on first hit.
+    // Local `next dev` compiles /history on first hit.
     test.slow();
     const { roId } = resetFixture();
     const page = await loginAs(browser, {
@@ -195,19 +195,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       page.getByTestId("history-filters").getByText(/every(one|body)/i)
     ).toHaveCount(0);
 
-    // ── THE DOOR IS THE HOUSEHOLD PAGE (#1463) ───────────────────────────────
-    // Followed rather than typed. `?view=everyone` shipped with no door at all in
-    // phase 1, which is the state this asserts is over: a capability reachable only
-    // by hand-typing a query string is not demoted, it is retired.
-    await page.goto("/household");
-    await followLink(
-      page,
-      page.getByTestId("household-record-link"),
-      /\/history\?view=everyone/
-    );
-
     // The view-set is still one profile, so the mode has nothing to merge yet — and
     // that degrade is the honest one: the page renders, it just renders single view.
+    await page.goto("/history?view=everyone");
     await expect(page.getByTestId("history-page")).toBeVisible();
 
     // ── MERGED ───────────────────────────────────────────────────────────────

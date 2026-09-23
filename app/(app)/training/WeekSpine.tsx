@@ -132,8 +132,7 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
           // for landing on the day rather than on an anchor inside it.
           //
           // `DestinationLink` draws the cue, so obviousness is the primitive's and
-          // not this cell's: `lib/__tests__/destination-link-primitive.test.ts`
-          // refuses a hand-rolled chevron, and the cue is visible at every viewport
+          // not this cell's: the cue is visible at every viewport
           // rather than waiting for a pointer (#3375/#3958).
           //
           // An empty or ahead day stays a `SeriesPoint` — no cue, because there is

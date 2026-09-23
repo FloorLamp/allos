@@ -30,6 +30,7 @@ import {
   partFactSummary,
   partOptionsOffered,
 } from "@/lib/activity-part-facts";
+import Button from "@/components/Button";
 import ControlTooltip from "@/components/ControlTooltip";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
@@ -598,14 +599,12 @@ export default function ActivityPartsList({
               distinct equipment id, which is what makes its history/seed separate from
               the home machine's (#1610). */}
           {!addingEquipment && (
-            <button
-              type="button"
+            <Button
               onClick={() => setAddingEquipment(true)}
               data-testid="strength-equipment-add"
-              className="btn-ghost px-2.5 text-xs"
             >
               + Equipment
-            </button>
+            </Button>
           )}
           {/* Full management stays on /equipment — the same same-app door
               ActivityEquipmentPicker renders for non-strength activities (#592). ONE
@@ -945,14 +944,9 @@ export default function ActivityPartsList({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <button
-            type="button"
-            onClick={onAddPart}
-            disabled={!canAddPart}
-            className="btn-ghost"
-          >
+          <Button onClick={onAddPart} disabled={!canAddPart}>
             + Add another activity
-          </button>
+          </Button>
           {!canAddPart && (
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Complete the current activity first.

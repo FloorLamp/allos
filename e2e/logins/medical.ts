@@ -62,15 +62,6 @@ export const DQ_GAPPY_PROFILE = "Data Quality Gappy (e2e)";
 export const E2E_LOGIN_DQ_COMPLETE = "e2e_dq_complete";
 export const DQ_COMPLETE_PROFILE = "Data Quality Complete (e2e)";
 
-// A caregiver granted TWO profiles — its own COMPLETE base profile plus a GAPPY child
-// (no birthdate/sex) — so the household page shows a per-member data-quality gaps line
-// on the child's card (kids are where birthdate/sex gaps cluster). Read-only in its
-// spec, so concurrent workers never contend and it never perturbs the dashboard
-// gappy/complete fixtures above.
-export const E2E_LOGIN_DQ_CARE = "e2e_dq_care";
-export const DQ_CARE_PARENT_PROFILE = "Data Quality Parent (e2e)";
-export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
-
 // A member whose SOLE profile is a structurally-GAPPY ADULT (#1146): birthdate + sex
 // set, but smoking status unknown, risk factors unreviewed, and a PARTIAL PhenoAge
 // panel (one Albumin lab) — so the "Data quality" widget renders the adult-gated

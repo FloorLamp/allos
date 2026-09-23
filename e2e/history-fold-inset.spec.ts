@@ -3,7 +3,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
-import { workerDbPath, frozenNow } from "./worker-env";
+import { workerDbPath, frozenNow, frozenDayThisYear } from "./worker-env";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -38,10 +38,10 @@ function shiftedDay(days: number): string {
 // the recent band is empty), which would otherwise make "closed" assertions below
 // depend on which month happened to be newest.
 const RECENT_DATE = shiftedDay(-7);
-// −100: outside the recent band, inside the CURRENT calendar year — a TOP-LEVEL
-// month fold, never nested. This is the "closed month's siblings align as today"
+// −100, held inside the year: outside the recent band, inside the CURRENT calendar
+// year — a TOP-LEVEL month fold, never nested. This is the "closed month's siblings align as today"
 // control: the inset fix must not touch it.
-const CURRENT_OLD_DATE = shiftedDay(-100);
+const CURRENT_OLD_DATE = frozenDayThisYear(-100);
 const CURRENT_OLD_MONTH = CURRENT_OLD_DATE.slice(0, 7);
 // −400: comfortably inside the PREVIOUS calendar year, nowhere near either of its
 // boundaries (mirrors history-windowing.spec.ts's own LAST_YEAR_DATE) — a month

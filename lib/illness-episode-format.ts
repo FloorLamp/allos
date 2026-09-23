@@ -1,6 +1,6 @@
 // Pure shapes + formatters for the illness-episode view (issue #801). NO DB/network
 // imports, so these are unit-tested in lib/__tests__ and shared by EVERY surface
-// (timeline card, dashboard illness Now group, Household page "sick day" chip, share/print) —
+// (timeline card, dashboard illness Now group, share/print) —
 // the one-question-one-computation discipline (#221). The DB gather that fills an
 // `AssembledEpisode` lives in lib/illness-episode.ts; this module never touches the DB.
 //
@@ -688,9 +688,8 @@ export function episodeWorsening(
 // THE ARROW'S ONE SPELLING (#5488 fix 2) — "fever trending up ↑" / "cough worsening ↑".
 // Three surfaces hand-spelled a bare "Worsening ↑" of their own; the fever arm reuses
 // `feverTrendLabel`'s existing words so a rising fever reads the same wherever it is
-// named. Lowercase for the household line's own clause list; `episodeWorseningLabel`
-// is the sentence-cased form the cockpit renders, spelled once for the reason
-// `schoolReturnCompactLabel` is.
+// named. `episodeWorseningLabel` is the sentence-cased form the cockpit renders,
+// spelled once for the reason `schoolReturnCompactLabel` is.
 export function episodeWorseningClause(worsening: EpisodeWorsening): string {
   return worsening.driver === "fever"
     ? `${FEVER_TRENDING_UP} ↑`
@@ -705,7 +704,7 @@ export function episodeWorseningLabel(worsening: EpisodeWorsening): string {
 // The most-recent PRN administration across the episode's meds. Derived from the SAME
 // #801 assembly the cockpit's PRN control formats over (one question, one computation,
 // #221) — never a second dose query. Consumers use the full point for the at-a-glance
-// latest reading and the compact clause below for the household accordion line.
+// latest reading.
 export function episodeLatestDose(
   ep: AssembledEpisode
 ): LatestEpisodeDose | null {
@@ -731,64 +730,6 @@ export function episodeLatestDose(
     }
   }
   return best;
-}
-
-export function episodeLastDoseClause(
-  ep: AssembledEpisode,
-  timeFormat?: TimeFormat
-): string | null {
-  const best = episodeLatestDose(ep);
-  if (!best) return null;
-  const name = best.name.toLowerCase();
-  const dose = formatMedicationDoseProduct(best.amount, best.product);
-  // The dose is bound to the DRUG, and the clock is what follows the pair (#2615
-  // item 4). The clause used to read "last ibuprofen · 200 mg 17:33", which put its
-  // two part boundaries in the wrong places twice over: a separator split the drug
-  // from its own dose, and then the clock was concatenated onto the dose with no
-  // boundary at all. Worse, that separator was the SAME " · " the household line
-  // joins its clauses with, so "200 mg" read as a sibling of "sick day 3" — and
-  // `formatMedicationDoseProduct` can itself return a " · "-joined string
-  // ("160 mg · Chewable tablet"), which a third level of the same separator would
-  // have made unreadable. Parentheses close the dose off, and the no-dose clause
-  // ("last ibuprofen 4:02 PM") is unchanged.
-  const medication = dose ? `${name} (${dose})` : name;
-  return best.time
-    ? `last ${medication} ${formatClockValue(best.time, timeFormat)}`
-    : `last ${medication}`;
-}
-
-// The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · cough worsening ↑ · last
-// ibuprofen 4:02pm". `name` is the profile's (disambiguated) name; every clause drops
-// out when its data is absent. The temperature renders in the VIEWER's login unit
-// preference (#857) via fmtTemp — storage is canonical °F; `tempUnit` defaults to °F for
-// callers without a pref. The "cough worsening ↑" marker is a visibility-only trend
-// arrow (episodeWorsening) — no medical claim (issue #805). The last-dose clause (#858) is
-// the passive co-caregiver double-dose guard: both parents' dashboards show it.
-export function householdSickLine(
-  name: string,
-  ep: AssembledEpisode,
-  tempUnit: TemperatureUnit = "F",
-  // Optional precomputed compact clause appended last (issue #859 item 2 — the
-  // school-return "fever-free 18h/24h" clause). The caller computes it from the ONE
-  // school-return gather (schoolReturnCompactClause) so the household line, hero, and
-  // episode page never disagree (#221). Null/omitted keeps the line unchanged.
-  extraClause: string | null = null,
-  timeFormat?: TimeFormat
-): string {
-  const parts: string[] = [name];
-  const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
-  parts.push(day != null ? `sick day ${day}` : "sick");
-  if (ep.latestTemp) {
-    parts.push(fmtTemp(ep.latestTemp.degF, tempUnit));
-  }
-  const worsening = episodeWorsening(ep);
-  if (worsening) {
-    parts.push(episodeWorseningClause(worsening));
-  }
-  const lastDose = episodeLastDoseClause(ep, timeFormat);
-  if (lastDose) parts.push(lastDose);
-  if (extraClause) parts.push(extraClause);
-  return parts.join(" · ");
 }
 
 // Order the illness cockpits: all acting-profile episodes first, then household

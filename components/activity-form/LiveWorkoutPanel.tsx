@@ -1,6 +1,7 @@
 "use client";
 
 import { IconBolt, IconFlagCheck } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import RestTimer from "./RestTimer";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useWakeLock } from "@/components/useWakeLock";
@@ -76,9 +77,7 @@ export default function LiveWorkoutPanel({
             {restNotification.status}
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-ghost shrink-0"
+        <Button
           disabled={!restNotification.optedIn && !restNotification.canEnable}
           onClick={
             restNotification.optedIn
@@ -96,7 +95,7 @@ export default function LiveWorkoutPanel({
             : restNotification.enabling
               ? "Enabling…"
               : "Enable"}
-        </button>
+        </Button>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Log each set below — the rest timer starts when you add the next set.

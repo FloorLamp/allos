@@ -7,11 +7,8 @@
 // arrival read scopes `integration_sync_rows` through its parent event, the
 // child-table convention).
 //
-// Two windows, one definition:
-//   • the Household member card (#1463) asks for 7 days;
-//   • the morning digest (#1713) asks for 24 hours.
-// Both format the SAME result. A second per-category set of digest fields would be a
-// second definition of "what changed" and would drift (#221).
+// The morning digest (#1713) asks for 24 hours. A second per-category set of digest
+// fields would be a second definition of "what changed" and would drift (#221).
 //
 // The ranking, floors, cap and demotion live in lib/recent-changes.ts (pure). This
 // module only resolves the readers and the subject context, then hands over.
@@ -45,7 +42,6 @@ import { getIntegration } from "../integrations/registry";
 import { syncVocabularyForKind } from "../integrations/source-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
-import { sharedSurfaceDetail } from "../appointment-sensitivity";
 import { biomarkerFamily } from "../canonical-name";
 import type { AppRoute } from "../hrefs";
 import { getIntakeDeltas } from "../intake-history";
@@ -64,18 +60,6 @@ export interface RecentChangesOptions {
   exclude?: readonly RecentChangeCategory[];
   // Categories the reader has demoted (#1714) — only their notable entries survive.
   demoted?: readonly RecentChangeCategory[];
-  // A SHARED surface — one other people can read, like the household card. It means
-  // exactly ONE thing: behavioral-health visits are stated minimally, decided in
-  // lib/appointment-sensitivity.ts and never here or at a call site. It withholds no
-  // category — #1463's mood rule was reversed on 2026-09-03 (#4807) and the machinery
-  // went with it — so every category renders on a shared surface as it does anywhere.
-  //
-  // AND THE MORNING DIGEST PASSES NO FLAG, WHICH IS NOT A CLAIM TO BE PRIVATE. It
-  // renders ONE body and fans it out to `managingLoginIdsForProfile` — `login_profiles`
-  // UNION the owner (lib/notifications/managing-logins.ts) — so grantees read it too.
-  // A missing flag settles nothing about who sees what; the next surface deciding
-  // whether to pass `shared: true` is deciding the visit question, and only that.
-  shared?: boolean;
   // Line cap and overflow copy.
   max?: number;
   overflowLabel?: string;
@@ -91,19 +75,6 @@ export interface RecentChangesResult extends RecentChangeRender {
   // set — computed pre-filter, so a category the reader has already demoted is still
   // reported as present and its toggle stays reachable.
   presentCategories: RecentChangeCategory[];
-}
-
-// The behavioral-health visit test. Encounters carry no AppointmentKind column, so
-// the kind is derived from the free-text type/reason and then routed through the ONE
-// shared decision (`sharedSurfaceDetail`) rather than a second privacy rule here.
-function encounterLooksBehavioralHealth(
-  type: string | null,
-  reason: string | null
-): boolean {
-  const t = `${type ?? ""} ${reason ?? ""}`.toLowerCase();
-  return /\b(psychiatr|psycholog|mental health|behavioral health|therapy|therapist|counsel)/.test(
-    t
-  );
 }
 
 // "Tue" — the compact weekday a visit/vitals line ends with.
@@ -367,20 +338,7 @@ export function collectRecentChanges(
   if (on("visits")) {
     for (const e of getEncounters(profileId)) {
       if (e.date < windowStart || e.date > today) continue;
-      // §3 masking INSIDE the collector, so no formatter can forget it. A profile's
-      // own surface (shared:false) always sees full detail.
-      const detail = opts.shared
-        ? sharedSurfaceDetail(
-            encounterLooksBehavioralHealth(e.type, e.reason)
-              ? "mental_health"
-              : null,
-            "full"
-          )
-        : "full";
-      const label =
-        detail === "minimal"
-          ? "Medical appointment"
-          : (e.provider_name ?? e.type ?? e.reason ?? "Visit");
+      const label = e.provider_name ?? e.type ?? e.reason ?? "Visit";
       changes.push({
         id: `visits:${e.id}`,
         category: "visits",
@@ -509,10 +467,7 @@ export function collectRecentChanges(
   if (on("data")) changes.push(...arrivalChanges(profileId, sinceInstant));
 
   // Pre-demotion, so the Tune control (#1714) can offer a toggle for a category that
-  // IS producing lines this reader has chosen not to see. Every collected category
-  // reaches here on a shared read as on the profile's own: #1463's whole-category
-  // withholding — which dropped a category before this line and kept it out of the
-  // Tune control with it — was reversed and removed (#4807).
+  // IS producing lines this reader has chosen not to see.
   const present = new Set(changes.map((c) => c.category));
   const kept = applyRecentChangeDemotion(changes, new Set(opts.demoted ?? []));
   const ranked = rankRecentChanges(kept, {

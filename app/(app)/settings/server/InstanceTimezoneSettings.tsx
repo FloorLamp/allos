@@ -4,6 +4,7 @@ import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // The GLOBAL instance-default timezone: seeds newly created profiles and backs
 // up any profile without its own timezone. Admin-only. Per-person timezones are
@@ -30,9 +31,7 @@ export default function InstanceTimezoneSettings({
   return (
     <div className="card space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Instance-default timezone
-        </h2>
+        <SectionHeading level={2}>Instance-default timezone</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

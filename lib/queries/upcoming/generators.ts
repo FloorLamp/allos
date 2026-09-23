@@ -52,9 +52,7 @@ import {
   getProfileSex,
   getProfileAgeOn,
   profileAgeMonths,
-  getMentalHealthShareFull,
 } from "../../settings";
-import { sharedSurfaceDetail } from "../../appointment-sensitivity";
 import {
   CANONICAL_DISPLAY_UNITS,
   type UpcomingDisplayUnits,
@@ -69,7 +67,6 @@ import {
 } from "../../reasons";
 import { isFlaggedForRetest } from "../../biomarker-retest-copy";
 import type { ClinicalObservation } from "../../types";
-import { pickNextAppointment } from "../../household";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
   getClinicalObservations,
@@ -497,36 +494,10 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
 // rows, so completed/cancelled drop off). The visit's calendar date drives the
 // band: a visit today lands in Today, tomorrow in This week, and a past-and-still-
 // scheduled one reads as Overdue (a missed/unlogged appointment worth chasing).
-//
-// `shared` (#997) applies the sensitivity-aware detail decision: on a SHARED
-// household rollup a mental_health visit shows only "Medical appointment" (no
-// provider/reason) unless the profile owner opted it into full shared detail. The
-// profile's OWN Upcoming page passes shared:false and always sees full detail. The
-// `key` stays `appointment:<id>` in both so a dismissal/suppression matches across
-// surfaces.
-function appointmentItems(
-  profileId: number,
-  opts: { shared?: boolean } = {}
-): UpcomingItem[] {
-  const shareFull = opts.shared ? getMentalHealthShareFull(profileId) : true;
+function appointmentItems(profileId: number): UpcomingItem[] {
   return getScheduledAppointments(profileId).map((a) => {
     // The banding is calendar-day, which is exactly what the row's date column is.
     const dueDate = a.date;
-    const minimal =
-      opts.shared === true &&
-      sharedSurfaceDetail(a.kind, "full", {
-        sensitiveShareFull: shareFull,
-      }) === "minimal";
-    if (minimal) {
-      return {
-        key: `appointment:${a.id}`,
-        domain: "appointment" as const,
-        title: "Medical appointment",
-        detail: "Scheduled visit",
-        href: "/records/history/visits",
-        dueDate,
-      };
-    }
     const parts = [a.provider_name, a.location].filter(Boolean);
     return {
       key: `appointment:${a.id}`,
@@ -666,27 +637,24 @@ export function collectUpcoming(
 }
 
 // The actionable household rollup for ONE profile (issue #31): the subset of the
-// Upcoming aggregation the Household cards act on — due doses, low refills, and
-// the single soonest scheduled visit. It reuses the SAME per-domain builders as
-// collectUpcoming (no duplicated aggregation), but deliberately skips the heavier
-// immunization/biomarker/goal/training domains the cards don't render, and honors
-// the same snooze/dismiss suppressions so a finding hidden on Upcoming stays
-// hidden here too.
+// Upcoming aggregation the Medications multi-view strip acts on — due doses and low
+// refills. It reuses the SAME per-domain builders as collectUpcoming (no duplicated
+// aggregation), and honors the same snooze/dismiss suppressions so a finding hidden
+// on Upcoming stays hidden here too.
 //
-// COST: the Household page calls this once per ACCESSIBLE profile. It is bounded —
-// a household is a handful of profiles — and each call is a few cheap, indexed,
-// profile-scoped reads: supplements + their doses + today's taken-log (doseItems),
-// the refill rates (refillItems), the scheduled appointments (appointmentItems),
-// and the suppressions map. No cross-profile SQL; every read filters profile_id.
+// COST: the Medications multi-view calls this once per ACCESSIBLE profile. It is
+// bounded — a household is a handful of profiles — and each call is a few cheap,
+// indexed, profile-scoped reads: supplements + their doses + today's taken-log
+// (doseItems), the refill rates (refillItems), and the suppressions map. No
+// cross-profile SQL; every read filters profile_id.
 export interface HouseholdRollup {
   dueDoses: UpcomingItem[];
   lowRefills: UpcomingItem[];
-  nextAppointment: UpcomingItem | null;
 }
 
 // Pending scheduled doses whose declared slot has arrived in the profile-local
 // wall clock. This is the one "due right now" collection used by compact logging
-// offers; Household and Upcoming deliberately keep their whole-day views.
+// offers; the Medications strip and Upcoming deliberately keep their whole-day views.
 export function collectDueDosesNow(
   profileId: number,
   today: string,
@@ -710,9 +678,6 @@ export function collectHouseholdRollup(
       ...refillItems(profileId, today),
       ...poolRefillItems(profileId, today),
     ].filter(live),
-    nextAppointment: pickNextAppointment(
-      appointmentItems(profileId, { shared: true }).filter(live)
-    ),
   };
 }
 

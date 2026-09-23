@@ -108,8 +108,8 @@ const ALL_PROFILE_IDS_STMT = hoistedStatement(
 // about whether any particular member is routable, and it is reached only when the other
 // three are absent.
 //
-// Request-memoized: `/household` asks it once per member and Settings → Notifications
-// once more, and the answer is identical for all of them.
+// Request-memoized: every profile's routing facts ask it, and the answer is identical
+// for all of them.
 export const instanceHasAnyChannel = cache(instanceHasAnyChannelUncached);
 
 function instanceHasAnyChannelUncached(): boolean {

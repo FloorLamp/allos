@@ -39,15 +39,4 @@ test.describe("Illness-episode view (#801)", () => {
       /\d{2}:\d{2} \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
     );
   });
-
-  test("the household page shows a 'sick' chip on the currently-ill profile's card", async ({
-    page,
-  }) => {
-    test.slow();
-    await page.goto("/household");
-    // Profile 1 is sick (seed), so at least one card carries the sick chip.
-    const sickChip = page.getByTestId("household-sick-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: at least one card carries the sick chip (profile 1 is sick, see comment) — order-agnostic
-    await expect(sickChip).toBeVisible();
-    await expect(sickChip).toContainText(/sick/i);
-  });
 });
