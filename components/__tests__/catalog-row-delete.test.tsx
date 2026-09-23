@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import CatalogRow from "@/components/CatalogRow";
+import SensitivitiesSection from "@/app/(app)/nutrition/SensitivitiesSection";
+import type { FoodSensitivity } from "@/lib/food-sensitivities";
 
 // THE CATALOG ROW'S DELETE, AND THE ONE DIRECTION IT MUST FAIL IN (#5865).
 //
@@ -25,6 +27,13 @@ vi.mock("@/components/ConfirmDialog", async (importActual) => {
     await importActual<typeof import("@/components/ConfirmDialog")>();
   return { ...actual, useOptionalConfirm: () => optionalConfirm.fn };
 });
+
+vi.mock("@/app/(app)/nutrition/sensitivity-actions", () => ({
+  createFoodSensitivityAction: vi.fn(),
+  updateFoodSensitivityAction: vi.fn(),
+  setFoodSensitivityStoppedAction: vi.fn(),
+  deleteFoodSensitivityAction: vi.fn(),
+}));
 
 const NoForm = () => null;
 
@@ -94,5 +103,35 @@ describe("deleting a catalog row", () => {
     openDelete();
     await vi.waitFor(() => expect(optionalConfirm.fn).toHaveBeenCalled());
     expect(deleteAction).not.toHaveBeenCalled();
+  });
+});
+
+// #5865: a read-only session sees the declarations and none of the writes, the way the
+// supplement rows on the same tab hide theirs.
+describe("the sensitivities card", () => {
+  const spicy: FoodSensitivity = {
+    id: 1,
+    trigger_kind: "property",
+    trigger_slug: "spicy",
+    effect: "loose_stools",
+    note: null,
+    status: "active",
+  };
+
+  it.each([
+    [true, 1],
+    [false, 0],
+  ])("with write access %s, offers %i set of write controls", (canWrite, n) => {
+    render(
+      <ToastProvider>
+        <SensitivitiesSection sensitivities={[spicy]} canWrite={canWrite} />
+      </ToastProvider>
+    );
+    expect(screen.getByTestId("food-sensitivity-row")).toBeTruthy();
+    expect(screen.queryAllByTestId("overflow-menu-trigger")).toHaveLength(n);
+    expect(
+      screen.queryAllByTestId("food-sensitivity-stop-toggle")
+    ).toHaveLength(n);
+    expect(screen.queryAllByRole("button", { name: /add/i })).toHaveLength(n);
   });
 });

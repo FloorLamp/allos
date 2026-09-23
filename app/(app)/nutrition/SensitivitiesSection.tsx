@@ -66,11 +66,15 @@ export default function SensitivitiesSection({
               inactive={item.status === "stopped"}
               inactiveLabel={catalog.lifecycle.past}
               testId="food-sensitivity-row"
-              editor={{
-                Form: catalog.Form,
-                title: "Edit sensitivity",
-                formProps: { sensitivity: item },
-              }}
+              editor={
+                canWrite
+                  ? {
+                      Form: catalog.Form,
+                      title: "Edit sensitivity",
+                      formProps: { sensitivity: item },
+                    }
+                  : undefined
+              }
               control={
                 canWrite && (
                   <CatalogLifecycleControl
