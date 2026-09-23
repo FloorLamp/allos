@@ -423,7 +423,7 @@ describe("FoodLogBar projection publication", () => {
   // #5865: no declaration, no chip; a pressed chip marks every tap of the meal.
   it("marks each tap while `This meal` is pressed, and shows no chip without a declaration", async () => {
     const plain = mountBar();
-    expect(screen.getByTestId("log-cruciferous")).toBeTruthy();
+    screen.getByTestId("log-cruciferous");
     expect(screen.queryByTestId("food-meal-marks")).toBeNull();
     plain.unmount();
 
@@ -437,7 +437,7 @@ describe("FoodLogBar projection publication", () => {
       (form as FormData).get("properties")
     );
     expect(posted).toEqual(["spicy", "spicy"]);
-    expect(await screen.findByText(/today · Spicy$/)).toBeTruthy();
+    await screen.findByText(/today · Spicy$/);
   });
 
   it("retires the private header and leaves one quiet day total under sheet rows", () => {

@@ -127,7 +127,7 @@ describe("the sensitivities card", () => {
         <SensitivitiesSection sensitivities={[spicy]} canWrite={canWrite} />
       </ToastProvider>
     );
-    expect(screen.getByTestId("food-sensitivity-row")).toBeTruthy();
+    screen.getByTestId("food-sensitivity-row");
     expect(screen.queryAllByTestId("overflow-menu-trigger")).toHaveLength(n);
     expect(
       screen.queryAllByTestId("food-sensitivity-stop-toggle")

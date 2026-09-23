@@ -57,12 +57,18 @@ describe("sensitivity actions", () => {
     const { login, profile } = seedActor();
     const row = await declared();
     actAs(login, profile, "read");
-    await expect(createFoodSensitivityAction(SPICY)).rejects.toThrow();
-    await expect(updateFoodSensitivityAction(row.id, SPICY)).rejects.toThrow();
-    await expect(
-      setFoodSensitivityStoppedAction(row.id, true)
-    ).rejects.toThrow();
-    await expect(deleteFoodSensitivityAction(row.id)).rejects.toThrow();
+    await expect(createFoodSensitivityAction(SPICY)).rejects.toThrow(
+      /read-only/
+    );
+    await expect(updateFoodSensitivityAction(row.id, SPICY)).rejects.toThrow(
+      /read-only/
+    );
+    await expect(setFoodSensitivityStoppedAction(row.id, true)).rejects.toThrow(
+      /read-only/
+    );
+    await expect(deleteFoodSensitivityAction(row.id)).rejects.toThrow(
+      /read-only/
+    );
     expect(getFoodSensitivities(profile.id)).toEqual([row]);
   });
 
