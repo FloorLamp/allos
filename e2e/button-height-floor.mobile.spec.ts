@@ -158,9 +158,9 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
   // neither control renders on `/` any more.
   //
   //   • The TYPED FIELD moved WITH the capability, to the sheet's measurements
-  //     overlay below — the surface the weigh-in itself moved to. `m-time` is the
-  //     shared WhenControl's own input, rendered above the disclosure groups, so it
-  //     is there on arrival exactly as the weight field used to be.
+  //     overlay below — the surface the weigh-in itself moved to. `measurements-peak-flow` sits in
+  //     the Vitals group the sheet opens on, so it is there on arrival exactly as the
+  //     weight field used to be (the sheet's time is behind the When door, #5663).
   //   • The `btn btn-sm` KIND did not need re-homing: `supplement-add-toggle` on
   //     `/nutrition?tab=supplements` below is the same class family in its harder,
   //     icon-only form, so nothing stopped being measured. No nearby element was
@@ -170,7 +170,11 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ready: "measurements-quick-add",
     surfaces: [
       // A typed <input> cannot grow a pseudo-element, so it wears the box itself.
-      { kind: "typed field", testId: "m-time", repairable: false },
+      {
+        kind: "typed field",
+        testId: "measurements-peak-flow",
+        repairable: false,
+      },
     ],
   },
   // THE SHARED TIME STATEMENT'S CLOCK DOOR (#3273's question, #4426's rendering).

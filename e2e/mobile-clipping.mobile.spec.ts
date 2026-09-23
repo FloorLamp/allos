@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import {
+  appContent,
   expectAtomicCardPairs,
   expectNoClippedContent,
   expectNoEscapingOverflow,
@@ -10,10 +11,13 @@ import {
   settledBoxes,
   touchSwipe,
 } from "./helpers";
-import { frozenNow } from "./worker-env";
+import Database from "better-sqlite3";
+import { practiceIdentity } from "@/lib/practice";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { loginAs } from "./nav";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { E2E_LOGIN_LOGSHEET_RESERVE } from "./logins/nutrition";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -1079,5 +1083,108 @@ test("the record's standing offer stays inside its column (#4918)", async ({
     }
   } finally {
     await page.context().close();
+  }
+});
+
+// Home's Now practice row on a phone (#6009). The row's control is the compact
+// practice cluster, which used to sit in an unshrinkable span beside a count line:
+// the title got three letters ("Red li…") and the detail wrapped into five lines.
+// The claim is the row's reading on a phone: the whole name, a whole one-line
+// detail, and every button of the cluster on screen (the cluster drops below the
+// title rather than squeezing it).
+//
+// SPEC-OWNED FIXTURE (#868): a profile with one tracked practice, one session logged
+// today, so the target is unmet and the row is seated in Now.
+test("Home's Now practice row keeps its name and a one-line detail (#6009)", async ({
+  browser,
+}) => {
+  const practice = "Red light therapy";
+  const username = `e2e_home_practice_${process.pid}`;
+  const handle = new Database(workerDbPath());
+  handle.pragma("busy_timeout = 5000");
+  let profileId = 0;
+  handle
+    .transaction(() => {
+      profileId = createFixtureProfile(
+        handle,
+        `Home Practice (e2e) ${process.pid}`
+      );
+      const { password_hash } = handle
+        .prepare("SELECT password_hash FROM logins WHERE username = ?")
+        .get(E2E_LOGIN_LOGSHEET_RESERVE) as { password_hash: string };
+      const loginId = Number(
+        handle
+          .prepare(
+            "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+          )
+          .run(username, password_hash).lastInsertRowid
+      );
+      handle
+        .prepare(
+          "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+        )
+        .run(loginId, profileId);
+      handle
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (?, 'practice', ?, ?, 3, 5)`
+        )
+        .run(profileId, practice, practiceIdentity(practice));
+      handle
+        .prepare(
+          `INSERT INTO practice_logs (profile_id, practice, date, start_time, source)
+           VALUES (?, ?, ?, '07:00', 'manual')`
+        )
+        .run(profileId, practice, frozenNow().toISOString().slice(0, 10));
+    })
+    .immediate();
+  handle.close();
+
+  const page = await loginAs(browser, {
+    username,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const row = appContent(page)
+      .getByTestId("home-now")
+      .getByTestId("home-action")
+      .filter({ hasText: practice });
+    await expect(row.getByTestId("practice-log-button")).toBeVisible();
+    await expect(row.getByTestId("practice-start-button")).toBeVisible();
+    await expect(row.getByTestId("overflow-menu-trigger")).toBeVisible();
+
+    const title = row.getByText(practice, { exact: true });
+    expect(
+      await title.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      "the practice name is shown whole, not ellipsized"
+    ).toBe(true);
+    // The detail is one line (`truncate`), and at 390px that line still fits whole:
+    // it carries the week's count now that the compact control no longer does.
+    const detail = row.getByTestId("attention-item-detail").locator("..");
+    await expect(detail).toContainText("1/3–5 this week");
+    expect(
+      await detail.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      "the detail, count included, is shown whole"
+    ).toBe(true);
+    await expectNoClippedContent(page);
+  } finally {
+    await page.context().close();
+    const cleanup = new Database(workerDbPath());
+    cleanup.pragma("busy_timeout = 5000");
+    cleanup
+      .transaction(() => {
+        cleanup
+          .prepare("DELETE FROM practice_logs WHERE profile_id = ?")
+          .run(profileId);
+        cleanup
+          .prepare("DELETE FROM frequency_targets WHERE profile_id = ?")
+          .run(profileId);
+        cleanup.prepare("DELETE FROM logins WHERE username = ?").run(username);
+        destroyFixtureProfile(cleanup, profileId);
+      })
+      .immediate();
+    cleanup.close();
   }
 });

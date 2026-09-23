@@ -242,6 +242,38 @@ describe("the measurements form's subject signal (#4932 postmortem)", () => {
 });
 
 describe("measurements mounted under a day context", () => {
+  it("states the time through the When door and confirms it in the toast", async () => {
+    const hostDay = "2026-05-21";
+    render(
+      <DayContextProvider
+        profileId={ACTING}
+        today={hostDay}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: hostDay }}
+      >
+        <MeasurementsQuickAdd
+          defaultDate={hostDay}
+          weightUnit="kg"
+          defaultGroup="body"
+          profileId={ACTING}
+        />
+      </DayContextProvider>
+    );
+
+    fireEvent.click(screen.getByTestId("m-toggle"));
+    fireEvent.change(screen.getByTestId("m-time"), {
+      target: { value: "08:31" },
+    });
+    fireEvent.change(screen.getByLabelText("Weight"), {
+      target: { value: "80" },
+    });
+    await act(async () =>
+      fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+    );
+    expect(posted.addMeasurements[0].get("occurred_at")).not.toBe("");
+    expect(toasts).toEqual(["Measurements logged · 08:31"]);
+  });
+
   it("uses the host day as its fixed posted day even when shell bounds are stale", async () => {
     const hostDay = "2026-05-21";
     render(
@@ -261,7 +293,6 @@ describe("measurements mounted under a day context", () => {
       </DayContextProvider>
     );
 
-    expect(screen.getByTestId("m-date").tagName).toBe("SPAN");
     fireEvent.change(screen.getByLabelText("Weight"), {
       target: { value: "80" },
     });

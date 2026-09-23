@@ -655,11 +655,15 @@ describe("Home's one list, rendered", () => {
   // the day read that serves the day bar, the record band and the chart, the three
   // bands, and both streamed sections resolved.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 192,
-    "marathon-runner": 204,
-    household: 262,
-    pregnant: 197,
-    "diabetic-cgm": 204,
+    // +1 each (#6011): the trailing food-window read behind the record's gap row.
+    // -4 each for bodybuilder, marathon-runner, household, pregnant and diabetic-cgm
+    // (#6013): none seats a dose row for the current slot, so the usual-routine offer
+    // is no longer asked.
+    bodybuilder: 189,
+    "marathon-runner": 201,
+    household: 259,
+    pregnant: 194,
+    "diabetic-cgm": 201,
     // +1 for #5409's nightly breathing-rate card. `biohacker` is the only persona
     // whose seeded wearable data produces `respiratory_rate_bpm` samples, and the
     // card is present-gated, so the read fires there and nowhere else. The PRESENCE
@@ -677,7 +681,7 @@ describe("Home's one list, rendered", () => {
     // because the model is shared, which is the #221 trade this repo keeps making
     // deliberately — one number for the Sleep page hero and the record's Sleep row
     // rather than a second source of it beside the shared model.
-    biohacker: 211,
+    biohacker: 212,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound on
@@ -770,15 +774,17 @@ describe("Home's one list, rendered", () => {
   // cold table, and the same reason for having numbers rather than a ratio: a move
   // here has to be accounted for, in either direction.
   const WARM_BASELINE: Record<string, number> = {
-    bodybuilder: 173,
-    "marathon-runner": 184,
-    household: 239,
-    pregnant: 178,
-    "diabetic-cgm": 185,
+    // +1 each, the warm half of #6011's food-window read.
+    // -4 each, the warm half of #6013's skipped offer read.
+    bodybuilder: 170,
+    "marathon-runner": 181,
+    household: 236,
+    pregnant: 175,
+    "diabetic-cgm": 182,
     // +2, the warm half of the same two #5409 reads — see QUERY_BASELINE above.
     // Neither is memoized away: the card's series read and the hero's night read
     // are both statements a second load still issues.
-    biohacker: 191,
+    biohacker: 192,
   };
 
   it("home query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
