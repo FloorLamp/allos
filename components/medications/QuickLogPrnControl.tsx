@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -12,6 +13,8 @@ import { LabeledVerbChip } from "@/components/OfferRow";
 import { BusyMark } from "@/components/Button";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import {
   cockpitDayLabel,
   useCockpitDay,
@@ -39,6 +42,8 @@ import {
 } from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
+import { formatClockValue } from "@/lib/format-date";
+import { microMotionPlan } from "@/lib/micro-motion";
 import type { FormResult } from "@/lib/types";
 
 // THE OFFER IS NOT MARKED ASKED ON RENDER (#5538). The shared in-place offer records
@@ -199,6 +204,7 @@ export default function QuickLogPrnControl({
   // has ended has none, so the tap below asks for the minute instead of stamping one.
   const isPrimaryDay = date == null ? card.isPrimaryDay : date === todayStr;
   const toast = useToast();
+  const prefs = useFormatPrefs();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
   // The arm the finger left, not merely that one of them is in flight (#5900).
@@ -253,6 +259,36 @@ export default function QuickLogPrnControl({
   // The whole sentence for a reader, where the visible pill abbreviates it. Both arms
   // read this one string.
   const takeName = `${verb} ${name}${doseDetail ? ` · ${doseDetail}` : ""}`;
+  // THE ROW STATES WHAT LANDED (#5663 ruling 1): "Taken", with the minute when one
+  // was stated. Null until this mount lands a dose, and dropped when the subject or
+  // the day moves, because a receipt belongs to the day it was written for.
+  const [receipt, setReceipt] = useResettableState<string | null>(
+    null,
+    `${profileId ?? ""}|${cardDay}`
+  );
+  // ONE SETTLE PER LANDED DOSE (#5900 problem 2), as `DoseStatusControl.settleConfirm`:
+  // one 300 ms run on the tapped control after a dose the server wrote, never on
+  // mount, a refusal or a duplicate. Under reduced motion no class is applied and the
+  // receipt line simply appears.
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+  function settleConfirm() {
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettling(true);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettling(false);
+    }, settlePlan.ms);
+  }
   // The shared collapsed statement (#4426). Its four rules — no field until one is
   // stated, only what was on screen, a day change DROPS the statement, and a statement
   // is spent by the tap it answers — are stated once in `useTimeStatement` and were
@@ -303,13 +339,32 @@ export default function QuickLogPrnControl({
           // Nothing was administered, so a retry needs no cooldown.
           return { kind: "rollback" };
         }
-        toast(
-          res.outcome === "duplicate"
-            ? offset === "now"
+        if (res.outcome === "duplicate") {
+          toast(
+            offset === "now"
               ? `${name} was already logged just now.`
               : `${name} already has a dose logged at about that time.`
-            : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
-        );
+          );
+        } else {
+          // Ruling 1's grammar, `<Thing> logged · <time>`, and the row says the same.
+          // The slot is the STATED minute and drops otherwise, as on the stool and
+          // measurements bodies: this row never learns the instant a now-tap stamped.
+          //
+          // NO UNDO, by the owner's 2026-09-23 ruling (follow-up #6043). The inverse
+          // exists — `deleteAdministration` captures the row and re-credits supply —
+          // but this action does not name the row it wrote, and a first dose (#5981)
+          // also borns a dose row that delete leaves behind.
+          const clock = formatClockValue(
+            consumed,
+            prefs.timeFormat,
+            "",
+            "upper-space"
+          );
+          const at = clock ? ` · ${clock}` : "";
+          setReceipt(`Taken${at}`);
+          settleConfirm();
+          toast(`Dose logged${at}`);
+        }
         // Rule 4, and `consumed` is why this is not the unconditional reset it used to
         // be: the now-tap consumes NO statement, so one made beside it survives the tap
         // that did not pay for it — and a statement made while this write was in flight
@@ -370,6 +425,18 @@ export default function QuickLogPrnControl({
     />
   ) : null;
 
+  // ONE settle mark for both arms, shaped like the control it wraps.
+  const settleMark = (shape: string, node: ReactNode) => (
+    <span
+      data-testid="prn-settle"
+      data-settling={settling ? "true" : "false"}
+      data-reduced-motion={reducedMotion ? "true" : "false"}
+      className={`inline-flex ${shape}${settling ? ` ${settlePlan.className}` : ""}`}
+    >
+      {node}
+    </span>
+  );
+
   const action = compactActions ? (
     // THE ICON-ONLY ARM KEEPS THE SHAPE IT SHIPPED WITH, deliberately (#4753, open
     // question 3). A chip with no visible label would contradict the primitive's one
@@ -379,23 +446,26 @@ export default function QuickLogPrnControl({
     // verb never says "now". The name is the same sentence the pill composes, so the
     // two arms cannot drift into two ways of saying one tap.
     <>
-      <button
-        type="button"
-        onClick={take}
-        disabled={busy || amountMissing}
-        aria-busy={takeBusy || undefined}
-        className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
-        aria-label={takeName}
-        data-testid="prn-log-now"
-      >
-        {/* Icon-only, so the mark takes the glyph's seat and the box holds still. */}
-        {takeBusy ? (
-          <BusyMark />
-        ) : (
-          <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
-        )}
-        <span className="sr-only">{takeName}</span>
-      </button>
+      {settleMark(
+        "rounded-lg",
+        <button
+          type="button"
+          onClick={take}
+          disabled={busy || amountMissing}
+          aria-busy={takeBusy || undefined}
+          className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
+          aria-label={takeName}
+          data-testid="prn-log-now"
+        >
+          {/* Icon-only, so the mark takes the glyph's seat and the box holds still. */}
+          {takeBusy ? (
+            <BusyMark />
+          ) : (
+            <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+          )}
+          <span className="sr-only">{takeName}</span>
+        </button>
+      )}
       {clockDoor}
     </>
   ) : (
@@ -404,17 +474,22 @@ export default function QuickLogPrnControl({
     // word and the row's identity line no longer has to be read to know what a tap
     // costs. `redosePrimary` — #798's window state — is the tone it always was, and
     // it lands on the verb nub rather than filling the pill (#4548's ruling).
-    <LabeledVerbChip
-      label={doseLabel}
-      verb={verb}
-      tone={redosePrimary ? "brand" : "neutral"}
-      onAct={take}
-      disabled={busy || amountMissing}
-      busy={takeBusy}
-      ariaLabel={takeName}
-      testId="prn-log-now"
-      clockDoor={clockDoor}
-    />
+    // The settle wraps the chip with its door seat: the seat is the chip's own
+    // composition, and a class on the pill alone would need a prop the chip lacks.
+    settleMark(
+      "rounded-full",
+      <LabeledVerbChip
+        label={doseLabel}
+        verb={verb}
+        tone={redosePrimary ? "brand" : "neutral"}
+        onAct={take}
+        disabled={busy || amountMissing}
+        busy={takeBusy}
+        ariaLabel={takeName}
+        testId="prn-log-now"
+        clockDoor={clockDoor}
+      />
+    )
   );
 
   const control = amountField ? (
@@ -506,6 +581,15 @@ export default function QuickLogPrnControl({
     </div>
   ) : null;
 
+  const receiptLine = receipt ? (
+    <div
+      className="text-xs font-medium text-slate-700 dark:text-slate-200"
+      data-testid="prn-receipt"
+    >
+      {receipt}
+    </div>
+  ) : null;
+
   const sublines = (
     <div className="mt-0.5 min-w-0">
       <div
@@ -514,6 +598,7 @@ export default function QuickLogPrnControl({
       >
         {dayLabel}
       </div>
+      {receiptLine}
       {redoseLine && (
         <div
           className="text-xs font-medium text-slate-600 dark:text-slate-300"
@@ -579,6 +664,7 @@ export default function QuickLogPrnControl({
         >
           {dayLabel}
         </div>
+        {receiptLine}
         {redoseLine ? (
           <div
             className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
