@@ -7,7 +7,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { gateSubjectProfile } from "./gate-item";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
-import { isRealIsoDate, shiftDateStr, zonedDateParts } from "@/lib/date";
+import { isRealIsoDate, zonedDateParts } from "@/lib/date";
 import { getTimezone, getTtcStart, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
@@ -40,7 +40,7 @@ import { bestKnownInstant } from "@/lib/row-instants";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
-import { formatClock, formatWeekdayDate } from "@/lib/format-date";
+import { formatClock } from "@/lib/format-date";
 import type { TimeFormat } from "@/lib/format-date";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import {
@@ -299,7 +299,6 @@ export type QuickEntryData =
       today: string;
       days: {
         date: string;
-        label: string;
         mood: {
           valence: number;
           energy: number | null;
@@ -681,12 +680,6 @@ async function gatherQuickEntry(
       const logged = getMoodOnDate(profile.id, day);
       return {
         date: day,
-        label:
-          day === date
-            ? "Today"
-            : day === shiftDateStr(date, -1)
-              ? "Yesterday"
-              : formatWeekdayDate(day, getDisplayFormatPrefs(login.id)),
         mood: logged
           ? {
               valence: logged.valence,

@@ -284,7 +284,6 @@ export function quickEntryOffline(
       const days = [
         {
           date: parts.day,
-          label: "Today",
           mood: mood
             ? {
                 valence: mood.valence,

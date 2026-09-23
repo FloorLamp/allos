@@ -428,7 +428,6 @@ function mood(
     days: [
       {
         date: today,
-        label: "Today",
         mood: {
           valence: 4,
           energy,

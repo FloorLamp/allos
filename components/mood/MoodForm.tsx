@@ -42,7 +42,6 @@ export interface MoodFormValue {
 
 export interface MoodFormDay {
   date: string;
-  label: string;
   mood: MoodFormValue | null;
 }
 

@@ -596,9 +596,6 @@ async function renderHistory(
         ),
         moodDay: {
           date: day ?? todayStr,
-          label: formatMonthDay(day ?? todayStr, prefs, {
-            today: todayStr,
-          }),
           mood: getMoodOnDate(actingProfileId, day ?? todayStr),
         },
         moodShowCalm: isAnxietyScaleRelevant(actingProfileId),

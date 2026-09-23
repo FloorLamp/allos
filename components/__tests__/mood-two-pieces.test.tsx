@@ -70,12 +70,10 @@ vi.mock("@/components/useUndoableDelete", () => ({
 }));
 const EMPTY: MoodFormDay = {
   date: "2026-08-20",
-  label: "Today",
   mood: null,
 };
 const LOGGED: MoodFormDay = {
   date: "2026-08-19",
-  label: "Yesterday",
   mood: {
     valence: 2,
     energy: 3,
@@ -383,7 +381,6 @@ describe("the mood domain's two pieces", () => {
 
     const replacement: MoodFormDay = {
       date: "2026-08-21",
-      label: "Today",
       mood: {
         valence: 2,
         energy: 3,
@@ -438,7 +435,6 @@ describe("the mood domain's two pieces", () => {
 
     const replacement: MoodFormDay = {
       date: "2026-08-21",
-      label: "Today",
       mood: {
         valence: 2,
         energy: null,
@@ -500,8 +496,8 @@ describe("the mood domain's two pieces", () => {
       >
         <MoodForm
           days={[
-            { date: "2026-08-21", label: "Today", mood: null },
-            { date: "2026-08-19", label: "Aug 19", mood: null },
+            { date: "2026-08-21", mood: null },
+            { date: "2026-08-19", mood: null },
           ]}
           showCalm={false}
         />

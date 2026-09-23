@@ -107,7 +107,6 @@ import {
 } from "@/app/(app)/medical/cycles/actions";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 import MoodForm from "@/components/mood/MoodForm";
-import { formatMonthDay } from "@/lib/format-date";
 import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -741,7 +740,6 @@ export default function HistoryRows({
             days={[
               {
                 date: row.date,
-                label: formatMonthDay(row.date, prefs),
                 mood: {
                   valence: edit.valence,
                   energy: edit.energy,
