@@ -189,7 +189,8 @@ test("simultaneous episodes keep whole controls and close independently", async 
     const owningBar = owningCockpit.getByTestId("symptom-log-bar");
     await openTempEntry(owningBar);
     await owningBar.getByTestId("temp-quick-input").fill("101.9");
-    await owningBar.getByTestId("temp-quick-time").fill("12:00");
+    await owningBar.getByTestId("temp-quick-when-toggle").click();
+    await owningBar.getByTestId("temp-quick-when-time").fill("12:00");
     await settledClick(page, owningBar.getByTestId("temp-quick-save"));
     // GIVING A MED IS TWO TAPS NOW (#4752 item 4): the chip opens the med and the
     // panel's labeled-verb chip writes the dose it names. The chip deliberately does
@@ -437,7 +438,8 @@ test("household episodes stay ordered and a writable accordion logs without swit
     const bar = kidA.getByTestId("symptom-log-bar");
     await openTempEntry(bar);
     await bar.getByTestId("temp-quick-input").fill("103.4");
-    await bar.getByTestId("temp-quick-time").fill("12:00");
+    await bar.getByTestId("temp-quick-when-toggle").click();
+    await bar.getByTestId("temp-quick-when-time").fill("12:00");
     await settledClick(page, bar.getByTestId("temp-quick-save"));
     await expect(kidA.getByTestId("cockpit-summary-temperature")).toContainText(
       "103.4"
@@ -562,7 +564,8 @@ test.describe("fresh-profile illness front door", () => {
     await bar.getByTestId("temp-quick-toggle").click();
     await expect(bar.getByTestId("temp-quick-entry")).toBeVisible();
     await bar.getByTestId("temp-quick-input").fill("102");
-    await bar.getByTestId("temp-quick-time").fill("07:00");
+    await bar.getByTestId("temp-quick-when-toggle").click();
+    await bar.getByTestId("temp-quick-when-time").fill("07:00");
     await settledClick(page, bar.getByTestId("temp-quick-save"));
     await expect(
       page

@@ -347,7 +347,7 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
     fireEvent.click(screen.getByTestId("symptom-day-alt"));
     await openFold();
     // A day that has ended has no "now", so the reading states its minute (#4685).
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "19:10" },
     });
     await logReading("102.1");
@@ -418,7 +418,8 @@ it.each([false, true])(
     });
     bar({ dayToggle: true });
     await openFold();
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "08:30" },
     });
     fireEvent.change(screen.getByTestId("temp-quick-input"), {
@@ -452,7 +453,8 @@ describe("the fever offer states the reading's time and proposes it (#5489)", ()
   it("names the stated minute in its sentence and opens the dose on it", async () => {
     bar();
     await openFold();
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+    fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
+    fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
       target: { value: "23:30" },
     });
     await logReading("104.8");
@@ -479,10 +481,12 @@ describe("the fever offer states the reading's time and proposes it (#5489)", ()
       pendingTemperature.refusedTime = refused;
       bar();
       await openFold();
-      if (refused)
-        fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      if (refused) {
+        fireEvent.click(screen.getByTestId("temp-quick-when-toggle"));
+        fireEvent.change(screen.getByTestId("temp-quick-when-time"), {
           target: { value: "23:30" },
         });
+      }
       await logReading("104.8");
       expect(
         screen.getByTestId("fever-offer-sentence").textContent
