@@ -149,7 +149,7 @@ export function deleteLesionPhotoCore(
       id,
       profileId
     );
-    unlinkPhotoFiles("lesion", [
+    unlinkPhotoFiles("lesion", profileId, [
       row.stored_path,
       thumbSiblingPath(row.stored_path),
     ]);
@@ -176,6 +176,7 @@ export function deleteLesionPhotosForLesion(
     ).run(profileId, lesionId);
     unlinkPhotoFiles(
       "lesion",
+      profileId,
       rows.flatMap((r) => [r.stored_path, thumbSiblingPath(r.stored_path)])
     );
     return rows.length;
