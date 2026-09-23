@@ -2289,7 +2289,8 @@ test("the symptom row logs a well day in place, and its illness verb resolves on
     await hydratedClick(page, bar.getByTestId("symptom-pick-headache"));
     await settledClick(page, bar.getByTestId("symptom-picker-save"));
     // #5663 ruling 1: the toast confirms it and the line beneath states the count.
-    await expect(page.getByTestId("toast")).toContainText("Headache logged");
+    const toast = page.getByTestId("toast"); // testid-scope-ok: the toast region portals to <body>, outside every streamed boundary
+    await expect(toast).toContainText("Headache logged");
     await expect(bar.getByTestId("symptom-log-receipt")).toContainText(
       "Logged 1"
     );
