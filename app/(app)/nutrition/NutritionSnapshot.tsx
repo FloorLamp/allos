@@ -27,12 +27,15 @@ export default function NutritionSnapshot({
   fiberAdequacy,
   proteinPeriod = "today",
   fiberPeriod = "today",
+  proteinWeeklyVerdict = false,
 }: {
   proteinToday: ProteinToday | null;
   proteinAdequacy: ProteinAdequacy | null;
   fiberAdequacy: FiberAdequacy | null;
   proteinPeriod?: string;
   fiberPeriod?: string;
+  // `proteinAdequacy` judges the week, not the day the value line states (#5099).
+  proteinWeeklyVerdict?: boolean;
 }) {
   if (!proteinToday && !proteinAdequacy && !fiberAdequacy) return null;
 
@@ -69,7 +72,9 @@ export default function NutritionSnapshot({
                   data-testid="nutrition-snapshot-protein-status"
                   className={`text-xs font-medium ${STATUS_CLASS[proteinStatus] ?? STATUS_CLASS.above}`}
                 >
-                  {STATUS_LABEL[proteinStatus] ?? proteinStatus}
+                  {proteinWeeklyVerdict
+                    ? `This week ${STATUS_LABEL[proteinStatus].toLowerCase()}`
+                    : STATUS_LABEL[proteinStatus]}
                 </span>
               )}
             </dt>

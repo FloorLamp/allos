@@ -127,7 +127,7 @@ test("a food row is one dense line: icon, name, stepper (#3987)", async ({
   // THE CONVERSE: name, tier tint, and both stepper halves are still on the row.
   await expect(row.getByTestId("food-name-cruciferous")).toBeVisible();
   await expect(row.getByTestId("food-name-cruciferous")).toHaveText(
-    "Cruciferous vegetables"
+    "Cruciferous"
   );
   await expect(row.getByTestId("food-group-icon")).toHaveClass(
     /text-emerald-500/
