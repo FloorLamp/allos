@@ -1103,16 +1103,11 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     const named = await day.getAttribute("data-date");
     expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // ONE ROW COMPOSITION, ON THIS DAY AS ON TODAY (#5753 leg 1). The bucket is the
-    // chip's payload rather than a heading over a section, so the row reads
-    // `Anytime · Take` with a Skip seat beside it — the same row today draws, in the
-    // same list. The per-bucket offer row and the sectioning that framed it are gone;
-    // the bundle is #5663's receipt contract, not a second control row.
-    const rows = day.getByTestId("quick-entry-dose-list").getByRole("listitem");
+    // ONE ROW COMPOSITION, ON THIS DAY AS ON TODAY (#5753 leg 1): the row reads
+    // `Anytime · Take` with a Skip seat beside it, in the same list today draws. The
+    // slot heads its rows with one Time for the whole act (#5813).
+    const rows = day.getByTestId(/^quick-entry-dose-\d+$/);
     await expect(rows).toHaveCount(2);
-    await expect(day.getByTestId("quick-entry-dose-stack-Anytime")).toHaveCount(
-      0
-    );
     const takeFor = (id: number) =>
       day.getByTestId(`quick-entry-dose-${id}`).getByTestId("dose-take");
     await expect(takeFor(doseId)).toContainText("Anytime");
@@ -1121,8 +1116,16 @@ test("the dose sheet logs a missed day, on the day it names", async ({
       day.getByTestId(`quick-entry-dose-${doseId}`).getByTestId("dose-skip")
     ).toBeVisible();
 
-    await settledClick(page, takeFor(doseId));
-    await settledClick(page, takeFor(secondDoseId));
+    // One time for the slot, and one tap for both of its doses.
+    const slot = day.getByTestId("quick-entry-dose-slot-Anytime");
+    await expect(slot).toContainText("Anytime · 2");
+    await slot
+      .getByTestId("quick-entry-dose-slot-Anytime-when-time")
+      .fill("07:30");
+    await settledClick(
+      page,
+      slot.getByTestId("quick-entry-dose-slot-Anytime-takeall")
+    );
     await expect(rows).toHaveCount(0);
 
     // THE assertion, from the ledger: both rows landed on the day the sheet named, and
@@ -1375,6 +1378,81 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     );
   } finally {
     clearShellFoodGroup(group);
+    await page.context().close();
+  }
+});
+
+// #5865: the `This meal` chips exist only for a declared property trigger, and a pressed
+// chip rides the serving it marks. The sensitivity is this test's own row, removed after.
+test("the food sheet offers `This meal · Spicy` only once spicy is declared, and the tap carries it", async ({
+  browser,
+}) => {
+  const group = "legumes";
+  const profileId = shellProfileId();
+  const run = (sql: string, ...args: unknown[]) => {
+    const db = openDb();
+    try {
+      return db.prepare(sql).run(...args);
+    } finally {
+      db.close();
+    }
+  };
+  const newestEvent = () => {
+    const db = openDb();
+    try {
+      return db
+        .prepare(
+          "SELECT COALESCE(MAX(id), 0) AS id, properties FROM food_log_events WHERE profile_id = ?"
+        )
+        .get(profileId) as { id: number; properties: string | null };
+    } finally {
+      db.close();
+    }
+  };
+  const clearLegumes = () => {
+    for (const table of ["food_log_events", "food_daily_totals"])
+      run(
+        `DELETE FROM ${table} WHERE profile_id = ? AND group_key = ?`,
+        profileId,
+        group
+      );
+  };
+  clearLegumes();
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const plain = await openQuickEntry(page, "log-food");
+    await expect(plain.getByTestId("food-log-bar")).toBeVisible();
+    await expect(plain.getByTestId("food-meal-marks")).toHaveCount(0);
+
+    run(
+      `INSERT INTO food_sensitivities (profile_id, trigger_kind, trigger_slug, effect)
+       VALUES (?, 'property', 'spicy', 'loose_stools')`,
+      profileId
+    );
+    await page.goto("/");
+    const food = await openQuickEntry(page, "log-food");
+    const marks = food.getByTestId("food-meal-marks");
+    await expect(marks).toContainText("This meal");
+    const spicy = marks.getByRole("button", { name: "Spicy" });
+    await hydratedClick(page, spicy);
+    await expect(spicy).toHaveAttribute("aria-pressed", "true");
+
+    const row = food.getByTestId(`food-group-${group}`);
+    if (!(await row.isVisible())) {
+      await food.getByTestId("food-more-groups-summary").click();
+    }
+    await settledClick(page, row.getByTestId(`log-${group}`));
+    await expect(row.getByTestId(`count-${group}`)).toHaveText("1");
+    await expect
+      .poll(() => newestEvent())
+      .toMatchObject({ properties: '["spicy"]' });
+  } finally {
+    run(
+      "DELETE FROM food_sensitivities WHERE profile_id = ? AND trigger_slug = 'spicy'",
+      profileId
+    );
+    clearLegumes();
     await page.context().close();
   }
 });

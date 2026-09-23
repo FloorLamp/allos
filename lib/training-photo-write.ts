@@ -188,7 +188,7 @@ export function deleteTrainingPhotoCore(
     db.prepare(
       `DELETE FROM training_photos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    unlinkPhotoFiles("training", [row.stored_path, row.thumb_path]);
+    unlinkPhotoFiles("training", profileId, [row.stored_path, row.thumb_path]);
     return true;
   });
 }
@@ -222,6 +222,7 @@ export function deleteEventPhotosForPlan(
   ).run(profileId, planId);
   unlinkPhotoFiles(
     "training",
+    profileId,
     rows.flatMap((r) => [r.stored_path, r.thumb_path])
   );
 }

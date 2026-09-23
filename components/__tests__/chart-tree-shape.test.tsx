@@ -38,7 +38,7 @@ import ZoneMinutesCard from "@/components/ZoneMinutesCard";
 // assumed). Tooltip content stays proved by the e2e specs that drive a real
 // hover — e2e/trends-line-card.spec.ts, e2e/trends-day-gaps.spec.ts,
 // e2e/trends-annotations.spec.ts. Nor does it see PAINT: color, stroke width and
-// opacity are the mark specs' business and chart-scaffold-scan's.
+// opacity are the mark specs' business.
 
 // recharts sizes itself against a real box. jsdom has none, so every element
 // reports one: without this the ResponsiveContainer renders zero children and

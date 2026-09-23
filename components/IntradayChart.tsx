@@ -30,6 +30,7 @@ import {
 } from "react";
 import { useIntradayInteraction } from "@/components/IntradayInteraction";
 import { useLiveProfileClocks } from "@/components/DayContext";
+import { useIntradayNowMinute } from "@/components/IntradayFreshness";
 import { useOptionalQuickEntry } from "@/components/QuickEntryProvider";
 import { formatClockMinute, snapToBucket } from "@/lib/intraday-window";
 import ActivityIcon from "@/components/ActivityIcon";
@@ -277,6 +278,9 @@ function IntradayDrawing({
   // minute prefilled onto it would be a guess. Past days keep #4950 whole — the
   // window the chart shows feeds the record's chips, unchanged.
   const profileToday = useLiveProfileClocks().get(profileId)?.today ?? null;
+  // The dashed now-line reads the lag sentence's clock (#5146), so the two move
+  // together between syncs.
+  const nowMinute = useIntradayNowMinute(model, profileId);
   const opensDoor =
     opensQuickLog && profileToday != null && profileToday === model.date;
   // Null where no overlay is above (a component test, a chart on its own), which
@@ -1081,15 +1085,15 @@ function IntradayDrawing({
         })}
 
         {/* ── Layer 5: the now-marker (today only) ── */}
-        {model.nowMinute != null &&
-          model.nowMinute >= geo.view.from &&
-          model.nowMinute <= geo.view.to && (
+        {nowMinute != null &&
+          nowMinute >= geo.view.from &&
+          nowMinute <= geo.view.to && (
             <g data-testid="intraday-now" pointerEvents="none">
-              <title>{`Now · ${clock(model.nowMinute)}`}</title>
+              <title>{`Now · ${clock(nowMinute)}`}</title>
               <line
-                x1={x(model.nowMinute)}
+                x1={x(nowMinute)}
                 y1={geo.padTop}
-                x2={x(model.nowMinute)}
+                x2={x(nowMinute)}
                 y2={geo.axisY}
                 stroke={chartSeries.amber}
                 strokeWidth={1.2}

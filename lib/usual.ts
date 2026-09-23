@@ -113,6 +113,17 @@ export const USUAL_KINDS = {
     minSamples: 1,
     centre: "median",
   },
+  /**
+   * The clock a dose slot is usually taken at, as minutes past the slot's opening so a
+   * Bedtime dose after midnight still centres (#5813). The quick-log sheet offers it
+   * as a past-day slot's "Usually" time.
+   */
+  doseSlotClock: {
+    recentCount: null,
+    windowDays: 14,
+    minSamples: 3,
+    centre: "median",
+  },
 } as const satisfies Record<string, UsualKind>;
 
 export type UsualKindName = keyof typeof USUAL_KINDS;
