@@ -301,6 +301,24 @@ describe("daily vitals", () => {
     ]);
   });
 
+  it("skips a daily respiratory rate outside the 3–80 envelope (#6004)", () => {
+    const out = parseDailyVitalCsv(
+      [
+        "timestamp,breaths per minute,data source",
+        "2026-06-10T12:00:00Z,0,Fitbit App",
+        "2026-06-11T12:00:00Z,120,Fitbit App",
+        "2026-06-12T12:00:00Z,13.8,Fitbit App",
+      ].join("\n"),
+      TZ,
+      "respiratory_rate"
+    );
+    expect(out.samples.map((s) => [s.date, s.value])).toEqual([
+      ["2026-06-12", 13.8],
+    ]);
+    expect(out.vitals).toEqual([]);
+    expect(out.skipped).toBe(2);
+  });
+
   it("narrows a day-labelled reading onto that wake day's MAIN session", () => {
     const parsed = emptyTakeoutParsed();
     parsed.samples.push(

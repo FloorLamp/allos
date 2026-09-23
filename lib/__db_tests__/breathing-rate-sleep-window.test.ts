@@ -1381,8 +1381,9 @@ describe("the night is elected over every row it has", () => {
     // nothing is removed either, so the lineage keeps the row it hangs off.
     expect(nightlyRows(profileId).map((r) => r.value)).toEqual([]);
     expect(result).toMatchObject({ adopted: 0, removed: 0 });
+    // `rows` is the rows the reason itself held (#6002); both rows still stay, below.
     expect(result.declined).toEqual([
-      { held_by: "medical_record_revisions", nights: 1, rows: 2 },
+      { held_by: "medical_record_revisions", nights: 1, rows: 1 },
     ]);
     expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([
       provisional,
@@ -1574,5 +1575,137 @@ describe("a decline is disclosed where the person can see it", () => {
     const after = events();
     expect(after).toHaveLength(2);
     expect(after[1].details).toContain("2 night(s)");
+  });
+});
+
+// Fixture days relative to today (#6002, #6008): the adoption reads no clock, so the
+// profile's timezone is what pins every wake day below.
+const dayOffset = (days: number): string =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
+describe("the adoption keys a night on its origin too (#6002)", () => {
+  it("adopts two origins that share a source and a start as two nights", () => {
+    // Two packages recording a session from the same instant. A day-labelled row takes
+    // the short one (its wake day's only session); a stamped row lands inside the long
+    // one alone. Keyed without the origin, both became ONE target filed under
+    // whichever origin came first, and the long session's reading was lost into it.
+    const profileId = newProfile("Two origins, one start");
+    const shortDay = dayOffset(-3);
+    const longDay = dayOffset(-2);
+    const start = `${shortDay}T22:00:00.000Z`;
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: "app.one",
+      date: shortDay,
+      start,
+      end: `${shortDay}T23:30:00.000Z`,
+    });
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: "app.two",
+      date: longDay,
+      start,
+      end: `${longDay}T07:00:00.000Z`,
+    });
+    legacyWearableReading(profileId, {
+      date: shortDay,
+      value: 12.2,
+      stamp: null,
+      source: "health-connect",
+    });
+    legacyWearableReading(profileId, {
+      date: longDay,
+      value: 14.4,
+      stamp: `${longDay}T06:00:00.000Z`,
+      source: "health-connect",
+    });
+
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    expect(result).toMatchObject({ adopted: 2, removed: 2, declined: [] });
+    expect(
+      nightlyRows(profileId)
+        .map((r) => [r.origin, r.date, r.value])
+        .sort()
+    ).toEqual([
+      ["app.one", shortDay, 12.2],
+      ["app.two", longDay, 14.4],
+    ]);
+  });
+});
+
+describe("a night held for two reasons reports each one (#6002)", () => {
+  it("counts each reason's own rows", () => {
+    const profileId = newProfile("Decline, two reasons");
+    const day = dayOffset(-2);
+    const bed = `${dayOffset(-3)}T23:00:00.000Z`;
+    const wake = `${day}T07:00:00.000Z`;
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: day,
+      start: bed,
+      end: wake,
+    });
+    const stamps = ["03:00", "05:00", "07:00"].map(
+      (t) => `${day}T${t}:00.000Z`
+    );
+    const [linkedA, linkedB, revised] = stamps.map((stamp) =>
+      legacyWearableReading(profileId, {
+        date: day,
+        value: 13.5,
+        stamp,
+        source: "health-connect",
+      })
+    );
+    for (const recordId of [linkedA, linkedB])
+      db.prepare(
+        `INSERT INTO intake_items (profile_id, kind, name, source_record_id)
+         VALUES (?, 'medication', 'Fictional tablet', ?)`
+      ).run(profileId, recordId);
+    priorState(revised, 13.1);
+
+    const result = adoptWearableBreathingRates(db, profileId);
+
+    expect(result).toMatchObject({ adopted: 0, removed: 0 });
+    expect(result.declined).toEqual([
+      { held_by: "intake_items.source_record_id", nights: 1, rows: 2 },
+      { held_by: "medical_record_revisions", nights: 1, rows: 1 },
+    ]);
+    expect(respiratoryObservations(profileId)).toHaveLength(3);
+  });
+});
+
+describe("the adoption reads sessions by wake day, not the whole history (#6008)", () => {
+  it("still finds a night filed two days after its stamp's UTC day", () => {
+    // The far edge of the bound: a stamp at the START of a 23-hour session whose end
+    // falls on the next local day again at UTC+14.
+    const profileId = newProfile("Bounded sessions, far edge");
+    setTimezone(profileId, "Pacific/Kiritimati");
+    const stampDay = dayOffset(-5);
+    const wakeDay = dayOffset(-3);
+    const start = `${stampDay}T11:00:00.000Z`;
+    const end = `${dayOffset(-4)}T10:00:00.000Z`;
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: wakeDay,
+      start,
+      end,
+    });
+    legacyWearableReading(profileId, {
+      date: stampDay,
+      value: 13.3,
+      stamp: start,
+      source: "health-connect",
+    });
+
+    expect(adoptWearableBreathingRates(db, profileId)).toMatchObject({
+      adopted: 1,
+      removed: 1,
+    });
+    expect(
+      nightlyRows(profileId).map((r) => [r.date, r.started_at, r.value])
+    ).toEqual([[wakeDay, start, 13.3]]);
   });
 });

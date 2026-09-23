@@ -16,7 +16,7 @@ import {
 } from "@/lib/migrations/cascade-delete";
 import { BREATHING_RATE_FOLLOWUP_KIND } from "@/lib/followup-breathing-rate";
 import { isEditLocked } from "@/lib/integrations/sync-log";
-import { parseUtcSql } from "@/lib/date";
+import { dateStrInTz, parseUtcSql, shiftDateStr } from "@/lib/date";
 
 // ADOPTION: A WEARABLE READING JOINS THE NIGHT IT SUMMARIZES (issue #5409), store half.
 //
@@ -142,7 +142,7 @@ export interface BreathingRateDecline {
   held_by: string;
   /** Nights left where they were. */
   nights: number;
-  /** Observation rows in those nights. */
+  /** Observation rows this reason held in those nights. */
   rows: number;
 }
 
@@ -267,10 +267,17 @@ export function adoptWearableBreathingRates(
   if (candidates.length === 0)
     return { adopted: 0, removed: 0, carried: 0, declined: [] };
 
+  // BOUNDED BY WAKE DAY (#6008), like every other "which night is this" read: a night
+  // declined for good stays a candidate on every push, and must not pull the whole
+  // sleep history each time. `placementOf` passes the days its night can be filed under.
+  // Ordered by end, the order the unbounded read took off `idx_metric_samples_end`, so
+  // two equally long sessions still break their tie the way they always did.
   const readSessions = handle.prepare(
-    `SELECT source, origin, date, started_at, ended_at
+    `SELECT origin, date, started_at, ended_at
        FROM metric_samples
-      WHERE profile_id = ? AND metric = 'sleep_min'`
+      WHERE profile_id = ? AND metric = 'sleep_min' AND source = ?
+        AND date >= ? AND date <= ?
+      ORDER BY ended_at, id`
   );
   // THE NATURAL KEY, IN FULL, ORIGIN INCLUDED. `idx_metric_samples_natural` is
   // (profile_id, metric, source, COALESCE(origin, ''), start_time) and the ingest's own
@@ -311,25 +318,27 @@ export function adoptWearableBreathingRates(
     rows: Candidate[];
   }
   const targets = new Map<string, Target>();
-  const sessionsBySource = new Map<string, BreathingRateSession[]>();
+  const sessionsByWindow = new Map<string, BreathingRateSession[]>();
 
-  const sessionsFor = (row: Candidate): BreathingRateSession[] => {
-    const key = `${row.profile_id} ${row.source}`;
-    const cached = sessionsBySource.get(key);
+  const sessionsFor = (
+    row: Candidate,
+    from: string,
+    to: string
+  ): BreathingRateSession[] => {
+    const key = `${row.profile_id} ${row.source} ${from} ${to}`;
+    const cached = sessionsByWindow.get(key);
     if (cached) return cached;
     // ONE SOURCE'S SESSIONS ONLY. A Takeout reading must not be adopted into a Health
     // Connect session: it would be filed under a window the archive never stated and
     // under a key its own re-import could not find again.
     const sessions = (
-      readSessions.all(row.profile_id) as {
-        source: string;
+      readSessions.all(row.profile_id, row.source, from, to) as {
         origin: string | null;
         date: string;
         started_at: string;
         ended_at: string;
       }[]
     ).flatMap((s) => {
-      if (s.source !== row.source) return [];
       // parseUtcSql, not the typed seam: `metric_samples.started_at`/`ended_at` carry no
       // brand, and the shape expected is a synced session's own instant - `Z`, an
       // offset, or no suffix read as UTC (the same read `sleep-overlap-db` makes).
@@ -347,17 +356,26 @@ export function adoptWearableBreathingRates(
         },
       ];
     });
-    sessionsBySource.set(key, sessions);
+    sessionsByWindow.set(key, sessions);
     return sessions;
   };
 
   const placementOf = (row: Candidate): Placement | null => {
-    const sessions = sessionsFor(row);
     // `medical_records.occurred_at` is unbranded too; a pre-#2154 row stores NULL and a
     // written one is canonical UTC, so the same tolerant read applies.
     const stampMs = parseUtcSql(row.occurred_at)?.getTime() ?? NaN;
     let night: BreathingRateSession | undefined;
     if (Number.isFinite(stampMs)) {
+      // A session holding the stamp ends at or after it and within a day of it (a
+      // session is at most 24 h, `sleep_min`), and files under that end's wake day in
+      // some zone within 14 h of UTC. Three days either side of the stamp's UTC day
+      // covers that with a day to spare for a source's own wake-day stamp.
+      const stampDay = dateStrInTz("UTC", new Date(stampMs));
+      const sessions = sessionsFor(
+        row,
+        shiftDateStr(stampDay, -3),
+        shiftDateStr(stampDay, 3)
+      );
       // A REAL INSTANT: containment, the same test the parser applies. The stored
       // observation carries no `origin` column of its own - `medical_records` has none -
       // so every origin this source recorded is a candidate and the longest containing
@@ -374,7 +392,7 @@ export function adoptWearableBreathingRates(
     // session. Never a clock - the label is a day, and that day's main session is the
     // only window in the store the label names.
     if (!night && row.occurred_at == null)
-      night = mainSessionForDay(row.date, sessions);
+      night = mainSessionForDay(row.date, sessionsFor(row, row.date, row.date));
     if (night)
       return {
         night,
@@ -396,7 +414,9 @@ export function adoptWearableBreathingRates(
   for (const row of candidates) {
     const placement = placementOf(row);
     if (!placement) continue;
-    const key = `${row.profile_id} ${row.source} ${placement.startedAt}`;
+    // The natural key's own columns, origin included (#6002): two packages recording
+    // a session from the same instant are two nights, not one.
+    const key = `${row.profile_id} ${row.source} ${placement.night?.origin ?? ""} ${placement.startedAt}`;
     const existing = targets.get(key);
     if (existing) {
       existing.rows.push(row);
@@ -509,7 +529,7 @@ export function adoptWearableBreathingRates(
     // and says which link held it. Where the night ALREADY states its own number
     // nothing is elected, so the unmovable rows stay and the rest still leave.
     if (held.length > 0 && !already) {
-      decline(held[0][1], target.rows.length);
+      declineRows(held);
       continue;
     }
     declineRows(held);

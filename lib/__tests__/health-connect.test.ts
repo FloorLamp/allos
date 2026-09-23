@@ -1067,6 +1067,31 @@ describe("parseHealthConnectPayload — plausibility bounds (#132)", () => {
     expect(out.skipped).toBe(1);
   });
 
+  it("skips an implausible breathing rate inside a sleep session (#6004)", () => {
+    // Inside a session the reading routes to the nightly sample, never the vital, so
+    // the 3–80 envelope must hold on that path too.
+    const out = parse({
+      sleep: [
+        {
+          start_time: "2026-06-14T23:00:00Z",
+          end_time: "2026-06-15T07:00:00Z",
+        },
+      ],
+      respiratory_rate: [
+        { time: "2026-06-15T03:00:00Z", rate: 0 },
+        { time: "2026-06-15T05:00:00Z", rate: 120 },
+        { time: "2026-06-15T07:00:00Z", rate: 14 },
+      ],
+    });
+    expect(
+      out.samples
+        .filter((s) => s.metric === "respiratory_rate_bpm")
+        .map((s) => s.value)
+    ).toEqual([14]);
+    expect(out.vitals).toEqual([]);
+    expect(out.skipped).toBe(2);
+  });
+
   it("rejects a year-3000 timestamp as out of the sanity window", () => {
     const out = parse({
       weight: [{ time: "3000-01-01T08:00:00Z", kilograms: 80 }],

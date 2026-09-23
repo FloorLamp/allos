@@ -80,17 +80,22 @@ function getMetricDailyTotalsUncached(
           .prepare(
             `SELECT date, source, AVG(value) AS value
                FROM metric_samples WHERE profile_id = ? AND metric = ?
+                AND date IN (
+                  SELECT DISTINCT date FROM metric_samples
+                   WHERE profile_id = ? AND metric = ?
+                   ORDER BY date DESC LIMIT ?
+                )
               GROUP BY date, source ORDER BY date DESC`
           )
-          .all(profileId, metric) as {
+          .all(profileId, metric, profileId, metric, limitDays) as {
           date: string;
           source: string | null;
           value: number;
         }[];
-        // `rows` is already newest-first and one entry per (date, source); the map
-        // keeps the best-ranked source per date in that order, so its keys come out
-        // newest-first too and the LIMIT is a slice over DATES, exactly as the SQL
-        // `LIMIT` below is.
+        // `rows` is already newest-first and one entry per (date, source), over the
+        // newest `limitDays` DATES (#6003: the LIMIT is on dates, not rows, so no
+        // source on a kept date is cut off; a negative limit is SQLite's "no limit",
+        // as below). The map keeps the best-ranked source per date in that order.
         const elected = new Map<
           string,
           { source: string | null; value: number }
@@ -100,9 +105,8 @@ function getMetricDailyTotalsUncached(
           if (!held || rank(row.source) < rank(held.source))
             elected.set(row.date, { source: row.source, value: row.value });
         }
-        const dates = [...elected.keys()];
-        return (limitDays < 0 ? dates : dates.slice(0, limitDays))
-          .map((date) => ({ date, value: elected.get(date)!.value }))
+        return [...elected]
+          .map(([date, { value }]) => ({ date, value }))
           .reverse();
       }
       const rows = db
