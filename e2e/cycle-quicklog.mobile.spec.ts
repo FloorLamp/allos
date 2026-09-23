@@ -82,10 +82,10 @@ test.describe("quick-log sheet: log a period (#1892)", () => {
     // A form body: the write closes the sheet and the toast is the receipt, in the
     // one quick-log grammar (#5663).
     await settledClick(page, panel.getByTestId("period-started-button"));
-    await expect(page.getByTestId("toast")).toContainText(
-      "Period start logged · today"
-    );
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    const toast = page.getByTestId("toast"); // testid-scope-ok: the toast layer is portalled above every streamed boundary
+    const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
+    await expect(toast).toContainText("Period start logged · today");
+    await expect(overlay).toHaveCount(0);
   });
 });
 
