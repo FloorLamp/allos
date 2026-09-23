@@ -1288,38 +1288,32 @@ export async function resolveDayDoses(
   // to infer it from the minute they happened to land in. Only the taken arm carries
   // one — a skip is its own statement and never joins a collapsed row.
   const bundleId = newBundle();
-  // THE SLOT'S STATED TIME (#5813), the same wall-time `at` `setDoseStatus` reads and
-  // resolved the same way: one instant for the whole act. Unstated keeps a past day's
-  // rows untimed (#5595) and today's at the tap.
+  // THE SLOT'S STATED TIME (#5813), the wall-time `at` `setDoseStatus` reads, resolved
+  // the same way: one instant for every row of the act.
+  const tz = getTimezone(profileId);
   const takenAt =
-    statedInstantOnDate(
-      date,
-      String(formData.get("at") ?? ""),
-      getTimezone(profileId)
-    ) ?? (date === localToday ? undefined : null);
+    statedInstantOnDate(date, String(formData.get("at") ?? ""), tz) ??
+    (date === localToday ? undefined : null);
+  const taken = { takenAt, notifyMessageId: null, bundleId };
   const doses = pendingDayDoses(profileId, date)
     .filter((dose) => named.has(dose.doseId))
-    .map((dose) => ({
-      doseId: dose.doseId,
-      name: dose.name,
-      outcome:
-        status === "taken"
-          ? markDoseTaken(
-              profileId,
-              dose.doseId,
-              dose.itemId,
-              date,
-              loggedVia,
-              { takenAt, notifyMessageId: null, bundleId }
-            )
-          : markDoseSkipped(
-              profileId,
-              dose.doseId,
-              dose.itemId,
-              date,
-              loggedVia
-            ),
-    }));
+    .map((dose) => {
+      const args = [
+        profileId,
+        dose.doseId,
+        dose.itemId,
+        date,
+        loggedVia,
+      ] as const;
+      return {
+        doseId: dose.doseId,
+        name: dose.name,
+        outcome:
+          status === "taken"
+            ? markDoseTaken(...args, taken)
+            : markDoseSkipped(...args),
+      };
+    });
   revalidateIntake();
   return { ok: true, date, doses };
 }

@@ -1103,16 +1103,11 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     const named = await day.getAttribute("data-date");
     expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // ONE ROW COMPOSITION, ON THIS DAY AS ON TODAY (#5753 leg 1). The bucket is the
-    // chip's payload rather than a heading over a section, so the row reads
-    // `Anytime · Take` with a Skip seat beside it — the same row today draws, in the
-    // same list. The per-bucket offer row and the sectioning that framed it are gone;
-    // the bundle is #5663's receipt contract, not a second control row.
-    const rows = day.getByTestId("quick-entry-dose-list").getByRole("listitem");
+    // ONE ROW COMPOSITION, ON THIS DAY AS ON TODAY (#5753 leg 1): the row reads
+    // `Anytime · Take` with a Skip seat beside it, in the same list today draws. The
+    // slot heads its rows with one Time for the whole act (#5813).
+    const rows = day.getByTestId(/^quick-entry-dose-\d+$/);
     await expect(rows).toHaveCount(2);
-    await expect(day.getByTestId("quick-entry-dose-stack-Anytime")).toHaveCount(
-      0
-    );
     const takeFor = (id: number) =>
       day.getByTestId(`quick-entry-dose-${id}`).getByTestId("dose-take");
     await expect(takeFor(doseId)).toContainText("Anytime");
@@ -1121,8 +1116,16 @@ test("the dose sheet logs a missed day, on the day it names", async ({
       day.getByTestId(`quick-entry-dose-${doseId}`).getByTestId("dose-skip")
     ).toBeVisible();
 
-    await settledClick(page, takeFor(doseId));
-    await settledClick(page, takeFor(secondDoseId));
+    // One time for the slot, and one tap for both of its doses.
+    const slot = day.getByTestId("quick-entry-dose-slot-Anytime");
+    await expect(slot).toContainText("Anytime · 2");
+    await slot
+      .getByTestId("quick-entry-dose-slot-Anytime-when-time")
+      .fill("07:30");
+    await settledClick(
+      page,
+      slot.getByTestId("quick-entry-dose-slot-Anytime-takeall")
+    );
     await expect(rows).toHaveCount(0);
 
     // THE assertion, from the ledger: both rows landed on the day the sheet named, and
