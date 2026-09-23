@@ -193,6 +193,30 @@ describe("a past-day slot's one time (#5813)", () => {
     ).toEqual({ minute: 10, source: "recorded" });
   });
 
+  // Clocks straddling noon and midnight: a slot that opens at 00:00 still reaches
+  // across the afternoon, and a Bedtime clock after midnight still centres on it.
+  it.each([
+    ["Anytime", "anytime", ["10:00", "14:00", "20:00"], 14 * 60],
+    ["Anytime", "anytime", ["11:00", "12:30", "18:00"], 12 * 60 + 30],
+    ["Morning", "morning", ["08:00", "09:00", "13:00"], 9 * 60],
+    ["Before sleep", "before sleep", ["23:30", "00:40", "00:20"], 20],
+    ["Evening", "evening", ["20:00", "23:30", "01:00"], 23 * 60 + 30],
+  ] as const)(
+    "centres %s (%s) clocks %j",
+    (bucket, timeOfDay, clocks, minute) => {
+      const login = createLogin();
+      const profile = createProfile("Slot straddle", login.id);
+      const day = today(profile.id);
+      const doseId = seedDose(profile.id, "Straddle", timeOfDay);
+      clocks.forEach((hhmm, i) =>
+        logTakenAt(doseId, shiftDateStr(day, -(i + 2)), hhmm)
+      );
+      expect(
+        getDoseSlotClocks(profile.id, day, getTimezone(profile.id))[bucket]
+      ).toEqual({ minute, source: "recorded" });
+    }
+  );
+
   it.each([
     ["the stated time", "18:49"],
     ["Don't know", null],

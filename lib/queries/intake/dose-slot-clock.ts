@@ -6,9 +6,9 @@
 // is unknown (a "Don't know" check-off, #5595) is no evidence of a clock and is left
 // out rather than guessed from its capture stamp.
 //
-// Each clock is measured from the slot's opening, signed within half a day, so a
-// Bedtime dose at 00:30 sits 210 minutes after 21:00 instead of 20 hours before it —
-// the same reason sleep anchors its clocks at noon.
+// Each clock is measured from the slot's opening, up to `SLOT_CLOCK_EARLY` before it
+// and the rest of the day after, so a Bedtime dose at 00:30 sits 210 minutes after
+// 21:00 instead of 20 hours before it — the same reason sleep anchors at noon.
 //
 // THE DECLARED LEG IS THE SLOT'S OPENING, stated here rather than through `usual()`:
 // that leg treats a value at or below zero as absent, and Morning opens at minute 0.
@@ -27,6 +27,11 @@ export interface DoseSlotClock {
   minute: number;
   source: "recorded" | "declared";
 }
+
+// Doses run late far more than early, so a clock counts as early only within 6h of
+// its slot's opening, and never before the day's own midnight: a slot opening at
+// 00:00 (Morning, Anytime) spans its whole day, since the log's day is the dose's.
+const SLOT_CLOCK_EARLY = 360;
 
 const TAKEN_SLOT_CLOCKS_STMT = hoistedStatement(
   `SELECT d.time_of_day AS timeOfDay, l.occurred_at AS occurredAt
@@ -54,7 +59,8 @@ export function getDoseSlotClocks(
     const bucket = timeBucket(row.timeOfDay);
     const opens = TIME_BUCKET_OPENS_AT[bucket];
     const minute = minuteOfDayInTz(tz, new Date(row.occurredAt));
-    const offset = ((minute - opens + 720 + 1440) % 1440) - 720;
+    const early = Math.min(SLOT_CLOCK_EARLY, opens);
+    const offset = ((minute - opens + early + 1440) % 1440) - early;
     offsets.set(bucket, [...(offsets.get(bucket) ?? []), offset]);
   }
   const clocks: Partial<Record<TimeBucket, DoseSlotClock>> = {};
