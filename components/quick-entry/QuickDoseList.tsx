@@ -379,7 +379,7 @@ export default function QuickDoseList({
 //
 // THE SLOT CAME BACK AS THE UNIT OF TIME (#5813), not as a second body: one header per
 // slot states the time once for the whole act (see `PastSlot`), and the rows under it
-// stay today's composition. The receipt is #5663's toast, and the assumed-amount
+// stay today's composition. The receipt is #5663's row line, and the assumed-amount
 // sentence is a FACT beside the dose it qualifies.
 //
 // WHAT THE DAY STILL DECIDES: nothing is filtered by arrived slot (every bucket of a
