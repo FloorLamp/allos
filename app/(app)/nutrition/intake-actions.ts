@@ -55,6 +55,8 @@ import {
   // already write dated rows through (#3936).
   markDoseTaken,
   markDoseSkipped,
+  // The inverse of one take, re-derived under the write lock (#2642).
+  undoDoseConfirm,
   // The dose-schedule lifecycle core (#2131) — this action module holds no
   // retire/version SQL of its own.
   recordScheduleVersion,
@@ -124,7 +126,10 @@ import {
   type CadenceKind,
   type DoseSchedule,
 } from "@/lib/intake-cadence";
-import { doseConfirmMessage } from "@/lib/dose-outcome-text";
+import {
+  doseConfirmMessage,
+  type DoseUndoResult,
+} from "@/lib/dose-outcome-text";
 import { getDoseScheduleVersions } from "@/lib/queries";
 import {
   formError,
@@ -1217,6 +1222,37 @@ export async function setDoseStatus(
   );
   revalidateIntake();
   return doseStatusResult(outcome, target);
+}
+
+// Take back a take `setDoseStatus` just wrote (#5663 ruling 1): the quick-log sheet's
+// toast Undo. Same gate and day bound as the write. `undoDoseConfirm` re-derives that
+// the day still holds only the taken row this tap made, then clears it and hands the
+// supply back, so a later skip or another device's write refuses rather than going.
+export async function undoDoseStatus(
+  formData: StampedFormData
+): Promise<DoseUndoResult> {
+  const targetProfile = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(targetProfile) && targetProfile > 0) {
+    await requireProfileWriteAccess(targetProfile);
+    profileId = targetProfile;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const doseId = Number(formData.get("dose_id"));
+  const localToday = today(profileId);
+  const posted = String(formData.get("date") ?? "");
+  const date = posted === "" ? localToday : posted;
+  if (!doseId || !doseLogDays(localToday).includes(date))
+    return formError("Couldn't find that dose.");
+  const outcome = undoDoseConfirm(
+    profileId,
+    doseId,
+    date,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
+  revalidateIntake();
+  return { ok: true, outcome };
 }
 
 // ── Recent-past dose catch-up (#3936) ───────────────────────────────────────────

@@ -6,12 +6,22 @@ import { useWritePipeline } from "@/components/useWritePipeline";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import {
   setDoseStatus,
+  undoDoseStatus,
   type DoseStatusResult,
 } from "@/app/(app)/nutrition/intake-actions";
 import { type TimeStatement } from "@/components/TimeStatement";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { BusyMark } from "@/components/Button";
-import { doseConfirmMessage } from "@/lib/dose-outcome-text";
+import {
+  DOSE_UNDONE_MESSAGE,
+  doseConfirmMessage,
+  doseConfirmUndoable,
+  doseUndoOutcome,
+} from "@/lib/dose-outcome-text";
+import { formatClockValue } from "@/lib/format-date";
+import type { UndoOffer } from "@/lib/undo-offer";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
@@ -75,7 +85,7 @@ export default function DoseStatusControl({
   date,
   itemName,
   onSettled,
-  rowLeaves = false,
+  announces = false,
   statement,
 }: {
   doseId: number;
@@ -121,14 +131,18 @@ export default function DoseStatusControl({
    * the ledger, which never named one — so this leg moves no shipped name.
    */
   itemName?: string;
-  /** What the ROW does with the answer; absent on a row that just re-renders. */
-  onSettled?: (result: DoseStatusResult) => void;
   /**
-   * Whether the surface REMOVES this row when the write lands. The control becoming its
-   * done state is the receipt (#2654), so a row that stays says nothing — the sheet
-   * drops a resolved row, unmounting the receipt, so there the outcome is spoken.
+   * What the ROW does with the answer, and the wall time a take stated (null when it
+   * stated none); absent on a row that just re-renders. A toast Undo that lands reports
+   * here too, as `cleared`.
    */
-  rowLeaves?: boolean;
+  onSettled?: (result: DoseStatusResult, at: string | null) => void;
+  /**
+   * Whether a landed take or skip is spoken (#5663 ruling 1): the quick-log sheet's
+   * rows, which toast `Dose logged · <time>` with Undo on a take. Elsewhere the control
+   * becoming its done state is the receipt (#2654) and the write says nothing.
+   */
+  announces?: boolean;
   /**
    * THE TIME THIS CONFIRM STATES (#4426). The scheduled dose was the one domain with
    * no way to say "I took it at 07:00" at the tap — only the backfill form or a
@@ -161,6 +175,8 @@ export default function DoseStatusControl({
   // carries is the same authority `today(profileId)` reads at replay — so the day the
   // capture claims and the day the write cores judge cannot disagree.
   const tz = useTimezone();
+  const prefs = useFormatPrefs();
+  const stampLoggedVia = useLoggedViaStamp();
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -216,6 +232,26 @@ export default function DoseStatusControl({
     }, settlePlan.ms);
   }
 
+  // THE TOAST'S UNDO for a take this tap wrote: `undoDoseStatus` re-derives that the
+  // day still holds only that taken row, clears it and hands the supply back. The row
+  // hears `cleared`, the same answer its own "Undo take" gets.
+  function takeBack(): UndoOffer {
+    return {
+      undoneMessage: DOSE_UNDONE_MESSAGE,
+      run: async () => {
+        const fd = stampLoggedVia(new FormData());
+        fd.set("dose_id", String(doseId));
+        if (date != null) fd.set("date", date);
+        if (profileId != null) fd.set("profileId", String(profileId));
+        const undone = await undoDoseStatus(fd);
+        if (!undone.ok) return { ok: false, reason: "failed" };
+        const outcome = doseUndoOutcome(undone.outcome);
+        if (outcome.ok) onSettled?.({ ok: true, outcome: "cleared" }, null);
+        return outcome;
+      },
+    };
+  }
+
   async function apply(target: "taken" | "skipped" | "clear") {
     // The statement THIS tap consumes, read once. Only a `taken` asserts an
     // administration, so a skip or a clear neither posts one nor spends one.
@@ -245,10 +281,10 @@ export default function DoseStatusControl({
       // a schedule edit, or its item is paused, so NOTHING was written. That is not a
       // network failure, so it is reported in the server's own words.
       //
-      // A landed transition says nothing: the control BECOMING its done state is the
-      // receipt (#2654), and there is no toast to hang an Undo on.
+      // Off the sheet a landed transition says nothing: the control BECOMING its done
+      // state is the receipt (#2654).
       settle: (result) => {
-        onSettled?.(result);
+        onSettled?.(result, stated);
         if (!result.ok)
           return {
             wrote: false,
@@ -259,17 +295,29 @@ export default function DoseStatusControl({
             },
           };
         // A clear writes nothing anybody needs told; `unchanged` is the double-tap.
-        const spoken =
-          rowLeaves &&
-          result.outcome !== "cleared" &&
-          result.outcome !== "unchanged"
-            ? doseConfirmMessage(result.outcome)
-            : null;
+        if (
+          !announces ||
+          result.outcome === "cleared" ||
+          result.outcome === "unchanged"
+        )
+          return { wrote: true, announce: "silent" as const };
+        const spoken = doseConfirmMessage(result.outcome);
+        // Ruling 1's grammar, `Dose logged · <time>`. The slot is the STATED minute and
+        // drops otherwise, as on the PRN row: `setDoseStatus` does not return the
+        // instant a now-tap stamped.
+        const clock =
+          result.outcome === "logged"
+            ? formatClockValue(stated, prefs.timeFormat, "", "upper-space")
+            : "";
         return {
           wrote: true,
-          announce: spoken
-            ? { message: spoken.text, tone: spoken.tone, undo: null }
-            : ("silent" as const),
+          announce: {
+            message: clock ? `${spoken.text} · ${clock}` : spoken.text,
+            tone: spoken.tone,
+            // Only a take THIS tap wrote. A skip offers none: `undoDoseConfirm` takes
+            // back a taken row only, and the row's own "Undo skip" is right there.
+            undo: doseConfirmUndoable(result.outcome) ? takeBack() : null,
+          },
         };
       },
       failureMessage: "Couldn't update this dose. Try again.",
@@ -319,7 +367,11 @@ export default function DoseStatusControl({
     });
     // A CAPTURE SETTLES THE ROW TOO: the pipeline runs `settle` only for a write that
     // reached the server, so a queued tap would leave a resolved row in the list.
-    if (result === "captured") onSettled?.({ ok: true, outcome: "logged" });
+    if (result === "captured")
+      onSettled?.(
+        { ok: true, outcome: target === "taken" ? "logged" : "skipped" },
+        stated
+      );
     if (result === "nothing") return;
     // A server write is authoritative, so the optimistic override is dropped and the
     // props take over; a capture has no revalidate behind it, so the override stands in

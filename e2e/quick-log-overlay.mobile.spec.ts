@@ -667,21 +667,37 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     expect(page.url()).toBe(dashboardUrl);
 
     // Restore the schedule and confirm for real. This time a log IS written, so the
-    // row resolves and today's list empties.
+    // row states its receipt and the toast offers Undo (#5663 ruling 1).
     setDoseRetired(doseId, false);
     await page.reload();
     const fresh = await openQuickEntry(page, "log-dose");
+    const freshRow = fresh.getByTestId(`quick-entry-dose-${doseId}`);
+    await settledClick(page, freshRow.getByTestId("dose-take"));
+    await expect(page.getByTestId("toast")).toContainText("Dose logged");
+    await expect(
+      freshRow.getByTestId(`quick-entry-dose-receipt-${doseId}`)
+    ).toHaveText("Taken");
+    expect(doseLogRows(doseId).map((r) => r.status)).toEqual(["taken"]);
+
+    // Undo takes it back: the ledger row goes and the row offers the dose again.
     await settledClick(
       page,
-      fresh.getByTestId(`quick-entry-dose-${doseId}`).getByTestId("dose-take")
+      page.getByRole("button", { name: "Undo", exact: true })
     );
-    await expect(page.getByText("Dose logged")).toBeVisible();
-    // AND THE SHEET STAYS OPEN (#3936). It used to close here, and that was only ever
-    // right while the window behind today was empty: this is a DAILY dose, so the two
-    // days before today owe it too. Closing on today's emptiness would take the missed
-    // days away with it — which is the whole thing the switcher exists to reach.
+    await expect(page.getByTestId("toast")).toContainText(
+      "Dose confirm undone"
+    );
+    await expect(
+      freshRow.getByTestId(`quick-entry-dose-receipt-${doseId}`)
+    ).toHaveCount(0);
+    expect(doseLogRows(doseId)).toEqual([]);
+
+    await settledClick(page, freshRow.getByTestId("dose-take"));
+    await expect(
+      freshRow.getByTestId(`quick-entry-dose-receipt-${doseId}`)
+    ).toHaveText("Taken");
+    // AND THE SHEET STAYS OPEN (#5663 ruling 2): a tap body never closes itself.
     await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
-    await expect(fresh.getByTestId("quick-entry-dose-empty")).toBeVisible();
     await expect(
       fresh.getByTestId("bounded-day-switcher").getByRole("button")
     ).toHaveCount(3);
@@ -1126,7 +1142,11 @@ test("the dose sheet logs a missed day, on the day it names", async ({
       page,
       slot.getByTestId("quick-entry-dose-slot-Anytime-takeall")
     );
-    await expect(rows).toHaveCount(0);
+    // Both rows stay and state the slot's time (#5663).
+    for (const id of [doseId, secondDoseId])
+      await expect(
+        day.getByTestId(`quick-entry-dose-receipt-${id}`)
+      ).toContainText("Taken ·");
 
     // THE assertion, from the ledger: both rows landed on the day the sheet named, and
     // nothing at all was written for today.
@@ -1187,9 +1207,11 @@ test("a dose confirmed from the sheet with no signal queues, then replays", asyn
     await expect(page.getByTestId("offline-queue-badge")).toHaveText(
       /1 queued offline/
     );
-    // Kept, so the row is resolved for this session — the same thing an online confirm
-    // does, which is the parity the pipeline exists to hold.
-    await expect(row).toHaveCount(0);
+    // Kept, so the row states it landed — the same thing an online confirm does,
+    // which is the parity the pipeline exists to hold.
+    await expect(
+      row.getByTestId(`quick-entry-dose-receipt-${doseId}`)
+    ).toHaveText("Taken");
 
     await context.setOffline(false);
     // The badge emptying is the flush's own signal, and the phone shell shows one toast
@@ -1221,7 +1243,7 @@ test("a dose confirmed from the sheet with no signal queues, then replays", asyn
 // The dead spot starts AFTER the day is switched to, for the reason the test above gives:
 // opening and switching still ride `loadQuickEntry`, so an offline switch would be testing
 // the #4091 gap rather than this write.
-test("a past day's dose captured with no signal leaves that day, then replays onto it", async ({
+test("a past day's dose captured with no signal lands on that day, then replays onto it", async ({
   browser,
 }) => {
   const doseId = shellDoseId();
@@ -1242,10 +1264,10 @@ test("a past day's dose captured with no signal leaves that day, then replays on
     expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(named).not.toBe(frozenNow().toISOString().slice(0, 10));
 
-    // Scoped to the OVERLAY, not to the day container: the container unmounts when the
-    // day empties, and a locator that can no longer resolve anything would satisfy the
-    // absence check below for a reason that has nothing to do with the row.
+    // Scoped to the OVERLAY, not to the day container, so the same locator reaches
+    // today's row after the switch below.
     const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
+    const receipt = row.getByTestId(`quick-entry-dose-receipt-${doseId}`);
     await expect(row).toBeVisible();
 
     await context.setOffline(true);
@@ -1259,13 +1281,9 @@ test("a past day's dose captured with no signal leaves that day, then replays on
       /1 queued offline/
     );
 
-    // THE ASSERTION THIS TEST EXISTS FOR, stated POSITIVELY first so a closed overlay
-    // cannot satisfy it: a kept capture IS a landing, so the day is empty and says so
-    // while still mounted, and the row is gone from the same locator that just tapped it.
-    await expect(
-      overlay.getByTestId("quick-entry-dose-day-empty")
-    ).toBeVisible();
-    await expect(row).toHaveCount(0);
+    // THE ASSERTION THIS TEST EXISTS FOR: a kept capture IS a landing, so the row
+    // states it (#5663) rather than offering the dose again.
+    await expect(receipt).toHaveText("Taken");
 
     await context.setOffline(false);
     // The badge emptying is the flush's own signal — the offline sentence still holds the
@@ -1279,12 +1297,11 @@ test("a past day's dose captured with no signal leaves that day, then replays on
     // DURABLE, from the ledger: one taken row, on the day the sheet named.
     expect(doseLogRows(doseId)).toEqual([{ date: named, status: "taken" }]);
 
-    // …so it struck the DAY, not the dose. One occurrence is one (day, dose) pair, and
-    // today is still owed. This is also this locator's POSITIVE CONTROL: the same object
-    // the absence above was asserted through finds a row before the tap, none after, and
-    // one again here — so that absence cannot have come from a locator that went blind.
+    // …so it landed on the DAY, not the dose. One occurrence is one (day, dose) pair,
+    // and today is still owed: the same row there states no receipt.
     await overlay.getByTestId("day-context-0").click();
     await expect(row).toBeVisible();
+    await expect(receipt).toHaveCount(0);
   } finally {
     clearDoseLogs(doseId);
     await page.context().close();

@@ -19,6 +19,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setDoseStatus,
+  undoDoseStatus,
   deleteIntakeItem,
 } from "@/app/(app)/nutrition/intake-actions";
 import { stopMedication } from "@/app/(app)/medications/actions";
@@ -140,6 +141,43 @@ describe("cross-profile scheduled dose confirm (#1373)", () => {
     expect(res.ok).toBe(false);
     expect(doseStatus(doseId, today(kid.id))).toBeUndefined();
     expect(doseStatus(doseId, today(home.id))).toBeUndefined();
+  });
+});
+
+// The quick-log sheet's toast Undo (#5663): the same target gate as the take, and it
+// removes only the taken row the take wrote.
+describe("undoing a scheduled dose take (#5663)", () => {
+  it("takes back a granted member's take", async () => {
+    const { kid } = seedCaregiver();
+    const { doseId } = seedScheduledDose(kid.id);
+    await setDoseStatus(
+      fd({ dose_id: doseId, status: "taken", profileId: kid.id })
+    );
+    const res = await undoDoseStatus(
+      fd({ dose_id: doseId, profileId: kid.id })
+    );
+    expect(res).toEqual({ ok: true, outcome: "undone" });
+    expect(doseStatus(doseId, today(kid.id))).toBeUndefined();
+  });
+
+  it("refuses when the day moved on to a skip, and leaves the skip", async () => {
+    const { home } = seedCaregiver();
+    const { doseId } = seedScheduledDose(home.id);
+    await setDoseStatus(fd({ dose_id: doseId, status: "taken" }));
+    await setDoseStatus(
+      fd({ dose_id: doseId, status: "skipped", from: "taken" })
+    );
+    const res = await undoDoseStatus(fd({ dose_id: doseId }));
+    expect(res).toEqual({ ok: true, outcome: "changed" });
+    expect(doseStatus(doseId, today(home.id))).toBe("skipped");
+  });
+
+  it("refuses an UNGRANTED target before any write", async () => {
+    const { stranger } = seedCaregiver();
+    const { doseId } = seedScheduledDose(stranger.id);
+    await expect(
+      undoDoseStatus(fd({ dose_id: doseId, profileId: stranger.id }))
+    ).rejects.toThrow(/not accessible/);
   });
 });
 

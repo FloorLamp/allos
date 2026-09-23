@@ -202,7 +202,8 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
     copy: "device",
     body: "quick-entry-dose-list",
     queues: "dose",
-    closes: true,
+    // A tap body stays open (#5663 ruling 2).
+    closes: false,
     tap: async (overlay) => {
       await overlay
         .getByTestId(`quick-entry-dose-${shellDoseId()}`)

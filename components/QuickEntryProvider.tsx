@@ -2284,7 +2284,6 @@ function QuickEntryBody({
           {...data}
           profileToday={profileToday ?? data.today}
           prn={data.prn ? { ...data.prn, tz: subjectTimeZone } : undefined}
-          onDone={onDone}
           subjectProfileId={subjectProfileId}
           selectedDay={selectedDay ?? data.today}
           canAdd={canAdd}

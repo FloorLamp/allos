@@ -47,7 +47,7 @@ export default function DatedDoseControl({
   itemName,
   payload,
   compact,
-  rowLeaves,
+  announces,
   profileId,
   onSettled,
   slot,
@@ -70,9 +70,9 @@ export default function DatedDoseControl({
   itemName?: string;
   payload?: string;
   compact?: boolean;
-  rowLeaves?: boolean;
+  announces?: boolean;
   profileId?: number;
-  onSettled?: (result: DoseStatusResult) => void;
+  onSettled?: (result: DoseStatusResult, at: string | null) => void;
   /**
    * The time its slot states for the whole act (#5813). Once the slot has one, this
    * row's own prompt steps back to a door and its Take posts the slot's minute, unless
@@ -108,7 +108,7 @@ export default function DatedDoseControl({
         itemName={itemName}
         payload={payload}
         compact={compact}
-        rowLeaves={rowLeaves}
+        announces={announces}
         profileId={profileId}
         onSettled={onSettled}
         statement={statement}

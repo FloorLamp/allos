@@ -628,7 +628,6 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
               ],
             },
           ]}
-          onDone={vi.fn()}
         />
       </>
     );
@@ -689,7 +688,6 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
             { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
           ]}
           pastDays={[]}
-          onDone={vi.fn()}
         />
       </DayContextProvider>
     );
@@ -1694,7 +1692,6 @@ describe("the quick sheet's fold writes through the dated core (#5808)", () => {
           doses={[]}
           pastDays={[{ date: YESTERDAY, slots: [] }]}
           others={OTHERS}
-          onDone={vi.fn()}
         />
       </>
     );

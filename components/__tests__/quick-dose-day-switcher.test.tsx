@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   enqueue: vi.fn(),
   setDoseStatus: vi.fn(),
+  undoDoseStatus: vi.fn(),
   resolveDayDoses: vi.fn(),
   logHistoricalDose: vi.fn(async () => ({ ok: true as const })),
 }));
@@ -56,6 +57,7 @@ vi.mock("@/components/useOptimisticLedger", () => ({
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   resolveDayDoses: mocks.resolveDayDoses,
   setDoseStatus: mocks.setDoseStatus,
+  undoDoseStatus: mocks.undoDoseStatus,
   // The fold's Take (#5808) posts the DATED core, never the occurrence one. Its
   // payload is asserted in dose-two-pieces.test.tsx; here it only has to exist.
   logHistoricalDose: mocks.logHistoricalDose,
@@ -101,7 +103,7 @@ const PAST_DAYS = [
   { date: "2026-08-26", slots: [] },
 ];
 
-function DoseHarness({ onDone }: { onDone: () => void }) {
+function DoseHarness() {
   const day = useDayContext();
   return (
     <>
@@ -118,13 +120,12 @@ function DoseHarness({ onDone }: { onDone: () => void }) {
           },
         ]}
         pastDays={PAST_DAYS}
-        onDone={onDone}
       />
     </>
   );
 }
 
-function renderSheet(onDone = vi.fn()) {
+function renderSheet() {
   return render(
     <DayContextProvider
       profileId={1}
@@ -132,7 +133,7 @@ function renderSheet(onDone = vi.fn()) {
       reach={SHEET_REACH}
       backing={{ kind: "state", initialDay: TODAY }}
     >
-      <DoseHarness onDone={onDone} />
+      <DoseHarness />
     </DayContextProvider>
   );
 }
@@ -385,7 +386,7 @@ describe("a past-day slot states one time (#5813)", () => {
     const usual = within(slot).getByTestId(
       "quick-entry-dose-slot-Morning-usual"
     );
-    expect(usual.textContent).toBe("Usually 7:05am");
+    expect(usual.textContent).toBe("Usually 07:05");
     const time = within(slot).getByTestId(
       "quick-entry-dose-slot-Morning-when-time"
     ) as HTMLInputElement;
@@ -407,6 +408,14 @@ describe("a past-day slot states one time (#5813)", () => {
       ids: posted.get("dose_ids"),
     }).toEqual({ at: "07:05", date: "2026-08-27", ids: `${DAILY_DOSE},12` });
     expect(mocks.toast).toHaveBeenCalledWith("2 doses logged.");
+    // Both rows stay and state the slot's time; nothing is left for Take all.
+    for (const id of [DAILY_DOSE, 12])
+      expect(
+        screen.getByTestId(`quick-entry-dose-receipt-${id}`).textContent
+      ).toBe("Taken · 07:05");
+    expect(
+      within(slot).queryByTestId("quick-entry-dose-slot-Morning-takeall")
+    ).toBeNull();
   });
 
   it("offers the slot's own opening clock when the profile has no usual", () => {
@@ -415,7 +424,7 @@ describe("a past-day slot states one time (#5813)", () => {
     const usual = screen.getByTestId(
       "quick-entry-dose-slot-Before-sleep-usual"
     );
-    expect(usual.textContent).toBe("Bedtime 9:00pm");
+    expect(usual.textContent).toBe("Bedtime 21:00");
     fireEvent.click(usual);
     expect(
       (
@@ -556,12 +565,10 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
 
 // #3936 F6. Two rows resolved in quick succession must BOTH stay resolved. The
 // past-day view is the first surface here built for clearing several doses in a row,
-// and the bulk row hands `markResolved` many ids at once — so a `new Set(resolved)`
-// built from a stale closure loses the earlier tap, the row reappears, and tapping it
-// again earns an error-toned "Nothing left to log for that day." about a dose that is
-// correctly logged.
+// and the bulk row lands many ids at once — so a map copied from a stale closure loses
+// the earlier tap and the row offers the dose again.
 describe("resolving several doses in quick succession (#3936)", () => {
-  it("keeps every resolved row gone, not just the last one", async () => {
+  it("keeps every landed row's receipt, not just the last one", async () => {
     mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
 
     renderSheet();
@@ -577,10 +584,10 @@ describe("resolving several doses in quick succession (#3936)", () => {
       fireEvent.click(takes[1]!);
     });
 
-    // BOTH gone. A stale-closure write leaves the first row on screen.
-    expect(screen.queryByTestId("quick-entry-dose-11")).toBeNull();
-    expect(screen.queryByTestId("quick-entry-dose-12")).toBeNull();
-    expect(screen.getByTestId("quick-entry-dose-13")).toBeTruthy();
+    // BOTH landed. A stale-closure write leaves the first row offering the dose.
+    expect(screen.getByTestId("quick-entry-dose-receipt-11")).toBeTruthy();
+    expect(screen.getByTestId("quick-entry-dose-receipt-12")).toBeTruthy();
+    expect(screen.queryByTestId("quick-entry-dose-receipt-13")).toBeNull();
   });
 });
 
@@ -594,32 +601,27 @@ describe("one schedule row on several days is several occurrences", () => {
   });
 
   it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {
-    const onDone = vi.fn();
-    renderSheet(onDone);
+    renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
     const day = screen.getByTestId("quick-entry-dose-day");
     await act(async () => {
       fireEvent.click(within(day).getAllByTestId("dose-take")[0]!);
     });
 
-    // Yesterday's occurrence is gone…
+    // Yesterday's occurrence states it landed…
     expect(
-      within(screen.getByTestId("quick-entry-dose-day")).queryByTestId(
-        `quick-entry-dose-${DAILY_DOSE}`
-      )
-    ).toBeNull();
+      screen.getByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`)
+    ).toBeTruthy();
 
-    // …and TODAY's is not. The defect rendered "Nothing left to confirm." here and
-    // fired onDone(), closing the sheet over an unwritten medication — a false
+    // …and TODAY's is still owed. The defect struck today's row too — a false
     // confirmation of exactly the #280 class.
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
-    expect(screen.queryByTestId("quick-entry-dose-empty")).toBeNull();
     expect(
-      within(screen.getByTestId("quick-entry-dose-list")).getByTestId(
-        `quick-entry-dose-${DAILY_DOSE}`
-      )
-    ).toBeTruthy();
-    expect(onDone).not.toHaveBeenCalled();
+      screen.queryByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`)
+    ).toBeNull();
+    expect(screen.getByTestId("dose-take").getAttribute("aria-label")).toBe(
+      "8:00am · Take"
+    );
   });
 
   it("a refusal earned on one day does not render under another day's row", async () => {
@@ -658,7 +660,6 @@ describe("the Dose body owns its add doors (#3203)", () => {
         selectedDay={TODAY}
         doses={[]}
         pastDays={[]}
-        onDone={vi.fn()}
         canAdd
         onAdd={onAdd}
         addFocusRef={addFocusRef}
@@ -692,7 +693,6 @@ describe("the Dose body owns its add doors (#3203)", () => {
           },
         ]}
         pastDays={PAST_DAYS}
-        onDone={vi.fn()}
         canAdd={false}
         onAdd={vi.fn()}
       />
@@ -760,7 +760,6 @@ describe("the dose body folds everything else under its due rows (#5808)", () =>
         ]}
         pastDays={PAST_DAYS}
         others={OTHERS}
-        onDone={vi.fn()}
       />
     );
   }
@@ -826,12 +825,111 @@ describe("the dose body folds everything else under its due rows (#5808)", () =>
         ]}
         pastDays={PAST_DAYS}
         others={label.startsWith("a day") ? OTHERS : undefined}
-        onDone={vi.fn()}
       />
     );
     // ABSENT WHEN N IS ZERO. An empty fold reads as "there is nothing else", which is
     // a claim, and a wrong one whenever the count was simply not gathered.
     expect(screen.queryByTestId("quick-entry-others")).toBeNull();
     expect(screen.queryByTestId("quick-entry-others-list")).toBeNull();
+  });
+});
+
+// #5663 rulings 1 and 2: the row stays and states what landed, the toast confirms it,
+// and Undo on the toast takes the take back and puts the row back.
+describe("a landed dose states its receipt and offers Undo (#5663)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+  });
+
+  function toastUndo(): () => void {
+    const call = mocks.toast.mock.calls.find(
+      ([, options]) => options?.action?.label === "Undo"
+    );
+    return call![1].action.onClick;
+  }
+
+  it("today's row stays, says Taken, and the toast Undo puts it back", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+    mocks.undoDoseStatus.mockResolvedValue({ ok: true, outcome: "undone" });
+    renderSheet();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("dose-take"));
+    });
+
+    expect(
+      screen.getByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`).textContent
+    ).toBe("Taken");
+    const take = screen.getByTestId("dose-take");
+    expect(take.getAttribute("aria-pressed")).toBe("true");
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "Dose logged",
+      expect.objectContaining({ action: expect.anything() })
+    );
+
+    await act(async () => toastUndo()());
+    const undone = mocks.undoDoseStatus.mock.calls[0]![0] as FormData;
+    expect(undone.get("dose_id")).toBe(String(DAILY_DOSE));
+    expect(mocks.toast).toHaveBeenLastCalledWith(
+      "Dose confirm undone — it’s due again.",
+      expect.anything()
+    );
+    expect(
+      screen.queryByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`)
+    ).toBeNull();
+    expect(screen.getByTestId("dose-take").getAttribute("aria-label")).toBe(
+      "8:00am · Take"
+    );
+  });
+
+  it("a refused Undo leaves the receipt standing", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+    mocks.undoDoseStatus.mockResolvedValue({ ok: true, outcome: "changed" });
+    renderSheet();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("dose-take"));
+    });
+    await act(async () => toastUndo()());
+    expect(mocks.toast).toHaveBeenLastCalledWith(
+      "Couldn’t undo — this has changed since.",
+      expect.objectContaining({ tone: "error" })
+    );
+    expect(
+      screen.getByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`)
+    ).toBeTruthy();
+  });
+
+  it("a past-day take names its stated time on the row and in the toast", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const row = screen.getByTestId("quick-entry-dose-12");
+    fireEvent.change(within(row).getByTestId("dated-dose-when-12-time"), {
+      target: { value: "07:05" },
+    });
+    await act(async () => {
+      fireEvent.click(within(row).getByTestId("dose-take"));
+    });
+    expect(screen.getByTestId("quick-entry-dose-receipt-12").textContent).toBe(
+      "Taken · 07:05"
+    );
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "Dose logged · 07:05",
+      expect.anything()
+    );
+  });
+
+  it("a skip says Skipped and offers no Undo", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "skipped" });
+    renderSheet();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("dose-skip"));
+    });
+    expect(
+      screen.getByTestId(`quick-entry-dose-receipt-${DAILY_DOSE}`).textContent
+    ).toBe("Skipped");
+    const [message, options] = mocks.toast.mock.calls.at(-1)!;
+    expect(message).toBe("Dose skipped");
+    expect(options?.action).toBeUndefined();
   });
 });
