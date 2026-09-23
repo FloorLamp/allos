@@ -1512,11 +1512,7 @@ function HomeNowRowView({
       title={state.kind === "open" ? `Period · day ${state.day}` : "Period"}
       control={
         writable && cycleControl ? (
-          <PeriodOfferButton
-            state={cycleControl}
-            surface="atom"
-            variant="compact"
-          />
+          <PeriodOfferButton state={cycleControl} surface="atom" />
         ) : undefined
       }
     />

@@ -88,9 +88,6 @@ export default function PeriodOfferButton({
   // Server-resolved. This component adds no second opinion about it.
   state: CycleControlState;
   surface: PeriodOfferSurface;
-  // No longer changes the paint: `Button` has no size axis, and rank follows the
-  // surface and the write below (#4978 ruling 3). Kept only until its two callers drop it.
-  variant?: "primary" | "compact";
   // Called after a write that actually happened (the sheet closes itself).
   onDone?: () => void;
 }) {
