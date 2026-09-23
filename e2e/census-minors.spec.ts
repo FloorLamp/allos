@@ -45,10 +45,10 @@ test("a parenthetical profile name does not put a bracket in its avatar (#2615)"
   await page.goto("/");
   // Past the pre-hydration disable gate (#830): the identity bar renders disabled
   // until mounted, so wait for enabled before clicking.
-  const trigger = page.getByTestId("profile-identity-bar");
+  const trigger = page.getByTestId("profile-identity-bar"); // testid-scope-ok: sidebar chrome, outside the streamed app content
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  const row = page.getByTestId(`switcher-row-${profileId}`);
+  const row = page.getByTestId(`switcher-row-${profileId}`); // testid-scope-ok: the switcher panel is sidebar chrome, one copy
   await expect(row).toBeVisible();
   await expect(row).toContainText(RILEY);
 

@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
+import { appContent } from "./helpers";
 import {
   E2E_LOGIN_SETUP_HEALTH,
   E2E_MEMBER_PASSWORD,
@@ -65,7 +66,7 @@ test("the notifications page says it out loud, where someone would configure it"
   // The note is about the ACTIVE profile.
   await switchToProfile(page, SETUP_HEALTH_GAP_PROFILE);
   await page.goto("/settings/notifications");
-  const note = page.getByTestId("notify-unroutable");
+  const note = appContent(page).getByTestId("notify-unroutable");
   await expect(note).toBeVisible();
   await expect(note).toContainText(
     "Nothing receives this profile's notifications"
@@ -75,9 +76,11 @@ test("the notifications page says it out loud, where someone would configure it"
   await switchToProfile(page, SETUP_HEALTH_OK_PROFILE);
   await page.goto("/settings/notifications");
   // The page has rendered for THAT profile before the absence is read.
-  await expect(page.getByTestId("notify-channels")).toContainText(
+  await expect(appContent(page).getByTestId("notify-channels")).toContainText(
     SETUP_HEALTH_OK_PROFILE
   );
-  await expect(page.getByTestId("notify-unroutable")).toHaveCount(0);
+  await expect(appContent(page).getByTestId("notify-unroutable")).toHaveCount(
+    0
+  );
   await page.close();
 });

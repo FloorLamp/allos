@@ -31,9 +31,6 @@ import {
   DQ_GAPPY_PROFILE,
   E2E_LOGIN_DQ_COMPLETE,
   DQ_COMPLETE_PROFILE,
-  E2E_LOGIN_DQ_CARE,
-  DQ_CARE_PARENT_PROFILE,
-  DQ_CARE_CHILD_PROFILE,
   E2E_LOGIN_DQ_ADULT,
   DQ_ADULT_PROFILE,
   E2E_LOGIN_RISK_REVIEW,
@@ -59,12 +56,7 @@ import {
   E2E_LOGIN_LONGEVITY_STALE,
   LONGEVITY_STALE_PROFILE,
 } from "../fixture-logins";
-import {
-  PROFILE_ID,
-  seedMemberLogin,
-  fixtureProfileId,
-  grantProfile,
-} from "./common";
+import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
 import { BROWSER_DOC_ID } from "./imports";
 
 // ── Medical/passport UI-audit fixtures ──
@@ -481,25 +473,11 @@ export function seedDataQualityGaps(): void {
   setAttr(dqCompleteId, "risk_attributes_reviewed", "1");
   seedMemberLogin(E2E_LOGIN_DQ_COMPLETE, dqCompleteId, "write");
 
-  // (C) A caregiver with a COMPLETE own profile + a GAPPY child → the household page
-  // shows a per-member data-quality gaps line on the child's card only.
-  const dqParentId = fixtureProfileId(DQ_CARE_PARENT_PROFILE);
-  clearProfileAttrs(dqParentId);
-  setAttr(dqParentId, "sex", "female");
-  setAttr(dqParentId, "birthdate", "1988-06-01");
-  setAttr(dqParentId, "smoking_status", "never");
-  setAttr(dqParentId, "smoking_source", "manual");
-  setAttr(dqParentId, "risk_attributes_reviewed", "1");
-  const dqChildId = fixtureProfileId(DQ_CARE_CHILD_PROFILE);
-  clearProfileAttrs(dqChildId); // no birthdate/sex → birthdate + sex gaps
-  const dqCareLogin = seedMemberLogin(E2E_LOGIN_DQ_CARE, dqParentId, "write");
-  grantProfile(dqCareLogin, dqChildId, "write");
   console.log(
-    `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId}, ` +
-      `care parent ${dqParentId} + child ${dqChildId} (#1045)`
+    `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId} (#1045)`
   );
 
-  // (D) A structurally-GAPPY ADULT (#1146/#1219): birthdate + sex set (male, adult) so
+  // (C) A structurally-GAPPY ADULT (#1146/#1219): birthdate + sex set (male, adult) so
   // the ADULT-gated gaps fire — smoking status unknown, risk factors unreviewed, and a
   // PARTIAL PhenoAge panel (one Albumin lab → first missing analyte is Creatinine) —
   // and its CTAs must deep-link the exact forms. The same profile hosts the
