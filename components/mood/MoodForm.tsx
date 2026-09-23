@@ -5,6 +5,8 @@ import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
 import { useOptionalDayContext } from "@/components/DayContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { daySwitcherLabel } from "@/lib/format-date";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import IconButton from "@/components/IconButton";
 import {
@@ -289,6 +291,7 @@ export default function MoodForm({
   onCancel?: () => void;
 }) {
   const toast = useToast();
+  const prefs = useFormatPrefs();
   const dayContext = useOptionalDayContext();
   const { enqueue } = useOfflineQueue();
   const captureDayContext = useQueuedDayContextCapture();
@@ -324,13 +327,25 @@ export default function MoodForm({
   const busy = controller.attempt != null;
   const { valence, energy, anxiety, factors, notes } = controller.values;
 
+  // Ruling 1's grammar, `<Thing> logged · <time>` (#5663): a check-in has a day and no
+  // minute, so the slot is the day. Under the sheet's switcher it is the tab's own word
+  // in prose ("today", "yesterday", "Sat, Sep 13"); elsewhere the day's given label.
+  //
+  // NO UNDO. `logMood` upserts the day's one statement in place and answers nothing
+  // about what it replaced, so there is no complete inverse (lib/undo-offer.ts).
+  function dayWord(attempt: MoodAttempt): string {
+    if (!dayContext) return attempt.label;
+    const day = daySwitcherLabel(attempt.date, dayContext.today, prefs);
+    return day.kind === "date" ? day.label : day.label.toLowerCase();
+  }
+
   function complete(attempt: MoodAttempt, message?: string): void {
     if (attempt.presentation !== presentation.current) return;
     dispatch({ kind: "finished", id: attempt.id });
     writing.current = false;
     toast(
       message ??
-        `Logged ${moodLabel(attempt.values.valence)} · ${attempt.label}`
+        `${moodLabel(attempt.values.valence)} mood logged · ${dayWord(attempt)}`
     );
     onSaved?.();
     if (repeatAfterSave) dispatch({ kind: "reset" });

@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
+import { settledClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_CYCLE_CTA,
@@ -77,6 +78,14 @@ test.describe("quick-log sheet: log a period (#1892)", () => {
       "Period started today"
     );
     await expect(panel).not.toContainText(/next period/i);
+
+    // A form body: the write closes the sheet and the toast is the receipt, in the
+    // one quick-log grammar (#5663).
+    await settledClick(page, panel.getByTestId("period-started-button"));
+    await expect(page.getByTestId("toast")).toContainText(
+      "Period start logged · today"
+    );
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
   });
 });
 

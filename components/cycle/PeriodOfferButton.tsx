@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import InlineError from "@/components/InlineError";
@@ -14,7 +14,9 @@ import {
   endPeriodAction,
   reopenPeriodAction,
 } from "@/app/(app)/medical/cycles/actions";
-import { BusyMark } from "@/components/Button";
+import Button from "@/components/Button";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { microMotionPlan } from "@/lib/micro-motion";
 
 // THE one-tap period affordance (issue #1892), rendered by every surface that offers
 // one: the Cycle page's quick actions, the dashboard control atom, and the quick-log
@@ -46,10 +48,16 @@ const ACTIONS: Record<
 };
 
 // Confirmation copy per write. Non-judgmental and purely descriptive — the #714/#992
-// sensitivity contracts apply to a toast exactly as they do to a card.
+// sensitivity contracts apply to a toast exactly as they do to a card. Ruling 1's
+// grammar, `<Thing> logged · <time>` (#5663): a one-tap write is always today's, so the
+// slot is the day. A reopen logs nothing new; it takes an end back, and says so.
+//
+// NO UNDO. A start has no inverse action, and a reopen's would end the period today
+// rather than on the day it had ended. An end's inverse is the reopen, which this
+// control itself offers next ("Still bleeding") in the same slot.
 const TOASTS: Record<CyclePeriodWrite, string> = {
-  start: "Period started",
-  end: "Period ended",
+  start: "Period start logged · today",
+  end: "Period end logged · today",
   reopen: "Period reopened",
 };
 
@@ -69,14 +77,13 @@ export type PeriodOfferSurface = "page" | "atom" | "sheet";
 export default function PeriodOfferButton({
   state,
   surface,
-  variant = "primary",
   onDone,
 }: {
   // Server-resolved. This component adds no second opinion about it.
   state: CycleControlState;
   surface: PeriodOfferSurface;
-  // The reopen affordance is a recovery, not the main event — the Cycle page renders
-  // it quietly. Compact is the dashboard/sheet's smaller button.
+  // No longer changes the paint: `Button` has no size axis, and rank follows the
+  // surface and the write below (#4978 ruling 3). Kept only until its two callers drop it.
   variant?: "primary" | "compact";
   // Called after a write that actually happened (the sheet closes itself).
   onDone?: () => void;
@@ -90,6 +97,28 @@ export default function PeriodOfferButton({
   // revalidation (the outcome-toast feedback design).
   const ledger = useOptimisticLedger("period-lifecycle");
   const [error, setError] = useState<string | null>(null);
+  // ONE SETTLE after a write that landed, as `DoseStatusControl.settleConfirm` (#5900):
+  // never on a reload, a refusal or under reduced motion.
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+
+  function settleConfirm() {
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettling(true);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettling(false);
+    }, settlePlan.ms);
+  }
 
   const offer = cycleOffer(state);
   if (!offer) return null;
@@ -98,11 +127,10 @@ export default function PeriodOfferButton({
   // closure reading `offer` re-widens it.
   const write = offer.write;
   const action = ACTIONS[write];
-  const quiet = write === "reopen";
-  const className =
-    variant === "compact"
-      ? `${quiet ? "btn-ghost" : "btn"} btn-sm w-full`
-      : `${quiet ? "btn-ghost" : "btn"} w-full`;
+  // RANK (#4978 ruling 3): primary where the offer is what the surface exists for —
+  // the Cycle page's quick action and the sheet's cycle body. On Home it is one row's
+  // control among many, and the reopen is a recovery, so both stay secondary.
+  const primary = write !== "reopen" && surface !== "atom";
 
   function run() {
     setError(null);
@@ -118,6 +146,7 @@ export default function PeriodOfferButton({
           return { kind: "rollback" };
         }
         toast(TOASTS[write]);
+        settleConfirm();
         onDone?.();
         return { kind: "keep" };
       },
@@ -129,26 +158,25 @@ export default function PeriodOfferButton({
   }
 
   return (
-    <div className="space-y-2" data-testid={`period-offer-${surface}`}>
-      <button
-        type="button"
-        className={className}
-        // Disabled through the cooldown too, not just in flight: this control has
-        // no count to move, so the swallowed second tap is made visible instead
-        // of silently ignored (the substance-card posture; lib/one-tap.ts).
+    <div
+      className={`space-y-2${settling ? ` ${settlePlan.className}` : ""}`}
+      data-testid={`period-offer-${surface}`}
+    >
+      {/* Disabled through the cooldown too, not just in flight: this control has
+          no count to move, so the swallowed second tap is made visible instead of
+          silently ignored (the substance-card posture; lib/one-tap.ts). The label
+          stays put while in flight (#5900); `busy` adds the shared mark. */}
+      <Button
+        variant={primary ? "primary" : undefined}
+        layout="block"
         disabled={ledger.blocked()}
+        busy={ledger.pending()}
         data-testid={TEST_IDS[write]}
-        aria-busy={ledger.pending() || undefined}
-        data-period-write={write}
+        data={{ "data-period-write": write }}
         onClick={run}
       >
-        {/* THE LABEL STAYS PUT (#5900). This control used to swap its whole
-            sentence — "Start period" became "Saving…" — which changed the
-            button's width under the finger on the one control the sheet's cycle
-            body offers. The shared mark precedes the offer's own label instead. */}
-        {ledger.pending() ? <BusyMark /> : null}
         {offer.label}
-      </button>
+      </Button>
       <InlineError>{error}</InlineError>
     </div>
   );

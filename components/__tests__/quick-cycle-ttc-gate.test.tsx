@@ -60,7 +60,7 @@ const TTC: QuickEntryTtc = {
 };
 
 const PANEL_MARKUP_BEFORE_5810 =
-  '<div class="space-y-3" data-testid="quick-cycle-panel"><div class="text-sm text-slate-600 dark:text-slate-300">No periods logged yet — recording day 1 is what the cycle day and phase are derived from.</div><div class="space-y-2" data-testid="period-offer-sheet"><button type="button" class="btn btn-sm w-full" data-testid="period-started-button" data-period-write="start">Period started today</button></div></div>';
+  '<div class="space-y-3" data-testid="quick-cycle-panel"><div class="text-sm text-slate-600 dark:text-slate-300">No periods logged yet — recording day 1 is what the cycle day and phase are derived from.</div><div class="space-y-2" data-testid="period-offer-sheet"><button type="button" data-testid="period-started-button" data-button-control="" class="button-control button-control-primary w-full" data-period-write="start">Period started today</button></div></div>';
 
 afterEach(cleanup);
 

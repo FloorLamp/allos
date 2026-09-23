@@ -2217,7 +2217,9 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     // One tap writes and closes the sheet (a check-in is a transaction with an
     // end); you are still on the dashboard.
     await settledClick(page, checkin.getByTestId("quick-mood-tap-4"));
-    await expect(page.getByTestId("toast")).toContainText("Logged Good");
+    await expect(page.getByTestId("toast")).toContainText(
+      "Good mood logged · yesterday"
+    );
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     expect(page.url()).toBe(dashboardUrl);
 
