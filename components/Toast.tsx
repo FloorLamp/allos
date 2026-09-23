@@ -31,6 +31,7 @@ import { attentionAmber } from "@/lib/chart-colors";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { useHaptics } from "@/components/useHaptics";
+import { useTone } from "@/components/useTone";
 import { toastHaptic } from "@/lib/haptics";
 import {
   BOTTOM_EDGE_GUTTER_LEFT,
@@ -166,6 +167,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const keyedOwnersRef = useRef(new Map<string, symbol>());
   const reduceMotion = usePrefersReducedMotion();
   const haptic = useHaptics();
+  const playTone = useTone();
   const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
 
@@ -256,7 +258,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       }
       const tone = options.tone ?? "success";
       const cue = toastHaptic({ tone, silent: options.silent });
-      if (cue) haptic(cue);
+      // The tone rides the same answer, so it cannot disagree about `silent` (#5900).
+      if (cue) {
+        haptic(cue);
+        playTone(cue);
+      }
       const duration =
         options.duration === undefined
           ? DEFAULT_DURATION[tone]
@@ -276,7 +282,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         })
       );
     },
-    [haptic]
+    [haptic, playTone]
   );
 
   const api = useMemo<ToastApi>(
