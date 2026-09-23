@@ -42,10 +42,15 @@ let removeResult: { ok: boolean; undoId?: number | null; error?: string } = {
 // The staged mapping the text-intake mock answers with, when a test sets one.
 let staged: unknown = null;
 let removeWait: Promise<void> | undefined;
+// Writes the server refuses, when a test names them.
+const refusedSymptoms = new Set<string>();
+let temperatureRefused = false;
 
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
     record("log")(fd);
+    if (refusedSymptoms.has(String(fd.get("symptom"))))
+      return { ok: false as const, error: "Refused" };
     return {
       ok: true as const,
       symptom: String(fd.get("symptom")),
@@ -79,6 +84,7 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
   },
   logTemperature: async (fd: FormData) => {
     record("temperature")(fd);
+    if (temperatureRefused) return { ok: false as const, error: "Refused" };
     return { ok: true as const, degF: 100.1, flag: null, redFlag: null };
   },
   activateIllnessForSymptoms: async () => ({ ok: true as const }),
@@ -116,6 +122,8 @@ const MANY = [...ONE, { key: "cough", label: "Cough" }];
 beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
+  refusedSymptoms.clear();
+  temperatureRefused = false;
   removeResult = { ok: true, undoId: 9 };
   staged = null;
   removeWait = undefined;
@@ -681,7 +689,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     // The statement is required there: it stays open with no door to close it, and
     // a save without a minute is refused with the reason.
     expect(screen.queryByTestId("temp-quick-when-toggle")).toBeNull();
-    expect(screen.getByTestId("temp-quick-when-time")).toBeTruthy();
+    screen.getByTestId("temp-quick-when-time");
     await saveTemp();
     expect(posted.temperature).toBeUndefined();
     expect(screen.getByTestId("temp-quick-error").textContent).toBe(
@@ -693,7 +701,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     toggledBar();
     await openTemp("101.4");
     // The door is closed, so nothing is asked for.
-    expect(screen.getByTestId("temp-quick-when-toggle")).toBeTruthy();
+    screen.getByTestId("temp-quick-when-toggle");
     expect(screen.queryByTestId("temp-quick-when-time")).toBeNull();
     await saveTemp();
     expect(payload("temperature").date).toBe(TODAY);
@@ -834,6 +842,99 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
-    expect(screen.getByTestId("symptom-headache")).toBeTruthy();
+    screen.getByTestId("symptom-headache");
+  });
+
+  // THE RECEIPT BELONGS TO THE DAY THAT EARNED IT (#5663). A past day has no minute
+  // of today's to name, and the line goes when the bar is re-pointed.
+  async function saveCough(): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-picker-save"))
+    );
+  }
+
+  it("states no minute on a past day's receipt", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await saveCough();
+    expect(screen.getByTestId("symptom-log-receipt").textContent).toBe(
+      "Logged 1"
+    );
+  });
+
+  it("hides the receipt when the day changes", async () => {
+    toggledBar();
+    await saveCough();
+    screen.getByTestId("symptom-log-receipt");
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    expect(screen.queryByTestId("symptom-log-receipt")).toBeNull();
+  });
+
+  it("hides the receipt when the subject changes", async () => {
+    const props = {
+      date: TODAY,
+      initial: {},
+      initialNotes: {},
+      symptoms: PICKER_SYMPTOMS,
+      customNames: [],
+      suggestActivateIllness: false,
+      temperatureUnit: "F" as const,
+      showTitle: false,
+    };
+    const { rerender } = render(
+      <SymptomLogBar {...props} profileId={SUBJECT} />
+    );
+    await saveCough();
+    screen.getByTestId("symptom-log-receipt");
+    rerender(<SymptomLogBar {...props} profileId={SUBJECT + 1} />);
+    expect(screen.queryByTestId("symptom-log-receipt")).toBeNull();
+  });
+
+  // A REFUSAL IS NEVER COUNTED AS LOGGED, and a partial one is said, not dropped.
+  it("counts only what landed from a sentence and says what was refused", async () => {
+    staged = {
+      symptoms: [
+        { slug: "headache", label: "Headache", severity: 2, note: null },
+        { slug: "cough", label: "Cough", severity: 1, note: null },
+      ],
+      temperature: { value: 99.2, unit: "F" },
+      unmapped: [],
+      dayOffset: 0,
+    };
+    refusedSymptoms.add("headache");
+    temperatureRefused = true;
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("symptom-text-input"), {
+      target: { value: "headache, cough, 99.2" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-suggest"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-confirm"))
+    );
+    expect(toasts).toEqual([
+      "Cough logged",
+      "Couldn't log the temperature. Try again.",
+      "Couldn't log 1 symptom. Try again.",
+    ]);
+    expect(screen.getByTestId("symptom-log-receipt").textContent).toMatch(
+      /^Logged 1 · /
+    );
+    screen.getByTestId("symptom-cough");
+    expect(screen.queryByTestId("symptom-headache")).toBeNull();
   });
 });

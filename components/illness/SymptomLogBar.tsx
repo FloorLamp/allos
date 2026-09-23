@@ -476,7 +476,18 @@ export default function SymptomLogBar({
         targetDate
       );
     else if (temperatureLogged) toast("Temperature logged");
-    else toast("Couldn't log that. Try again.", { tone: "error" });
+    // A PARTIAL REFUSAL IS SAID, not folded into the success above: each refused
+    // half gets its own sentence, so a landed symptom never hides a dropped reading.
+    const refused = intakeStaged.symptoms.length - logged.length;
+    if (intakeStaged.temperature && !temperatureLogged)
+      toast("Couldn't log the temperature. Try again.", { tone: "error" });
+    if (refused > 0)
+      toast(
+        refused === 1
+          ? "Couldn't log 1 symptom. Try again."
+          : `Couldn't log ${refused} symptoms. Try again.`,
+        { tone: "error" }
+      );
   }
 
   function toggleSymptomPicker() {
