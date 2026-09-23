@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { IconPencil, IconPlus, IconX } from "@tabler/icons-react";
 import Button, { InlineSubmitAction } from "@/components/Button";
+import IconButton from "@/components/IconButton";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
@@ -200,17 +201,15 @@ export default function InjuryBar({
                 </span>
               )}
               <div className="ml-auto flex items-center gap-1">
-                <button
-                  type="button"
+                <IconButton
+                  label={`Edit ${inj.label}`}
                   onClick={() =>
                     setEditingId((v) => (v === inj.id ? null : inj.id))
                   }
-                  className="btn-ghost p-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
-                  aria-label={`Edit ${inj.label}`}
                   data-testid="injury-edit-toggle"
                 >
                   <IconPencil size={16} />
-                </button>
+                </IconButton>
                 {inj.status === "active" && (
                   <StatusButton
                     id={inj.id}

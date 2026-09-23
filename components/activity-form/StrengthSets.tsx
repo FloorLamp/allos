@@ -4,6 +4,7 @@ import { formatCount } from "@/lib/format-number";
 
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
+import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
@@ -1052,14 +1053,12 @@ export default function StrengthSets({
               placeholder={`Bodyweight (${units.weightUnit})`}
               className="input"
             />
-            <button
-              type="button"
+            <Button
               onClick={onSaveBodyweight}
               disabled={bwSaving || !(Number(bwInput) > 0)}
-              className="btn shrink-0"
             >
               {bwSaving ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       )}

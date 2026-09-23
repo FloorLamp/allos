@@ -1,5 +1,6 @@
 "use client";
 
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 
 // The activity form's action row: the (undoable) Delete control, auto-save
@@ -63,23 +64,16 @@ export default function ActivityFormFooter({
           <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         </span>
         {stickyFooter && showDone && onFinish ? (
-          <button
-            type="button"
-            onClick={() => void onDone()}
-            className="btn-ghost btn-sm"
-          >
-            Close
-          </button>
+          <Button onClick={() => void onDone()}>Close</Button>
         ) : null}
         {stickyFooter && (showDone || onFinish) && (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => void (onFinish ?? onDone)()}
-            className="btn"
             data-testid={onFinish ? "form-finish-workout" : undefined}
           >
             {onFinish ? "Finish workout" : "Done"}
-          </button>
+          </Button>
         )}
       </div>
     </div>
