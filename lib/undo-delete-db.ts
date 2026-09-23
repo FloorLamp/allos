@@ -282,6 +282,60 @@ export function detachRepointedLinks(
   }
 }
 
+// Delete the kind's convention-owned children (`deleteExplicitly`: no cascade FK, such
+// as a symptom-day's photos) under profile scope, tombstoning each. captureDelete
+// passes the rows it captured; Delete all passes none, so each child's rows are read
+// by the same `childWhere` the capture would have used. Rows only: a photo's files
+// stay on disk, as they do through captureDelete's undo window.
+export function deleteExplicitChildren(
+  kind: string,
+  profileId: number,
+  rootId: number,
+  rows?: Record<string, Row[]>
+): void {
+  for (const child of getKindSpec(kind).entities.slice(1)) {
+    if (!child.deleteExplicitly) continue;
+    const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
+    const owned =
+      rows?.[child.entity] ??
+      (db
+        .prepare(`SELECT * FROM ${child.table} WHERE ${child.childWhere}`)
+        .all(...binds) as Row[]);
+    for (const row of owned) {
+      const id = row.id;
+      if (typeof id !== "number") continue;
+      db.prepare(
+        `DELETE FROM ${child.table} WHERE id = ? AND profile_id = ?`
+      ).run(id, profileId);
+      writeImportTombstoneForRow(profileId, child.table, row);
+    }
+  }
+}
+
+// A protocol that adopted this med as its intervention (#660) keeps its own name and
+// loses the link.
+export function unlinkProtocolsFromIntakeItem(
+  profileId: number,
+  itemId: number
+): void {
+  db.prepare(
+    `UPDATE protocols SET intake_item_id = NULL
+      WHERE intake_item_id = ? AND profile_id = ?`
+  ).run(itemId, profileId);
+}
+
+// A med projected from this prescription record (#1051) keeps itself and loses its
+// provenance link.
+export function unlinkIntakeItemsFromRecord(
+  profileId: number,
+  recordId: number
+): void {
+  db.prepare(
+    `UPDATE intake_items SET source_record_id = NULL
+      WHERE source_record_id = ? AND profile_id = ?`
+  ).run(recordId, profileId);
+}
+
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -336,10 +390,7 @@ export function captureDelete(
       const supplyId = rootRow.supply_id as number | null;
       if (supplyId != null) invalidatePoolRefillOffers(supplyId);
       invalidateRefillOffers(profileId, rootId, supplyId);
-      db.prepare(
-        `UPDATE protocols SET intake_item_id = NULL
-          WHERE intake_item_id = ? AND profile_id = ?`
-      ).run(rootId, profileId);
+      unlinkProtocolsFromIntakeItem(profileId, rootId);
       // An episode's stopped-med reversal record (#1140 Part B) may reference THIS med
       // (item_id) and its just-closed course (course_id). Since migration 137 (#1808)
       // both links are ON DELETE SET NULL, so the DELETE below can no longer trip the FK
@@ -368,10 +419,7 @@ export function captureDelete(
       // medical_records DELETE below can't trip the FK; the med survives, its
       // provenance link honestly gone (not restored on undo, like the follow-up
       // links above).
-      db.prepare(
-        `UPDATE intake_items SET source_record_id = NULL
-          WHERE source_record_id = ? AND profile_id = ?`
-      ).run(rootId, profileId);
+      unlinkIntakeItemsFromRecord(profileId, rootId);
     }
 
     // Clinical inbound null-outs (#1847), centralized here for the same reason the
@@ -460,17 +508,7 @@ export function captureDelete(
     // Convention-owned children (practice sessions and their suppression row) have
     // no cascade FK. Delete exactly the rows captured above, under profile scope,
     // before removing the root so capture + delete remain one atomic operation.
-    for (const child of spec.entities.slice(1)) {
-      if (!child.deleteExplicitly) continue;
-      for (const row of rows[child.entity] ?? []) {
-        const id = row.id;
-        if (typeof id !== "number") continue;
-        db.prepare(
-          `DELETE FROM ${child.table} WHERE id = ? AND profile_id = ?`
-        ).run(id, profileId);
-        writeImportTombstoneForRow(profileId, child.table, row);
-      }
-    }
+    deleteExplicitChildren(kind, profileId, rootId, rows);
 
     // Delete the root; children cascade. Profile-scoped for defense in depth.
     db.prepare(`DELETE FROM ${root.table} WHERE id = ? AND profile_id = ?`).run(
