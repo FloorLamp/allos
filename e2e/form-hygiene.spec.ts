@@ -210,11 +210,11 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
   // display text, so this cannot use settledFill (whose contract is that the
   // filled string STAYS the DOM value). Retry the fill so a pre-hydration one that
   // React reverts is re-applied, and settle on the formatted result.
-  // eslint-disable-next-line no-restricted-properties -- topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
   // The next Dec 24 after the frozen day, so the visit stays upcoming (#6015).
   const today = frozenToday();
   let year = Number(today.slice(0, 4));
   if (today >= `${year}-12-24`) year += 1;
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
   await expect(async () => {
     await dateField.fill(`${year}-12-24`);
     // The year-bearing short form, not the year-less long one it used to render.
