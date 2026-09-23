@@ -42,14 +42,18 @@ let logResult:
   | {
       ok: true;
       weekCount: number;
+      dayCount: number;
       eventId: number;
       date: string;
+      statedClock: string | null;
     }
   | { ok: false; error: string; weekCount?: number } = {
   ok: true,
   weekCount: 3,
+  dayCount: 1,
   eventId: 41,
   date: "2026-08-20",
+  statedClock: null,
 };
 let logReply = async () => logResult;
 let updateResult: { kind: string; eventId?: number; date?: string } = {
@@ -111,8 +115,10 @@ beforeEach(() => {
   logResult = {
     ok: true,
     weekCount: 3,
+    dayCount: 1,
     eventId: 41,
     date: TODAY,
+    statedClock: null,
   };
   logReply = async () => logResult;
 });
@@ -518,6 +524,87 @@ describe("SubstanceUnitControl is ONE row control", () => {
       date: FOUND_DAY,
       stated_at: `${FOUND_DAY}T09:15:00.000Z`,
     });
+  });
+});
+
+// THE SHEET ROW'S RECEIPT (#5663 ruling 1, #5900 problem 2). A landed log states the
+// write day's count beside the week's in the day switcher's word, the toast names the
+// minute the write accepted, and the chip settles once; a refusal does none of it.
+describe("the sheet's substance row states what landed", () => {
+  const YESTERDAY = "2026-08-19";
+  function sheetOn(day: string) {
+    render(
+      <DayContextProvider
+        profileId={42}
+        today={TODAY}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: day }}
+      >
+        <QuickSubstanceList
+          date={day}
+          substances={[
+            {
+              key: "nicotine",
+              label: "Nicotine",
+              logLabel: "Log a use",
+              capProgress: null,
+            },
+          ]}
+          subjectProfileId={42}
+        />
+      </DayContextProvider>
+    );
+  }
+  const receipt = () =>
+    screen.queryByTestId("quick-entry-substance-receipt-nicotine");
+  const settle = () =>
+    screen.getByTestId("quick-entry-substance-settle-nicotine");
+
+  it("counts the day in the tab's word, names the stated minute, and settles once", async () => {
+    logResult = {
+      ok: true,
+      weekCount: 3,
+      dayCount: 1,
+      eventId: 41,
+      date: YESTERDAY,
+      statedClock: "21:15",
+    };
+    sheetOn(YESTERDAY);
+    expect(receipt()).toBeNull();
+    expect(settle().className).not.toContain("motion-settle");
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("quick-entry-substance-log-nicotine"))
+    );
+    expect(receipt()?.textContent).toBe("1 yesterday · 3 this week");
+    expect(toasts).toEqual(["Use logged · 21:15"]);
+    expect(settle().className).toContain("motion-settle");
+  });
+
+  it("drops a zero day and the unstated minute", async () => {
+    logResult = {
+      ok: true,
+      weekCount: 2,
+      dayCount: 0,
+      eventId: 41,
+      date: TODAY,
+      statedClock: null,
+    };
+    sheetOn(TODAY);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("quick-entry-substance-log-nicotine"))
+    );
+    expect(receipt()?.textContent).toBe("2 this week");
+    expect(toasts).toEqual(["Use logged"]);
+  });
+
+  it("states and settles nothing for a refused log", async () => {
+    logResult = { ok: false, error: "Couldn't log that." };
+    sheetOn(TODAY);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("quick-entry-substance-log-nicotine"))
+    );
+    expect(receipt()).toBeNull();
+    expect(settle().className).not.toContain("motion-settle");
   });
 });
 

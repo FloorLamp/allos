@@ -13,7 +13,7 @@ import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
 import { isPastWriteAccepted } from "@/lib/log-manifest";
 import { now } from "@/lib/clock";
-import { judgeStatedAt } from "@/lib/stated-time";
+import { judgeStatedAt, statedHhmm } from "@/lib/stated-time";
 import { getTimezone } from "@/lib/settings";
 import {
   isSubstanceInstrument,
@@ -47,6 +47,7 @@ import {
   type SubstanceEventEditOutcome,
 } from "@/lib/substance-log-write";
 import { getSubstanceWeekState } from "@/lib/queries";
+import { getCadenceScopeCounts } from "@/lib/queries/cadence-ledger";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings";
@@ -77,13 +78,27 @@ export type SubstanceInstrumentActionResult =
   { ok: true; id: number } | { ok: false; error: string };
 
 // This week's post-write unit count rides the result so the one-tap log/undo
-// reconciles optimistically against the server (the #748 item 2 pattern).
-export type SubstanceCountResult =
-  | { ok: true; weekCount: number }
-  | { ok: false; error: string; weekCount?: number };
+// reconciles optimistically against the server (the #748 item 2 pattern), and the
+// write day's count beside it: the sheet's row states "1 today · 3 this week"
+// (#5663 ruling 1).
+export interface SubstanceCounts {
+  weekCount: number;
+  dayCount: number;
+}
 
+export type SubstanceCountResult =
+  | ({ ok: true } & SubstanceCounts)
+  | ({ ok: false; error: string } & Partial<SubstanceCounts>);
+
+// `statedClock` is the profile-local HH:MM the write accepted, or null when none was
+// stated or the statement was refused, so the toast names only a minute the row holds.
 export type SubstanceLogResult =
-  | { ok: true; weekCount: number; eventId: number; date: string }
+  | ({
+      ok: true;
+      eventId: number;
+      date: string;
+      statedClock: string | null;
+    } & SubstanceCounts)
   | { ok: false; error: string };
 
 export type SubstanceHistoryDeleteResult =
@@ -105,6 +120,24 @@ function capProgressAfterWrite(
 ): string | null {
   const week = getSubstanceWeekState(profileId, substance);
   return week.status ? capProgressLine(week.status, substance) : null;
+}
+
+// Both counts after a write, for the subject's profile-local `date` (the day the
+// write filed under) and the current week.
+function substanceCounts(
+  profileId: number,
+  substance: SubstanceKey,
+  date: string
+): SubstanceCounts {
+  const [dayCount] = getCadenceScopeCounts(
+    profileId,
+    { kind: "substance", value: substance },
+    [{ start: date, end: date, isCurrent: false, elapsedDays: 1 }]
+  );
+  return {
+    weekCount: getSubstanceWeekState(profileId, substance).count,
+    dayCount,
+  };
 }
 
 function revalidateSubstanceUse() {
@@ -289,9 +322,10 @@ function logOneUnit(
   revalidateSubstanceUse();
   return {
     ok: true,
-    weekCount: getSubstanceWeekState(profileId, substance).count,
+    ...substanceCounts(profileId, substance, date),
     eventId: outcome.eventId,
     date,
+    statedClock: statedAt ? statedHhmm(statedAt, getTimezone(profileId)) : null,
   };
 }
 
@@ -410,15 +444,12 @@ export async function undoSubstanceUnitAction(
     return {
       ok: false,
       error: "That use has changed.",
-      weekCount: getSubstanceWeekState(profileId, substance).count,
+      ...substanceCounts(profileId, substance, date),
     };
   if (outcome.kind !== "undone")
     return { ok: false, error: "Couldn't undo that." };
   revalidateSubstanceUse();
-  return {
-    ok: true,
-    weekCount: getSubstanceWeekState(profileId, substance).count,
-  };
+  return { ok: true, ...substanceCounts(profileId, substance, date) };
 }
 
 function historyInput(

@@ -306,7 +306,7 @@ describe("the substance row control's receipt", () => {
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
-    expect(receipts()).toEqual(["Use logged."]);
+    expect(receipts()).toEqual(["Use logged"]);
     const card = screen.getByTestId("toast");
 
     await act(async () =>
@@ -341,7 +341,7 @@ describe("the substance row control's receipt", () => {
       await act(async () =>
         fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
       );
-      expect(receipts()).toEqual(["Use logged.", "Use logged."]);
+      expect(receipts()).toEqual(["Use logged", "Use logged"]);
 
       const undos = screen.getAllByRole("button", { name: "Undo" });
       expect(undos).toHaveLength(2);
@@ -358,7 +358,7 @@ describe("the substance row control's receipt", () => {
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
-    expect(receipts()).toEqual(["Use logged."]);
+    expect(receipts()).toEqual(["Use logged"]);
 
     view.rerender(sheet(43));
     expect(receipts()).toEqual([]);
