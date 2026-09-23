@@ -229,8 +229,7 @@ export default async function TrendsPage(props: {
             {/* What moved is the page's one fast head. */}
             <TrendingDigest range={range} />
 
-            {/* The census, streamed so the head never waits on it. Practice
-                trends moved to each /wellness card by the #2151 owner ruling. */}
+            {/* The census, streamed so the head never waits on it. */}
             <TrendsSectionShell
               id="body"
               legacyId="starred"

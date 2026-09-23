@@ -1093,7 +1093,7 @@ test("R-5 — a practice card does not claim a session the device refused to kee
   // SEEDED, because the surface cannot otherwise be reached (#868 spec-owned fixtures):
   // an offline tap on a practice already logged today short-circuits into "already logged
   // today" and never asks the queue at all, and the profile's only seeded practice has
-  // sessions on it. A target with no sessions is the smallest thing that renders a card
+  // sessions on it. A target with no sessions is the smallest thing that renders a row
   // with a live Log button.
   const practiceName = `E2E Refused Tap ${frozenNow().getTime()}`;
   const db = new Database(workerDbPath());
@@ -1108,17 +1108,16 @@ test("R-5 — a practice card does not claim a session the device refused to kee
     await login(page);
 
     const tabB = await context.newPage();
-    await tabB.goto("/wellness");
+    // The practice's row in the quick-log sheet (#5668); a zero count is not drawn.
+    await tabB.goto("/?quick=log-practice");
     const card = tabB
-      .getByRole("main")
-      .getByTestId("wellness-practice-card")
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
       .filter({ hasText: practiceName });
     await expect(card.getByTestId("practice-log-button")).toBeVisible({
       timeout: 20_000,
     });
-    await expect(card.getByTestId("practice-today-count")).toHaveText(
-      "No sessions yet"
-    );
+    await expect(card.getByTestId("practice-today-count")).toHaveCount(0);
 
     // The logout lands, at full speed, and closes every lane on this device.
     await page.goto("/");
@@ -1142,10 +1141,8 @@ test("R-5 — a practice card does not claim a session the device refused to kee
       tabB.getByText("Saved offline — it'll sync when you're back online.")
     ).toHaveCount(0);
 
-    // And the count is the card's own claim that the session landed, so it must not move.
-    await expect(card.getByTestId("practice-today-count")).toHaveText(
-      "No sessions yet"
-    );
+    // And the count is the row's own claim that the session landed, so it must not move.
+    await expect(card.getByTestId("practice-today-count")).toHaveCount(0);
     expect(await storedRows(tabB, "intents")).toEqual([]);
 
     await context.setOffline(false);

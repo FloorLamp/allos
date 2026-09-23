@@ -82,7 +82,7 @@ import type {
   ImagingStudy,
   SkinLesion,
 } from "../types";
-import { trainingActivityPageHref } from "../hrefs";
+import { PRACTICES_HREF, trainingActivityPageHref } from "../hrefs";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -1055,8 +1055,8 @@ function practiceHits(
       domain: "practice" as const,
       key: `practice:${row.identity}`,
       ...practiceHitText(row, display),
-      // The Wellness page renders one card per practice with no per-practice route.
-      href: "/wellness",
+      // A practice has no per-practice route; the quick-log sheet lists them all.
+      href: PRACTICES_HREF,
       date: row.lastUsed,
     }));
 }

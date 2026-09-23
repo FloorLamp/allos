@@ -9,7 +9,7 @@ import { getTrackedPractices } from "@/lib/queries";
 import { practiceLogOutcomeText } from "@/lib/practice";
 import { parseQuickLog } from "@/lib/palette-quick-log";
 import { submittedWeightUnit } from "@/lib/units";
-import { logPractice } from "@/app/(app)/wellness/actions";
+import { logPractice } from "@/app/(app)/practice-actions";
 
 // Server action behind the command palette's inline quick-log (issue #29, extended to
 // wellness practices in #1633). The palette parses the same input client-side (pure

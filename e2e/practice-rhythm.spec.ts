@@ -84,22 +84,6 @@ test("practice cards show the rhythm note on a predicted day and nothing for a y
       "No sessions yet"
     );
     await expect(youngCard.getByTestId("practice-rhythm-note")).toHaveCount(0);
-
-    // The wellness PracticeCard shares the same control and the same decision.
-    await page.goto("/wellness");
-    const main = page.getByRole("main");
-    const wellnessRhythm = main
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: rhythmName });
-    await expect(
-      wellnessRhythm.getByTestId("practice-rhythm-note")
-    ).toContainText("usually a session day");
-    const wellnessYoung = main
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: youngName });
-    await expect(wellnessYoung.getByTestId("practice-today-count")).toHaveText(
-      "No sessions yet"
-    );
   } finally {
     if (rhythmProtocolId)
       db.prepare("DELETE FROM protocols WHERE id = ?").run(rhythmProtocolId);

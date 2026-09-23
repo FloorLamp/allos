@@ -247,13 +247,10 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   },
   {
     id: "wellness-practices",
-    // Always visible because the matching sidebar leaf is relevance-gated until a
-    // first practice target or session exists (#1620). The label is the sheet
-    // row's label and the target is the sheet row's target (#2184): the SAME
-    // practice overlay, in place. A profile with nothing tracked yet gets the
-    // overlay's honest empty state, which points at Wellness — the #1620
-    // first-practice path keeps a door (and the /wellness?new=1 deep link
-    // itself is untouched).
+    // The label is the sheet row's label and the target is the sheet row's target
+    // (#2184): the SAME practice overlay, in place — which also adds and edits
+    // practices (#5668). A profile with nothing tracked yet gets the overlay's
+    // create form.
     label: "Log practice",
     keywords: [
       "wellness",

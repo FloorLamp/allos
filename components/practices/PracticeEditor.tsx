@@ -1,44 +1,42 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type RefObject } from "react";
+import { useState, type FormEvent } from "react";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
-import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
-import { savePractice } from "./actions";
+import { savePractice } from "@/app/(app)/practice-actions";
 import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
+import type { CatalogFormCallbacks } from "@/components/CatalogEditor";
 
+// A practice's name and weekly goal — the form behind the quick-log sheet's Add
+// practice and each row's Edit (#5668). It speaks the #5237 catalog form callbacks, so
+// `CatalogFormDialog` hosts it the way it hosts every catalog form.
 export default function PracticeEditor({
   targetId = null,
   name = "",
   perWeek = 3,
   perWeekMax = null,
-  compact = false,
-  onDone,
-  initialFocusRef,
+  onSaved,
+  onCancel,
+  onPendingChange,
 }: {
   targetId?: number | null;
   name?: string;
   perWeek?: number;
   perWeekMax?: number | null;
-  compact?: boolean;
-  onDone?: () => void;
-  initialFocusRef?: RefObject<HTMLInputElement | null>;
-}) {
+} & CatalogFormCallbacks<void>) {
   const toast = useToast();
-  const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [practiceName, setPracticeName] = useState(name);
-  useFocusFormOnParam(formRef, "new", undefined, targetId == null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
     setPending(true);
+    onPendingChange?.(true);
     setError(null);
-    const fd = new FormData(form);
+    const fd = new FormData(event.currentTarget);
     if (targetId != null) fd.set("target_id", String(targetId));
     try {
       const result = await savePractice(fd);
@@ -47,25 +45,19 @@ export default function PracticeEditor({
         return;
       }
       toast(targetId == null ? "Practice added" : "Practice updated");
-      onDone?.();
-      if (targetId == null) {
-        form.reset();
-        setPracticeName("");
-      }
+      onSaved();
     } catch {
       setError("Couldn't save that practice. Try again.");
     } finally {
       setPending(false);
+      onPendingChange?.(false);
     }
   }
 
   return (
     <form
-      ref={formRef}
       onSubmit={submit}
-      className={
-        compact ? "grid gap-3 sm:grid-cols-3" : "card grid gap-3 sm:grid-cols-3"
-      }
+      className="grid gap-3 sm:grid-cols-3"
       data-testid={
         targetId == null ? "practice-create-form" : "practice-edit-form"
       }
@@ -81,7 +73,6 @@ export default function PracticeEditor({
           allowFreeText
           placeholder="Sauna, meditation, red light…"
           inputClassName="mt-1 w-full"
-          inputElementRef={initialFocusRef}
         />
       </label>
       <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -116,7 +107,7 @@ export default function PracticeEditor({
         <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : targetId == null ? "Save" : "Save changes"}
         </SubmitButton>
-        {onDone && <Button onClick={onDone}>Cancel</Button>}
+        <Button onClick={onCancel}>Cancel</Button>
       </div>
       {error && (
         <p

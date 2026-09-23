@@ -49,8 +49,8 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   // other doors are unchanged — the case below still walks to it.
   "Sleep",
   // Trends is a child of this group now (#4965), alongside Upcoming, Household,
-  // Wellness, Longevity and Progress photos — six children where it used to be
-  // History plus five. Collapsed on "/" (no child route is active), which is
+  // Longevity and Progress photos (Wellness retired, #5668). Collapsed on "/" (no
+  // child route is active), which is
   // why the group's whole text content here is its header label.
   "Plan & review",
   "Medical",
@@ -248,13 +248,7 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 // The list is the group's whole membership, so the substitution is the
 // assertion — a row added beside the swapped-in one, rather than in place of
 // it, fails this.
-const PLAN_REVIEW_CHILDREN = [
-  "Upcoming",
-  "Trends",
-  "Wellness",
-  "Longevity",
-  "Household",
-];
+const PLAN_REVIEW_CHILDREN = ["Upcoming", "Trends", "Longevity", "Household"];
 
 test("the episodic group holds exactly its children, and none of them is a top-level row (#3079)", async ({
   page,
@@ -354,7 +348,6 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
   const HREFS: Record<string, string> = {
     Upcoming: "/upcoming",
     Trends: "/trends",
-    Wellness: "/wellness",
     Longevity: "/longevity",
     Household: "/household",
   };

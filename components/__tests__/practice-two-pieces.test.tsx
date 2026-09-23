@@ -43,7 +43,7 @@ const mocks = vi.hoisted(() => ({
 }));
 const ledger = vi.hoisted(() => ({ blocked: false }));
 
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   logPractice: async (fd: FormData) => {
     record("logPractice")(fd);
     return { kind: "logged" as const, count: 1, date: String(fd.get("date")) };

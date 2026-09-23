@@ -246,8 +246,8 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     hint: "Sauna, meditation, or another tracked practice",
     icon: "sparkles",
     // One-tap practice logging, which the Telegram bot has had since #1259 while the web
-    // app made you find /wellness first (#1633). The overlay mounts the SAME
-    // LogPracticeButton the Wellness card renders over the same logPractice action — no
+    // app made you find a page first (#1633). The overlay mounts the SAME
+    // LogPracticeButton the protocol rows render over the same logPractice action — no
     // second write path, and the sheet lists exactly the practices you track.
     target: { kind: "overlay", form: "practice" },
   },

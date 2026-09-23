@@ -15,9 +15,8 @@ function densityClasses(weeks: number): {
   return { cell: "h-[5px] w-[5px]", gap: "gap-px" };
 }
 
-// Shared compact practice/session pattern. Protocol cards supply their bounded
-// experiment window; Wellness cards supply the same trailing calendar window for
-// every practice, including target-only and history-only cards. A GLANCE surface
+// Compact practice/session pattern over a protocol card's bounded experiment
+// window. A GLANCE surface
 // (#4384): the `role="img"` summary is its whole accessible statement, and per-day
 // reading is the session ledger's and /history's job — no per-cell door here.
 export default function PracticeHeatmap({

@@ -29,6 +29,7 @@ import {
   getTimezone,
 } from "../settings";
 import { formatMinutes } from "../duration";
+import { historyHref } from "../hrefs";
 import { dispatch } from "./index";
 import { stillGoingCallback, type StillGoingKind } from "./callback-data";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -80,6 +81,8 @@ export interface StillGoingEpisode {
   // that still takes the promise away is the person's own save past the minute it names,
   // which is the detector's own cancel and is re-applied at the tap (#5194, ninth pass).
   detectedEnd: string | null;
+  // The practice session's profile-local day, which the deep link opens on History.
+  day?: string;
 }
 
 // The message. Two buttons that RESOLVE the episode in place (the two-way principle —
@@ -123,7 +126,7 @@ export function renderStillGoingMessage(
   if (base)
     actions.push({
       label: practice ? "Open practice" : "Open workout",
-      url: `${base}${practice ? "/wellness" : "/training"}`,
+      url: `${base}${practice ? historyHref({ kind: "practice", day: episode.day }) : "/training"}`,
     });
 
   return {
@@ -176,6 +179,7 @@ export function stillGoingEpisodes(
       kind: "practice",
       rowId: session.id,
       label: session.practice,
+      day: session.date,
       quietMin: session.quietMin,
       // A practice ends by its own core and has no heart-rate reader; the nudge for it
       // is unchanged.

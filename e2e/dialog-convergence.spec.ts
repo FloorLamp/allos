@@ -80,8 +80,14 @@ test("a dialog's declared size decides how wide it renders", async ({
   // The assertion is on the rendered geometry, not on a class string: a
   // `toContain("max-w-4xl")` would pass just as well if the class never reached
   // an element, which is the failure mode the size prop exists to end.
-  await page.goto("/wellness");
-  await hydratedClick(page, page.getByTestId("practice-create-trigger"));
+  // The quick-log sheet's Add practice (#5668) takes the dialog default, `md`.
+  await page.goto("/?quick=log-practice");
+  await hydratedClick(
+    page,
+    page
+      .getByTestId("quick-entry-sheet")
+      .getByRole("button", { name: "Add practice" })
+  );
   await expect(
     page.getByRole("dialog", { name: "Add practice" })
   ).toBeVisible();
@@ -99,7 +105,7 @@ test("a dialog's declared size decides how wide it renders", async ({
 
   expect(
     large,
-    "a dialog declared `lg` must render wider than one declared `sm`"
+    "a dialog declared `lg` must render wider than one at the `md` default"
   ).toBeGreaterThan(small);
   // …and neither is the full viewport: a centred card is still a card.
   expect(large).toBeLessThan(1280);

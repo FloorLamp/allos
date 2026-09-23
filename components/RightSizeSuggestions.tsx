@@ -21,8 +21,9 @@ import RightSizeSuggestionRow from "./RightSizeSuggestionRow";
 // One component for all three domains (wellness practices, training routines, food
 // habits) because there is one detector; only the heading and the stop-label differ,
 // and both are read from the domain rather than re-decided per surface. The same
-// component therefore renders on /wellness, /training?tab=goals and the Nutrition Food
-// tab, which is the responsive/shared-content rule applied across surfaces.
+// component therefore renders on History's practice view, /training?tab=goals and the
+// Nutrition Food tab, which is the responsive/shared-content rule applied across
+// surfaces.
 //
 // Deliberately NOT rendered through the shared FindingsList: every other coaching card
 // is dismiss-only, and this one carries two further CONSEQUENTIAL affordances (the

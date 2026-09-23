@@ -6,6 +6,7 @@ import { expectNoClippedContent, hydratedClick } from "./helpers";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../lib/date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { LONG_NAMES } from "../scripts/seed-long-names";
+import { practiceIdentity } from "@/lib/practice";
 
 // THE COMPACT LOGGED-EVENT ROW (#3671).
 //
@@ -139,6 +140,14 @@ function deleteFixtureRows(db: Database.Database): void {
   db.prepare(
     `DELETE FROM practice_logs WHERE profile_id = ? AND practice = ?`
   ).run(PROFILE, PRACTICE);
+  db.prepare(`DELETE FROM protocols WHERE profile_id = ? AND name = ?`).run(
+    PROFILE,
+    PRACTICE
+  );
+  db.prepare(
+    `DELETE FROM frequency_targets
+      WHERE profile_id = ? AND scope_kind = 'practice' AND scope_value = ?`
+  ).run(PROFILE, PRACTICE);
 }
 
 /** One supplement, with a dose logged at each of `hhmm` on DAY. */
@@ -209,7 +218,9 @@ function seedLongMedication(): void {
   }
 }
 
-function seedPracticeSession(): void {
+// One session, inside a protocol that tracks its practice — the protocol page is
+// where the practice session history renders (#5668). Returns the protocol id.
+function seedPracticeSession(): number {
   const db = openDb();
   try {
     deleteFixtureRows(db);
@@ -217,6 +228,21 @@ function seedPracticeSession(): void {
       `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min, notes)
        VALUES (?, ?, ?, '07:15', 20, ?)`
     ).run(PROFILE, PRACTICE, DAY, PRACTICE_NOTE);
+    const targetId = db
+      .prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week)
+         VALUES (?, 'practice', ?, ?, 3)`
+      )
+      .run(PROFILE, PRACTICE, practiceIdentity(PRACTICE)).lastInsertRowid;
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO protocols (profile_id, name, start_date, frequency_target_id)
+           VALUES (?, ?, ?, ?)`
+        )
+        .run(PROFILE, PRACTICE, shiftDateStr(DAY, -1), targetId).lastInsertRowid
+    );
   } finally {
     db.close();
   }
@@ -650,22 +676,17 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
   test("the practice history has no trailing fact, so its note is never collapsed away", async ({
     page,
   }) => {
-    seedPracticeSession();
+    const protocolId = seedPracticeSession();
     await phone(page);
-    // THE SURVIVING CONSUMER (#3958). This was the practice LEDGER route, which
-    // folded into `/history`; `PracticeSessionHistory` itself is untouched and still
-    // ships on the practice card, which is where #3904's claim belongs — it is a
+    // THE SURVIVING CONSUMER (#3958, #5668). `PracticeSessionHistory` ships on the
+    // protocol page's history card, which is where #3904's claim belongs — it is a
     // claim about that component's collapse, not about a route.
-    await page.goto("/wellness");
+    await page.goto(`/protocols/${protocolId}`);
 
     // SCOPED TO THIS SPEC'S OWN CARD, because the ROW does not name its practice
     // here and must not: the card header already does, so `showPracticeName` is
-    // false and a row-level `hasText` filter would match nothing. That difference
-    // between the card and the deleted ledger is exactly why this had to move rather
-    // than be retargeted.
-    const card = page
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: PRACTICE });
+    // false and a row-level `hasText` filter would match nothing.
+    const card = page.getByTestId("protocol-history-card");
     await expect(card).toHaveCount(1);
     const row = card
       .getByTestId("practice-session-history")

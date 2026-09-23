@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { settledClick } from "./helpers";
+import { practiceIdentity } from "@/lib/practice";
 
 // Issue #1670, the rendered half: a weekly floor the profile has been under for four
 // completed weeks is SUGGESTED for the cadence actually kept — or for the domain's own
@@ -94,7 +95,8 @@ test("a chronically under-floor practice is offered its own cadence, and accepti
     );
     for (const date of ONE_PER_WEEK) logs.run(PRACTICE_NAME, date);
 
-    await page.goto("/wellness");
+    // The practice goal check stands on History's practice view (#5668).
+    await page.goto("/history?kind=practice");
     const card = page
       .getByTestId("right-size-item")
       .filter({ hasText: PRACTICE_NAME });
@@ -114,12 +116,14 @@ test("a chronically under-floor practice is offered its own cadence, and accepti
     ).toHaveCount(0);
     // The stored commitment really moved — the user's tap is the write.
     expect(floorOf(db, targetId)).toBe(1);
-    // The practice keeps its card and its sessions.
+    // The practice keeps its sessions: its row stays on the practice heat map.
     await expect(
       page
-        .getByTestId("wellness-practice-card")
-        .filter({ hasText: PRACTICE_NAME })
-    ).toBeVisible();
+        .getByTestId("practice-history")
+        .locator(
+          `[data-testid="day-history-row"][data-group="${practiceIdentity(PRACTICE_NAME)}"]`
+        )
+    ).toHaveCount(1);
   } finally {
     db.prepare("DELETE FROM practice_logs WHERE practice = ?").run(
       PRACTICE_NAME
@@ -142,7 +146,7 @@ test("accepting a practice suggestion's stop lands in the logs-only state (#1670
     );
     for (const date of ONE_PER_WEEK) logs.run(name, date);
 
-    await page.goto("/wellness");
+    await page.goto("/history?kind=practice");
     const card = page.getByTestId("right-size-item").filter({ hasText: name });
     await expect(card).toBeVisible();
     await settledClick(page, card.getByTestId("right-size-stop"));
@@ -152,11 +156,13 @@ test("accepting a practice suggestion's stop lands in the logs-only state (#1670
       page.getByTestId("right-size-item").filter({ hasText: name })
     ).toHaveCount(0);
     expect(floorOf(db, targetId)).toBeNull();
-    const practiceCard = page
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: name });
-    await expect(practiceCard).toBeVisible();
-    await expect(practiceCard).toContainText("Session history only");
+    await expect(
+      page
+        .getByTestId("practice-history")
+        .locator(
+          `[data-testid="day-history-row"][data-group="${practiceIdentity(name)}"]`
+        )
+    ).toHaveCount(1);
     expect(
       db
         .prepare(

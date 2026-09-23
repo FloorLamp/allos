@@ -23,7 +23,6 @@ import {
   getPracticeDayCount,
   getPracticeSessions,
   getFrequencyTargetProgress,
-  getWellnessPractices,
   getTrackedPractices,
   collectUpcoming,
   dismissFinding,
@@ -33,7 +32,6 @@ import {
   behindPractices,
   buildPracticeReminder,
 } from "@/lib/notifications/practices";
-import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import {
   createWellnessPractice,
@@ -77,19 +75,6 @@ describe("practice_logs store + range progress (#1259)", () => {
     vi.useRealTimers();
   });
 
-  it("makes Wellness relevant for either target-backed or logs-only practices (#1620)", () => {
-    const empty = makeProfile("wellness-nav-empty");
-    expect(getNavRelevance(empty).wellness).toBe(false);
-
-    const logsOnly = makeProfile("wellness-nav-logs");
-    logPracticeSession(logsOnly, "Meditation", "2026-06-17", "page");
-    expect(getNavRelevance(logsOnly).wellness).toBe(true);
-
-    const targetOnly = makeProfile("wellness-nav-target");
-    practiceTarget(targetOnly, "Breathwork", 3, null);
-    expect(getNavRelevance(targetOnly).wellness).toBe(true);
-  });
-
   it("retiring a practice keeps its logs-only card and removes Upcoming, nudge, and dismissal state (#1621)", () => {
     const pid = makeProfile("wellness-retire");
     setWeekMode(pid, "rolling");
@@ -108,14 +93,7 @@ describe("practice_logs store + range progress (#1259)", () => {
       targetId: tid,
     });
     expect(getPracticeSessions(pid, "Meditation")).toHaveLength(1);
-    expect(getWellnessPractices(pid)).toMatchObject([
-      {
-        name: "Meditation",
-        targetId: null,
-        perWeek: null,
-        sessionCount: 1,
-      },
-    ]);
+    expect(getTrackedPractices(pid)).toEqual([]);
     expect(collectUpcoming(pid, t).map((item) => item.key)).not.toContain(
       `practice:${tid}`
     );
@@ -202,15 +180,8 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(getPracticeSessions(pid, "Sauna")).toHaveLength(1);
     expect(getPracticeSessions(pid, "Meditation")).toHaveLength(2);
     expect(
-      getWellnessPractices(pid).map((practice) => ({
-        name: practice.name,
-        targetId: practice.targetId,
-        sessionCount: practice.sessionCount,
-      }))
-    ).toEqual([
-      { name: "Meditation", targetId: null, sessionCount: 2 },
-      { name: "Sauna", targetId: created.targetId, sessionCount: 1 },
-    ]);
+      getTrackedPractices(pid).map(({ name, targetId }) => ({ name, targetId }))
+    ).toEqual([{ name: "Sauna", targetId: created.targetId }]);
   });
 
   it("allows a case-only rename within one practice identity (#1618)", () => {
@@ -223,13 +194,8 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(
       updateWellnessPractice(pid, created.targetId, "Sauna", 3, null)
     ).toEqual({ kind: "saved", targetId: created.targetId });
-    expect(getWellnessPractices(pid)).toMatchObject([
-      {
-        identity: "sauna",
-        name: "Sauna",
-        targetId: created.targetId,
-        sessionCount: 1,
-      },
+    expect(getTrackedPractices(pid)).toMatchObject([
+      { identity: "sauna", name: "Sauna", targetId: created.targetId },
     ]);
     expect(getPracticeSessions(pid, "sauna")).toHaveLength(1);
   });
@@ -329,7 +295,7 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     const item = items.find((i) => i.key === `practice:${tid}`)!;
     expect(item.domain).toBe("practice");
     expect(item.dueText).toBe("1/3–5 this week");
-    expect(item.href).toBe("/wellness");
+    expect(item.href).toBe("/?quick=log-practice");
     // The row carries what the shared control needs to stand on it (#4424 ruling 7):
     // the target's practice NAME, resolved here rather than posted as an id.
     expect(item.practiceLog?.practice).toBe("Breathwork");
@@ -355,7 +321,9 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     // on Web Push and Home Assistant (which strip the "✅ Done" buttons) instead of
     // telling those users to "tap when you've done a session".
     const linked = buildPracticeReminder(pid, "e2e0", "https://allos.example")!;
-    expect(linked.actions?.at(-1)?.url).toBe("https://allos.example/wellness");
+    expect(linked.actions?.at(-1)?.url).toBe(
+      "https://allos.example/?quick=log-practice"
+    );
     expect(linked.kind).toBe("practice");
     expect(String(linked.body)).not.toMatch(/\btap\b/i);
 
@@ -381,8 +349,7 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
 
 // The quick surfaces' practice list (#1633): the shared read behind BOTH the
 // quick-entry overlay's row and the command palette's finite preimage. It is
-// deliberately narrower than getWellnessPractices — tracked only, no heatmap — so its
-// boundaries need pinning where the page aggregate's don't overlap them.
+// tracked only, so its boundaries need pinning.
 describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -397,16 +364,11 @@ describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     practiceTarget(pid, "Sauna", 3, null);
-    // Logged for months, then untracked: the card and the history stay (the page
-    // aggregate still folds it in), but a quick surface offering it again would
-    // quietly undo the untrack.
+    // Logged for months, then untracked: the history stays, but a quick surface
+    // offering it again would quietly undo the untrack.
     logPracticeSession(pid, "Journaling", t, "page");
 
     expect(getTrackedPractices(pid).map((p) => p.name)).toEqual(["Sauna"]);
-    expect(getWellnessPractices(pid).map((p) => p.name)).toEqual([
-      "Journaling",
-      "Sauna",
-    ]);
   });
 
   it("counts the week and TODAY across every spelling of one identity", () => {
@@ -642,21 +604,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
       });
 
     expect(getPracticeUsualDuration(pid, "Sauna")).toBe(10);
-    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(10);
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(10);
-  });
-
-  it("leaves the Wellness card's own prefill reading the same value", () => {
-    const pid = makeProfile("quick-duration-card");
-    const t = today(pid);
-    practiceTarget(pid, "Sauna", 3, null);
-    logPracticeSession(pid, "Sauna", t, "page", { durationMin: 30 });
-    // One question, one computation: the sheet and the card format the SAME pure
-    // resolution, so the two surfaces cannot offer different defaults.
-    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(
-      getTrackedPractices(pid)[0].previousDurationMin
-    );
-    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(30);
   });
 });
 
@@ -1165,10 +1113,6 @@ describe("a live session survives the edges of its own day", () => {
     const asOf = "2026-09-01";
     // Both surfaces render the End button from `liveSession`. A row that answers
     // `ended` but shows no End button is a lifecycle nobody can finish.
-    expect(getWellnessPractices(pid, asOf)[0].liveSession).toMatchObject({
-      date: "2026-08-31",
-      startTime: "23:50",
-    });
     expect(getTrackedPractices(pid, asOf)[0].liveSession).toMatchObject({
       date: "2026-08-31",
       startTime: "23:50",

@@ -174,7 +174,7 @@ describe("nav ↔ route consistency", () => {
       missing,
       `nav hrefs with no matching page under app/: ${missing.join(", ")}`
     ).toEqual([]);
-    expect(hrefs).toContain("/wellness");
+    expect(hrefs).toContain("/longevity");
   });
 
   it("every internal next.config redirect destination resolves to a real page", () => {
@@ -222,7 +222,6 @@ describe("nav ↔ route consistency", () => {
   const GROUPED_HREFS = [
     "/upcoming",
     "/trends",
-    "/wellness",
     "/longevity",
     "/household",
     "/progress",

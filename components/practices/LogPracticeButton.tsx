@@ -44,7 +44,7 @@ import {
   endPracticeLive,
   logPractice,
   startPracticeLive,
-} from "@/app/(app)/wellness/actions";
+} from "@/app/(app)/practice-actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { TAP_REACH } from "@/lib/log-manifest";
 import { useOptionalDayContext } from "@/components/DayContext";
@@ -78,7 +78,6 @@ export default function LogPracticeButton({
   showDetails = false,
   inlineDuration = false,
   inlineWhen = false,
-  lastLoggedTime = null,
   usualSessionDay = false,
   compact = false,
   chipRow = false,
@@ -125,12 +124,8 @@ export default function LogPracticeButton({
   // Quick-sheet-only collapsed statement retained from #3273. With the new
   // just-finished intent it states the observed END, not an invented start.
   inlineWhen?: boolean;
-  // The local HH:MM of today's most recent session, when the surface knows it. The
-  // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
-  // the count still asks an honest question rather than inventing a time.
-  lastLoggedTime?: string | null;
   // Whether today is one of this practice's INFERRED rhythm days (#2188). The server
-  // decides (isPredictedPracticeDay / WellnessPractice.usuallyToday); this component
+  // decides (isPredictedPracticeDay); this component
   // only formats. No pattern → the caller passes false and the note renders NOWHERE
   // (#558). Data, not dueness (#1505) — it never changes the button or the counts.
   usualSessionDay?: boolean;
@@ -199,10 +194,6 @@ export default function LogPracticeButton({
   // The duration editor's disclosure (#5431). Only the chip row has one — every other
   // mount renders the stepper unconditionally, as it always did.
   const [durationOpen, setDurationOpen] = useState(false);
-  // The time the confirm names, dropped once this mount logs its own session: the
-  // action answers with the day's count, not with a local clock reading, and a stale
-  // time on a fresh session would be the informational half telling a small lie.
-  const [lastTime, setLastTime] = useState(lastLoggedTime);
   // Follow the SERVER whenever it disagrees. The local count exists so a tap answers
   // instantly, but every write here revalidates, and sessions can also be deleted or
   // corrected from the history table beside this button — after which a local count
@@ -212,7 +203,6 @@ export default function LogPracticeButton({
   if (serverCount !== todayCount) {
     setServerCount(todayCount);
     setCount(todayCount);
-    setLastTime(lastLoggedTime);
   }
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
@@ -294,7 +284,6 @@ export default function LogPracticeButton({
     if (outcome.kind === "logged") {
       if (outcome.date === writeDate) {
         setCount(outcome.count);
-        setLastTime(null);
       }
       onServerRead?.();
     }
@@ -388,7 +377,7 @@ export default function LogPracticeButton({
       asks &&
       !(await confirm({
         title: "Log another session?",
-        message: practiceRelogMessage(practice, count, lastTime),
+        message: practiceRelogMessage(practice, count),
         confirmLabel: "Log session",
       }))
     )
@@ -485,7 +474,6 @@ export default function LogPracticeButton({
     onServerRead?.();
     if (outcome.kind === "ended") {
       setCount(outcome.count);
-      setLastTime(null);
     }
     toast(practiceLiveEndText(outcome));
   }
@@ -775,7 +763,6 @@ export default function LogPracticeButton({
               // day's count on the line beside it, which only a same-day log moves.
               if (logged && logged.date === writeDate) {
                 setCount(logged.count);
-                setLastTime(null);
               }
               setDetailsOpen(false);
             }}

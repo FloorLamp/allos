@@ -68,7 +68,7 @@ const PRACTICE: UpcomingItem = {
   domain: "practice",
   title: "Red light therapy",
   detail: "Weekly practice target",
-  href: "/wellness",
+  href: "/?quick=log-practice",
   dueDate: null,
   band: "week",
   weeklyTarget: true,

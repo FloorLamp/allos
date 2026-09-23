@@ -304,7 +304,7 @@ export function practiceItems(profileId: number): UpcomingItem[] {
     domain: "practice" as const,
     title: p.target.scope_value,
     detail: "Weekly practice target",
-    href: "/wellness",
+    href: PRACTICES_HREF,
     dueDate: null,
     band: "week" as const,
     practiceLog: practiceLogOf(tracked.get(p.target.id)),
@@ -455,7 +455,12 @@ import {
   weeklyTargetPaceLine,
   type FrequencyScopeKind,
 } from "../../frequency-targets";
-import { trainingTabHref, nutritionTabHref, type AppRoute } from "../../hrefs";
+import {
+  trainingTabHref,
+  nutritionTabHref,
+  PRACTICES_HREF,
+  type AppRoute,
+} from "../../hrefs";
 import { practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";

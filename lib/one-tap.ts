@@ -398,20 +398,15 @@ function fillText(fillSize: number): string {
   return String(Math.round(fillSize * 100) / 100);
 }
 
-// "You logged Sauna today at 08:12. Log another session?" — the practice re-log
-// question. The time is optional: a surface that knows when today's last session was
-// says it, and one that only knows the count still asks an honest question rather
-// than inventing a time.
+// "You logged Sauna today. Log another session?" — the practice re-log question.
 export function practiceRelogMessage(
   practice: string,
-  todayCount: number,
-  lastLoggedTime: string | null | undefined
+  todayCount: number
 ): string {
-  const when = lastLoggedTime ? ` at ${lastLoggedTime}` : "";
   const already =
     todayCount === 1
-      ? `You logged ${practice} today${when}.`
-      : `You logged ${practice} ${todayCount} times today${when}.`;
+      ? `You logged ${practice} today.`
+      : `You logged ${practice} ${todayCount} times today.`;
   return `${already} Log another session?`;
 }
 

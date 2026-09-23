@@ -25,7 +25,7 @@ vi.mock("@/components/LoggedViaSurface", () => ({
   // which is the shape #5349 made uncompilable.
   useLoggedViaStamp: () => (fd: FormData) => fd,
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   logPractice: vi.fn(),
   startPracticeLive: mocks.start,
   endPracticeLive: mocks.end,

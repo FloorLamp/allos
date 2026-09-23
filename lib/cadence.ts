@@ -298,8 +298,8 @@ export interface CadenceVerdictInput {
 }
 
 // One week's verdict, for either direction. The two branches delegate to the
-// computations their surfaces already render — `frequencyRangeState` (the /wellness
-// card, the goal/habit atoms, Upcoming, the Telegram nudge) and
+// computations their surfaces already render — `frequencyRangeState` (the quick-log
+// practice row, the goal/habit atoms, Upcoming, the Telegram nudge) and
 // `substanceCapStatus` (the substance page, the coaching finding) — so consolidating
 // the READ model changed no verdict anywhere.
 export function cadenceVerdict(input: CadenceVerdictInput): CadenceVerdict {
