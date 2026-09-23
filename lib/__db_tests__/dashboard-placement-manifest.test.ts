@@ -656,13 +656,14 @@ describe("Home's one list, rendered", () => {
   // bands, and both streamed sections resolved.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 each (#6011): the trailing food-window read behind the record's gap row.
-    // -4 each for bodybuilder and household (#6013): with no seated food-slot dose
-    // row, the usual-routine offer is no longer asked.
+    // -4 each for bodybuilder, marathon-runner, household, pregnant and diabetic-cgm
+    // (#6013): none seats a dose row for the current slot, so the usual-routine offer
+    // is no longer asked.
     bodybuilder: 189,
-    "marathon-runner": 205,
+    "marathon-runner": 201,
     household: 259,
-    pregnant: 198,
-    "diabetic-cgm": 205,
+    pregnant: 194,
+    "diabetic-cgm": 201,
     // +1 for #5409's nightly breathing-rate card. `biohacker` is the only persona
     // whose seeded wearable data produces `respiratory_rate_bpm` samples, and the
     // card is present-gated, so the read fires there and nowhere else. The PRESENCE
@@ -776,10 +777,10 @@ describe("Home's one list, rendered", () => {
     // +1 each, the warm half of #6011's food-window read.
     // -4 each, the warm half of #6013's skipped offer read.
     bodybuilder: 170,
-    "marathon-runner": 185,
+    "marathon-runner": 181,
     household: 236,
-    pregnant: 179,
-    "diabetic-cgm": 186,
+    pregnant: 175,
+    "diabetic-cgm": 182,
     // +2, the warm half of the same two #5409 reads — see QUERY_BASELINE above.
     // Neither is memoized away: the card's series read and the hero's night read
     // are both statements a second load still issues.

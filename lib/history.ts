@@ -64,6 +64,7 @@ import {
   historyClockFields,
   historyKindFamily,
   resolveHistoryItem,
+  resultRowSubject,
   HISTORY_KINDS,
   type HistoryFamily,
   type HistoryFiling,
@@ -1528,6 +1529,8 @@ export function gatherHistoryLog(
       if (opts.day != null)
         dayEvents.push({ ...event, id: `feed:${event.id}` });
       const clockKind = feedClockKind(event.category);
+      const subject =
+        kind === "lab" ? resultRowSubject(event.detailItems) : undefined;
       rows.push({
         // NAMESPACED, because a timeline event id and a Logs row id are two id spaces
         // that both spell `body:12`. The merge's tie-break is a total order on ids, so
@@ -1582,6 +1585,7 @@ export function gatherHistoryLog(
                 : {}),
             }
           : {}),
+        ...(subject ? { subject } : {}),
       });
     }
   }

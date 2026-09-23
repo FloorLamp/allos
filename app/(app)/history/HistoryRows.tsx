@@ -67,6 +67,7 @@ import type { FoodWindowGapRow } from "@/lib/food-window-gap";
 import { logHeading } from "@/lib/log-manifest";
 import {
   HISTORY_KIND_LABELS,
+  detailSegment,
   historyRowPick,
   type HistoryKind,
   type HistoryRollup,
@@ -893,7 +894,7 @@ export default function HistoryRows({
       ? foodGaps?.find((candidate) => candidate.id === row.id)
       : undefined;
     const pickable = pick(row);
-    const subject = subjectNames[row.profileId];
+    const subject = detailSegment([subjectNames[row.profileId], row.subject]);
     return (
       <Fragment key={row.id}>
         <li
