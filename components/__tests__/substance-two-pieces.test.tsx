@@ -10,7 +10,7 @@ import SubstanceForm from "@/components/substances/SubstanceForm";
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import QuickSubstanceList from "@/components/quick-entry/QuickSubstanceList";
 import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
-import { DayContextProvider } from "@/components/DayContext";
+import { DayContextProvider, useDayContext } from "@/components/DayContext";
 
 // THE SUBSTANCE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.substance.pieces`).
 //
@@ -46,6 +46,7 @@ let logResult:
       eventId: number;
       date: string;
       statedClock: string | null;
+      capProgress: string | null;
     }
   | { ok: false; error: string; weekCount?: number } = {
   ok: true,
@@ -54,8 +55,15 @@ let logResult:
   eventId: 41,
   date: "2026-08-20",
   statedClock: null,
+  capProgress: null,
 };
 let logReply = async () => logResult;
+let undoResult: {
+  ok: true;
+  weekCount: number;
+  dayCount: number;
+  capProgress: string | null;
+} = { ok: true, weekCount: 2, dayCount: 0, capProgress: null };
 let updateResult: { kind: string; eventId?: number; date?: string } = {
   kind: "updated",
   eventId: 4,
@@ -77,7 +85,7 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   },
   undoSubstanceUnitAction: async (fd: FormData) => {
     record("undo")(fd);
-    return logResult;
+    return undoResult;
   },
 }));
 
@@ -86,11 +94,17 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
 // posted. The receipt lifecycle is asserted against the real cards in
 // `keyed-receipt.test.tsx`, which is the only place that can see it.
 const toasts: string[] = [];
+// The last toast's Undo, so a case can press it without the real stack.
+let toastUndo: (() => void) | null = null;
 const toastScope = { profileId: 7, token: 11 };
 const getToastScope = () => toastScope;
 const noop = () => {};
 vi.mock("@/components/Toast", () => ({
-  useToast: () => (text: string) => toasts.push(text),
+  useToast:
+    () => (text: string, opts?: { action?: { onClick: () => void } }) => {
+      toasts.push(text);
+      toastUndo = opts?.action?.onClick ?? null;
+    },
   useToastProfileScopeGetter: () => getToastScope,
   useClaimToastKey: () => noop,
   useDismissToast: () => noop,
@@ -119,8 +133,11 @@ beforeEach(() => {
     eventId: 41,
     date: TODAY,
     statedClock: null,
+    capProgress: null,
   };
   logReply = async () => logResult;
+  undoResult = { ok: true, weekCount: 2, dayCount: 0, capProgress: null };
+  toastUndo = null;
 });
 
 function openForm(row?: typeof ROW, substance = "nicotine"): void {
@@ -532,14 +549,23 @@ describe("SubstanceUnitControl is ONE row control", () => {
 // minute the write accepted, and the chip settles once; a refusal does none of it.
 describe("the sheet's substance row states what landed", () => {
   const YESTERDAY = "2026-08-19";
-  function sheetOn(day: string) {
-    render(
+  function DayPicker({ day }: { day: string }) {
+    const select = useDayContext().select;
+    return (
+      <button type="button" onClick={() => select?.(day)}>
+        pick {day}
+      </button>
+    );
+  }
+  function sheet(day: string, subject = 42, capProgress: string | null = null) {
+    return (
       <DayContextProvider
         profileId={42}
         today={TODAY}
         reach={{ kind: "dated" }}
         backing={{ kind: "state", initialDay: day }}
       >
+        <DayPicker day={TODAY} />
         <QuickSubstanceList
           date={day}
           substances={[
@@ -547,14 +573,20 @@ describe("the sheet's substance row states what landed", () => {
               key: "nicotine",
               label: "Nicotine",
               logLabel: "Log a use",
-              capProgress: null,
+              capProgress,
             },
           ]}
-          subjectProfileId={42}
+          subjectProfileId={subject}
         />
       </DayContextProvider>
     );
   }
+  const sheetOn = (day: string, capProgress: string | null = null) =>
+    render(sheet(day, 42, capProgress));
+  const logTap = () =>
+    act(async () =>
+      fireEvent.click(screen.getByTestId("quick-entry-substance-log-nicotine"))
+    );
   const receipt = () =>
     screen.queryByTestId("quick-entry-substance-receipt-nicotine");
   const settle = () =>
@@ -568,6 +600,7 @@ describe("the sheet's substance row states what landed", () => {
       eventId: 41,
       date: YESTERDAY,
       statedClock: "21:15",
+      capProgress: null,
     };
     sheetOn(YESTERDAY);
     expect(receipt()).toBeNull();
@@ -580,21 +613,46 @@ describe("the sheet's substance row states what landed", () => {
     expect(settle().className).toContain("motion-settle");
   });
 
-  it("drops a zero day and the unstated minute", async () => {
-    logResult = {
-      ok: true,
-      weekCount: 2,
-      dayCount: 0,
-      eventId: 41,
-      date: TODAY,
-      statedClock: null,
-    };
+  it("follows the toast's Undo, dropping a day that reaches zero", async () => {
     sheetOn(TODAY);
-    await act(async () =>
-      fireEvent.click(screen.getByTestId("quick-entry-substance-log-nicotine"))
-    );
-    expect(receipt()?.textContent).toBe("2 this week");
+    await logTap();
+    expect(receipt()?.textContent).toBe("1 today · 3 this week");
     expect(toasts).toEqual(["Use logged"]);
+    await act(async () => toastUndo?.());
+    expect(receipt()?.textContent).toBe("2 this week");
+  });
+
+  it("moves the cap line with the counts on a log and on its Undo", async () => {
+    logResult = {
+      ...logResult,
+      capProgress: "3 of 7 this week.",
+    } as typeof logResult;
+    undoResult = { ...undoResult, capProgress: "2 of 7 this week." };
+    sheetOn(TODAY, "2 of 7 this week.");
+    const capLine = () =>
+      screen.getByTestId("quick-entry-substance-cap-progress-nicotine")
+        .textContent;
+    expect(capLine()).toBe("2 of 7 this week.");
+    await logTap();
+    expect(capLine()).toBe("3 of 7 this week.");
+    await act(async () => toastUndo?.());
+    expect(capLine()).toBe("2 of 7 this week.");
+  });
+
+  it("clears the line when the sheet moves to another day", async () => {
+    sheetOn(YESTERDAY);
+    await logTap();
+    expect(receipt()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `pick ${TODAY}` }));
+    expect(receipt()).toBeNull();
+  });
+
+  it("clears the line when the sheet moves to another person", async () => {
+    const view = sheetOn(YESTERDAY);
+    await logTap();
+    expect(receipt()).not.toBeNull();
+    view.rerender(sheet(YESTERDAY, 43));
+    expect(receipt()).toBeNull();
   });
 
   it("states and settles nothing for a refused log", async () => {

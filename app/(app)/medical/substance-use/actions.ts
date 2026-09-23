@@ -46,7 +46,7 @@ import {
   undoSubstanceUnitCore,
   type SubstanceEventEditOutcome,
 } from "@/lib/substance-log-write";
-import { getSubstanceWeekState } from "@/lib/queries";
+import { getSubstanceWeekState, type SubstanceWeekState } from "@/lib/queries";
 import { getCadenceScopeCounts } from "@/lib/queries/cadence-ledger";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
@@ -80,10 +80,12 @@ export type SubstanceInstrumentActionResult =
 // This week's post-write unit count rides the result so the one-tap log/undo
 // reconciles optimistically against the server (the #748 item 2 pattern), and the
 // write day's count beside it: the sheet's row states "1 today · 3 this week"
-// (#5663 ruling 1).
+// (#5663 ruling 1). The cap verdict rides with them (see below), so the line beside
+// the tap moves with the counts instead of standing at the sheet's first read.
 export interface SubstanceCounts {
   weekCount: number;
   dayCount: number;
+  capProgress: string | null;
 }
 
 export type SubstanceCountResult =
@@ -114,12 +116,15 @@ export type SubstanceHistoryWriteResult = SubstanceHistoryAddOutcome & {
   readonly capProgress?: string | null;
 };
 
+function capProgressOf(week: SubstanceWeekState): string | null {
+  return week.status ? capProgressLine(week.status, week.substance) : null;
+}
+
 function capProgressAfterWrite(
   profileId: number,
   substance: SubstanceKey
 ): string | null {
-  const week = getSubstanceWeekState(profileId, substance);
-  return week.status ? capProgressLine(week.status, substance) : null;
+  return capProgressOf(getSubstanceWeekState(profileId, substance));
 }
 
 // Both counts after a write, for the subject's profile-local `date` (the day the
@@ -134,10 +139,8 @@ function substanceCounts(
     { kind: "substance", value: substance },
     [{ start: date, end: date, isCurrent: false, elapsedDays: 1 }]
   );
-  return {
-    weekCount: getSubstanceWeekState(profileId, substance).count,
-    dayCount,
-  };
+  const week = getSubstanceWeekState(profileId, substance);
+  return { weekCount: week.count, dayCount, capProgress: capProgressOf(week) };
 }
 
 function revalidateSubstanceUse() {

@@ -20,7 +20,8 @@ import { useOptionalDayContext } from "@/components/DayContext";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
-import { daySwitcherLabel, formatClockValue } from "@/lib/format-date";
+import { formatClockValue } from "@/lib/format-date";
+import { countDayWord } from "@/lib/day-word";
 import { microMotionPlan } from "@/lib/micro-motion";
 
 // THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
@@ -70,6 +71,14 @@ export default function SubstanceUnitControl({
   // write's own answer. Null until this mount lands a write — the sheet's gather
   // carries no counts, and a row that has not written has nothing to state.
   const [dayCount, setDayCount] = useState<number | null>(null);
+  // The cap verdict rides every write's answer (#998), so the line beside the tap
+  // moves with the counts rather than standing at the host's last read.
+  const [cap, setCap] = useState(capProgress);
+  const [seenCapProp, setSeenCapProp] = useState(capProgress);
+  if (seenCapProp !== capProgress) {
+    setSeenCapProp(capProgress);
+    setCap(capProgress);
+  }
   const prefs = useFormatPrefs();
   const inQuickEntryRow = useQuickEntryRow();
   const dayContext = useOptionalDayContext();
@@ -93,6 +102,7 @@ export default function SubstanceUnitControl({
   if (seenReceiptKey !== receiptKey) {
     setSeenReceiptKey(receiptKey);
     setDayCount(null);
+    setCap(capProgress);
   }
   // ONE SETTLE PER LANDED LOG (#5900 problem 2), exactly as
   // `DoseStatusControl.settleConfirm`: one 300 ms run on the sheet's chip after a log
@@ -153,6 +163,7 @@ export default function SubstanceUnitControl({
         if (kind === "log") statement.spend(stated);
         setCount(result.weekCount);
         setDayCount(result.dayCount);
+        setCap(result.capProgress);
         if (
           kind === "log" &&
           inQuickEntryRow &&
@@ -192,6 +203,8 @@ export default function SubstanceUnitControl({
                   setCount(undone.weekCount);
                 if (isCurrent() && undone.dayCount != null)
                   setDayCount(undone.dayCount);
+                if (isCurrent() && undone.capProgress !== undefined)
+                  setCap(undone.capProgress);
                 return undone.ok
                   ? { ok: true }
                   : {
@@ -217,13 +230,9 @@ export default function SubstanceUnitControl({
   // The day word is the sheet switcher's own (#5663 ruling 5), so the line never says
   // "today" under a Yesterday tab. A zero day drops its half, as `practiceRowFacts`
   // does, rather than printing an absence.
-  const selectedDay = writeDate
-    ? daySwitcherLabel(writeDate, dayContext?.today ?? writeDate, prefs)
-    : null;
-  const dayWord =
-    selectedDay?.kind === "date"
-      ? `on ${selectedDay.label}`
-      : (selectedDay?.label.toLowerCase() ?? "today");
+  const dayWord = writeDate
+    ? countDayWord(writeDate, dayContext?.today ?? writeDate, prefs)
+    : "today";
 
   return (
     <div className="space-y-1.5">
@@ -301,7 +310,7 @@ export default function SubstanceUnitControl({
           <RollingNumber value={count} format={(n) => `${n} this week`} />
         </p>
       ) : null}
-      {capProgress ? (
+      {cap ? (
         <p
           className={`text-sm ${
             capAttention
@@ -310,7 +319,7 @@ export default function SubstanceUnitControl({
           }`}
           data-testid={`${testIdPrefix}-cap-progress-${substance}`}
         >
-          {capProgress}
+          {cap}
         </p>
       ) : null}
       <InlineError data-testid={`${testIdPrefix}-error-${substance}`}>
