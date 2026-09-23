@@ -171,10 +171,10 @@ test("from the quick-log sheet a person adds a practice, edits it and logs it wi
 
     // UNDO brings it back into the open sheet — the list holds its own rows, so the
     // restore has to re-read them just as the delete did.
+    const toast = page.getByTestId("toast"); // testid-scope-ok: the toast region portals to <body>, outside every streamed boundary
     await settledClick(
       page,
-      page
-        .getByTestId("toast")
+      toast
         .filter({ hasText: `${renamed} deleted.` })
         .getByRole("button", { name: "Undo" })
     );
