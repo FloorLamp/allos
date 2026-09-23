@@ -51,6 +51,37 @@ export const HAPTIC_PATTERNS = {
 
 export type HapticEvent = keyof typeof HAPTIC_PATTERNS;
 
+// THE TONE EACH CUE PLAYS (#5900), keyed by the same events so a tone and a buzz can
+// never disagree about which cue a moment carries. Sound is the one carrier iOS has:
+// it ships no Vibration API, so on an iPhone a landed write is otherwise felt by no
+// one who is not looking. On by default with no setting (owner ruling 2026-09-12);
+// the phone's mute is the off-switch. `prefers-reduced-motion` does not govern it —
+// a tone is not motion.
+//
+// DISTINGUISHED BY PITCH AND LENGTH, the audio form of the pulse-count argument above:
+// through a phone speaker "high and short" versus "low and longer" survives a noisy
+// room where a gain difference does not. Every pitch sits at or above 440 Hz because
+// a phone speaker barely reproduces anything below that.
+//
+// `hz` is the sine's frequency, `seconds` its length from start to silence, and
+// `gain` the envelope's peak (0–1) before the destination's own volume.
+export const HAPTIC_TONES = {
+  // Fires repeatedly inside one drag; a tone per segment would chatter. Silent.
+  select: null,
+  // A write landed: a short, high, quiet tick. The quietest and shortest tone in the
+  // set by design, so a confirmation never reads as a demand for attention.
+  commit: { hz: 1320, seconds: 0.08, gain: 0.05 },
+  // Refused: an octave and a half below `commit` and twice as long, so the two answers
+  // to the same tap cannot be mistaken for each other.
+  reject: { hz: 440, seconds: 0.16, gain: 0.08 },
+  // A countdown ended: the timers' original 880 Hz / 0.4 s cue, unchanged, and the
+  // loudest and longest tone in the set, since it is meant to be heard off-screen.
+  alert: { hz: 880, seconds: 0.4, gain: 0.2 },
+} as const satisfies Record<
+  HapticEvent,
+  { hz: number; seconds: number; gain: number } | null
+>;
+
 // The pattern to pass to `navigator.vibrate`, or null when the cue is suppressed.
 // `reduceMotion` is the viewer's `prefers-reduced-motion: reduce` match.
 export function hapticPattern(
