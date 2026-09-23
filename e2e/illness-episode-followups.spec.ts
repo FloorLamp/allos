@@ -310,8 +310,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       /^(?:Take|Give)$/
     );
     const panelDoor = doseWorkingRow.getByTestId("prn-log-when-toggle");
-    await expect(panelDoor).toHaveAccessibleName("Happened earlier?");
-    await expect(panelDoor).toHaveText("Happened earlier?"); // the visible glyph only — the words are sr-only
+    await expect(panelDoor).toHaveAccessibleName("When");
+    await expect(panelDoor).toHaveText("When"); // the visible glyph only — the words are sr-only
     await expect(panelDoor.locator("span")).toHaveClass(/sr-only/);
     // ONE SETTLED GROUP, not two round-trips: the claim below is RELATIVE, so the
     // two boxes have to describe the same layout (#868's hygiene rule).

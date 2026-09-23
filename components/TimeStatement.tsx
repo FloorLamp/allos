@@ -22,7 +22,7 @@ import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 // and never a `title=`: #2378/#3375 ruled hover-only text out of this codebase because
 // a touch or keyboard reader never receives it, and
 // `RAW_TITLE_BAN` in eslint.config.mjs holds that line.
-export const HAPPENED_EARLIER = "Happened earlier?";
+export const WHEN_DOOR = "When";
 
 // ONE COLLAPSED TIME STATEMENT (#4426), over the shared `WhenControl` (#2236) and in
 // the #3273 vocabulary: "this happened at a different time than my tap". The app spoke
@@ -83,6 +83,11 @@ export interface TimeStatement {
   reveal: ReactNode;
   open: boolean;
   setOpen: (open: boolean) => void;
+  /**
+   * Rule 6 on a tap (#5813): a host chip that offers a minute fills the field with
+   * it — opened, editable, never posted until the host's own action posts it.
+   */
+  fill: (hhmm: string) => void;
 }
 
 // The pair a mount opens on: the surface's day, and the minute its host is proposing
@@ -131,7 +136,7 @@ export function useTimeStatement({
   // empty fast path exactly what it was.
   proposed?: string | null;
   // The revealed field's own label. The DOOR takes no words from a mount (see
-  // `HAPPENED_EARLIER`); this names the minute being stated, which is the domain's.
+  // `WHEN_DOOR`); this names the minute being stated, which is the domain's.
   timeLabel: string;
   // `{testId}-toggle` names the button; the `WhenControl` takes `testId` itself, so
   // its shipped `-date` / `-time` ids are unchanged.
@@ -245,6 +250,11 @@ export function useTimeStatement({
       ),
     open: effectiveOpen,
     setOpen: (next) => setOpen(required ? true : next),
+    fill: (hhmm) => {
+      setWhen(seedWhen(day, hhmm, tz));
+      setUnknown(false);
+      setOpen(true);
+    },
     reveal,
     // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
     // already the shared language of these rows — practices and protocols import it
@@ -258,11 +268,11 @@ export function useTimeStatement({
           aria-expanded={open}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          aria-label={HAPPENED_EARLIER}
+          aria-label={WHEN_DOOR}
           className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
         >
           <IconClock className="h-4 w-4" stroke={2} />
-          <span className="sr-only">{HAPPENED_EARLIER}</span>
+          <span className="sr-only">{WHEN_DOOR}</span>
         </button>
       ) : null,
   };

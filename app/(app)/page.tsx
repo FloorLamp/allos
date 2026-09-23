@@ -9,7 +9,6 @@ import {
   doseLedgerItems,
   getCycleTrackingRelevance,
   getDaylightOutdoorMinutesByDay,
-  getIntakeItems,
   getFindingSuppressions,
   getLastNightSummary,
   getMetricDailyTotals,
@@ -672,11 +671,12 @@ async function renderHome(
   // §2.1 and §2.4 both refuse — the shortage that has arrived is one eligible action in
   // the Now band, and the rest of the cabinet is the Supplements page's.
   //
-  // IT COSTS NO READ (§2.5). `getIntakeItems` is the same snapshot-cached list the dose
-  // ledger below already takes, and the target is a PROJECTION over it — pure, ahead of
-  // any JSX and answering to `poolRefillItems` rather than to this page, so it lives in
-  // lib/queries/upcoming/refill-targets.ts and the page hands it the list it read.
-  const refillTargets = refillCueTargets(getIntakeItems(profile.id));
+  // IT COSTS NO READ (§2.5) unless a shared bottle is low. The targets are a projection
+  // over the snapshot-cached item list the dose ledger below already takes and the cues
+  // already raised, answering to `poolRefillItems` rather than to this page, so they
+  // live in lib/queries/upcoming/refill-targets.ts. The one read is a LOW shared
+  // bottle's own remembered fill, once per such bottle.
+  const refillTargets = refillCueTargets(profile.id, attention);
 
   // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
   //

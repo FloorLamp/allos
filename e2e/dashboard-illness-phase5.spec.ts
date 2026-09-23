@@ -848,10 +848,10 @@ for (const [label, viewport, wide] of [
         names.filter((name) => /mark taken|taken now|earlier dose/i.test(name)),
         names.join(" | ")
       ).toEqual([]);
-      // And the clock is the ONE spelling of "happened earlier": every control that
-      // asks the question asks it in those words.
+      // And the clock is the ONE spelling of the When door: every control that
+      // asks the question asks it in that word.
       expect(
-        names.filter((name) => /happened earlier/i.test(name)).length,
+        names.filter((name) => name === "When").length,
         names.join(" | ")
       ).toBeGreaterThan(0);
 
