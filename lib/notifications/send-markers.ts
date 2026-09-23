@@ -533,7 +533,7 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
   },
   {
     key: "notify_owed_tempredflag_",
-    what: "a temperature red-flag send that was judged live and failed (#5984): `notify_owed_tempredflag_<dedupeKey>` holds the profile-local date of the failed attempt, written by lib/notifications/temp-red-flag.ts. It never suppresses a send; it lets the tick retry a finding whose day has since rolled instead of refusing it as stale. Cleared on delivery, and by the same run once the finding is no longer actionable",
+    what: "a temperature red-flag send that was judged live and failed (#5984): `notify_owed_tempredflag_<dedupeKey>` holds the profile-local date of the failed attempt, written by lib/notifications/temp-red-flag.ts. It never suppresses a send; it lets the tick, and only the tick, retry a finding whose day has since rolled instead of refusing it as stale. Cleared on delivery, and by the next run once the finding is gone, snoozed or dismissed",
   },
   // Per-profile SCHEDULE and content preferences (profile_settings), not markers.
   {
