@@ -288,7 +288,7 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     );
     // The clock door, in its seat and spelled only as the glyph (#4752 item 8).
     const door = within(panel).getByTestId("prn-log-when-toggle");
-    expect(door.getAttribute("aria-label")).toBe("Happened earlier?");
+    expect(door.getAttribute("aria-label")).toBe("When");
     expect(door.querySelector("span")?.className).toContain("sr-only");
     // Per-med detail lives HERE and only here.
     expect(within(panel).getByTestId("prn-day-label").textContent).toBe(

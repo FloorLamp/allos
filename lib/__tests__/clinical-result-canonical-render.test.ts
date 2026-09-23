@@ -19,7 +19,7 @@ import type { CanonicalResultDefinition } from "@/lib/types";
 // MANGLE the vocabulary's deliberate casing. The bug was purely a rendering-site
 // one: surfaces that held the canonical name and printed the raw one.
 //
-// The scan below is the standing guard (the notes-text.test.ts shape): a .tsx that
+// The scan below is the standing guard: a .tsx that
 // holds a `canonical_name`/`canonicalName` and yet renders a BARE `{x.name}` is the
 // exact signature of that defect. The three allowlisted sites are the deliberate
 // exceptions — the no-canonical fallback branch, and the provenance/edit surfaces

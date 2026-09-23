@@ -14,8 +14,8 @@
 //   • a builder that attaches a #656 Reason whose `code` it didn't declare here fails CI
 //     (the reason-source binding).
 //
-// The teeth mirror the source-scan guard precedents (telegram-chokepoint / profile-
-// scoping / immediate-tx): the registry is data, the enforcement is a reflection test.
+// The teeth mirror the source-scan guard precedents (profile-scoping /
+// immediate-tx): the registry is data, the enforcement is a reflection test.
 // A new findings engine adds ONE entry here (prefix + tier + declared reason codes) and
 // its own fixture test — it cannot ship a finding without declaring how far it reaches.
 //

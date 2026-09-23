@@ -158,8 +158,7 @@ export function PageHeader({
 //     content slot: a panel wanting its own layout inside wants a card.
 //   • The padding vocabulary is exactly two values — `compact` for a nested
 //     history, the default for a page-level landing state. Reaching for a third is
-//     how the twelve copies arrived at three paddings and two radii, and
-//     lib/__tests__/empty-state-panel-scan.test.ts now fails a new hand-rolled one.
+//     how the twelve copies arrived at three paddings and two radii.
 export function EmptyState({
   message,
   action,

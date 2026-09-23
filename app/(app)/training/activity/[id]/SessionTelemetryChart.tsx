@@ -78,7 +78,7 @@ export default function SessionTelemetryChart({
               // THE `title` THAT WAS HERE IS GONE, AND IT WAS ALREADY GONE:
               // `SegmentedControlOption` has no `title` field, and this options array
               // is built by `.map()`, so the excess key was inferred away and never
-              // reached the DOM. `lib/__tests__/raw-title-boundary.test.ts` is why the
+              // reached the DOM. `RAW_TITLE_BAN` in eslint.config.mjs is why the
               // control has no such field — production is kept free of hover-only
               // explanatory titles (#3375) — so restoring it here would have meant
               // widening `Chip` past that ratchet to re-add something no reader ever
