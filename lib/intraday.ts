@@ -675,8 +675,13 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel {
 // case turns on — "I just finished, what did it do to me?" — and "synced 3h ago"
 // answers a different question than "your watch has told us nothing since the
 // session you just finished".
-export function intradayFreshness(model: IntradayModel): string | null {
-  const nowMinute = model.nowMinute;
+//
+// `nowMinute` is the caller's: the model's server stamp paints first, and the client
+// clock advances it between syncs (#5146). The words are chosen only here.
+export function intradayFreshness(
+  model: IntradayModel,
+  nowMinute: number | null
+): string | null {
   if (nowMinute == null) return null;
   const segments = model.hr?.segments ?? [];
   const lastSegment = segments[segments.length - 1];
