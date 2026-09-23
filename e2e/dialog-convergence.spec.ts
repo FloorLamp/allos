@@ -41,8 +41,9 @@ test("a wheel over the page behind an open dialog moves nothing until it closes"
   page,
 }) => {
   test.slow();
-  await page.goto("/protocols");
-  const main = page.getByRole("main");
+  // A page long enough to scroll at this viewport; the dialog primitive is the
+  // subject, not the page.
+  await page.goto("/nutrition?tab=supplements");
 
   // CONTROL: this page scrolls under exactly this wheel. The assertion below is
   // worthless without it — "nothing moved" is trivially true of a short page.
@@ -52,8 +53,8 @@ test("a wheel over the page behind an open dialog moves nothing until it closes"
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => scrollY(page)).toBe(0);
 
-  await hydratedClick(page, main.getByTestId("new-protocol-toggle"));
-  const dialog = page.getByRole("dialog", { name: "Add protocol" });
+  await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+  const dialog = page.getByRole("dialog", { name: "Add supplement" });
   await expect(dialog).toBeVisible();
 
   await wheelOverScrim(page);
