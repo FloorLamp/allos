@@ -536,7 +536,7 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
     `[data-toast-key^="food-serving:"][data-toast-key$=":${today}:${slug}"]`
   );
   await expect(toast).toContainText(
-    `${beforeDay + 2} servings of Legumes & beans today`
+    `${beforeDay + 2} servings of Legumes & beans logged · today`
   );
 
   // The pin: a reload re-reads the server's own count, so this is the row that

@@ -51,7 +51,6 @@ import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   foodServingCoordinate,
-  foodServingFeedback,
   foodServingInverseKey,
   foodServingToastKey,
   beginFoodServingAdd,
@@ -67,6 +66,8 @@ import {
   type FoodServingBurstState,
 } from "@/lib/food-serving-feedback";
 import { microMotionPlan } from "@/lib/micro-motion";
+import { countDayWord } from "@/lib/day-word";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
@@ -456,7 +457,8 @@ export default function FoodLogBar({
   // reports "No fast is running" instead of confirming (#2756's prompt race).
   //
   // KEYED, so one landing produces one prompt: two quick taps replace the toast in
-  // place rather than stacking the same question twice.
+  // place rather than stacking the same question twice. It asks only the question:
+  // the serving's own receipt says "logged" in #5663's one grammar, beside it.
   //
   // AND THE END IT WRITES CARRIES THE SAME UNDO THE NUTRITION CARD OFFERS. This is the
   // likelier route into that write, not the rarer one: `promptsEndOfFast` has no
@@ -494,7 +496,7 @@ export default function FoodLogBar({
     owner: symbol
   ) => {
     if (!offered || !isMountedProfile()) return;
-    profileToast(scope, "Serving logged. End your fast?", {
+    profileToast(scope, "End your fast?", {
       key: "end-fast-offer",
       owner,
       onlyIfOwner: true,
@@ -610,9 +612,11 @@ export default function FoodLogBar({
     profileToast(scope, message, { tone: "error" });
   }
 
-  // The row itself is the immediate receipt. A successful add gets the shipped
-  // settle token; reduced motion keeps the same count/button end state and simply
-  // schedules no class. One timer per slug keeps independent rows independent.
+  // The row itself is the immediate receipt. An add that landed or was captured
+  // offline gets the shipped settle token once (#5900 problem 2); a refusal, an Undo
+  // or a reload gets none, and reduced motion keeps the same count/button end state
+  // and simply schedules no class. One timer per slug keeps independent rows apart.
+  const prefs = useFormatPrefs();
   const reducedMotion = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reducedMotion);
   const [settlingCoordinates, setSettlingCoordinates] = useState<
@@ -628,7 +632,7 @@ export default function FoodLogBar({
   }, []);
 
   function settleServing(coordinate: string) {
-    if (!settlePlan.animate) return;
+    if (!settlePlan.animate || !isMountedProfile()) return;
     const running = settleTimers.current.get(coordinate);
     if (running) clearTimeout(running);
     setSettlingCoordinates((current) => new Set(current).add(coordinate));
@@ -1447,6 +1451,7 @@ export default function FoodLogBar({
       settle: (tap) => {
         if (tap.kind === "queued") {
           dropAddBurst();
+          settleServing(coordinate);
           return { kind: "keep" };
         }
         // Refused capture: queueOffline already said so; the counts roll back.
@@ -1500,6 +1505,7 @@ export default function FoodLogBar({
             // below still runs for the serving that is now on the counter.
             if (outcome.eventId == null) {
               settleAddBurst({ kind: "landed" });
+              settleServing(coordinate);
               return { kind: "keep" };
             }
             const settled = settleAddBurst({
@@ -1534,7 +1540,7 @@ export default function FoodLogBar({
           if (isCurrentMutation() && outcome.statedTimeRefused) {
             profileToast(
               noticeScope,
-              `Serving saved without its time \u2014 ${
+              `Serving logged without its time \u2014 ${
                 STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
               }.`
             );
@@ -1558,7 +1564,7 @@ export default function FoodLogBar({
           if (endFastOwner != null)
             offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner);
           if (delta === 1) {
-            if (isMountedProfile()) settleServing(coordinate);
+            settleServing(coordinate);
             // Preserve every still-pending optimistic tap. The final response's
             // caller performs one authoritative read and reconciles the whole
             // day/meal slice below; a partial response never commits a smaller
@@ -1655,8 +1661,10 @@ export default function FoodLogBar({
             // one. The device-side refusal in `settle` above is the case that really
             // does own its claim: there the request never left, so `discarded` is right
             // there and only there.
-            if (kept) dropAddBurst();
-            else settleAddBurst({ kind: "unwitnessed" });
+            if (kept) {
+              dropAddBurst();
+              settleServing(coordinate);
+            } else settleAddBurst({ kind: "unwitnessed" });
             return kept ? { kind: "keep" } : { kind: "rollback" };
           }
           undoNeedsConnection();
@@ -1758,7 +1766,7 @@ export default function FoodLogBar({
           profileError(
             noticeScope,
             addSettlement.landed
-              ? "Saved, but couldn't refresh the count — reload to check it."
+              ? "Logged, but couldn't refresh the count — reload to check it."
               : "Couldn't save that serving — try again."
           );
         }
@@ -1774,22 +1782,18 @@ export default function FoodLogBar({
         const receipt = addSettlement.receipt;
         const completedOwner = toastLifecycles.current.get(receiptKey);
         if (receipt && noticeScope && completedOwner != null) {
-          const feedback = foodServingFeedback(
-            receiptProfileId,
-            activeDate,
-            slug,
-            group.name,
-            truth.servings,
-            activeDay.label
-          );
           const inverseKey = foodServingInverseKey(
             receipt.coordinate,
             ++servingInverseSequence.current
           );
           let inverseEpoch: number | null = null;
+          // #5663 ruling 1's grammar, `<Thing> logged · <time>`. The thing is the
+          // group's day total, so a burst reads as one sentence; the slot is the day
+          // switcher's word, since a serving files under a day and a meal, not a minute.
+          const n = truth.servings;
           announceUndoable({
-            ...feedback,
-            message: feedback.message + mealMarksSuffix(mealProperties, marks),
+            key: receiptKey,
+            message: `${n} ${n === 1 ? "serving" : "servings"} of ${group.name} logged · ${countDayWord(activeDate, today, prefs)}${mealMarksSuffix(mealProperties, marks)}`,
             profileId: noticeScope.profileId,
             profileToken: noticeScope.token,
             owner: completedOwner,
@@ -1797,7 +1801,7 @@ export default function FoodLogBar({
               undoneMessage: "Serving undone.",
               isCurrent: () =>
                 inverseEpoch != null &&
-                isServingMutationCurrent(feedback.key, inverseEpoch),
+                isServingMutationCurrent(receiptKey, inverseEpoch),
               run: async () => {
                 if (!isMountedProfile())
                   return { ok: false, reason: "changed" };

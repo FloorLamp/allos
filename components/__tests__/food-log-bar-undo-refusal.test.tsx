@@ -73,6 +73,10 @@ const appActions = vi.hoisted(() => ({
   logUsualRoutine: vi.fn(),
   usualRoutineOffersOn: vi.fn(async (_date: string) => [] as unknown[]),
 }));
+// The day the offline queue stamps a capture with; null refuses the capture.
+const queueCapture = vi.hoisted(() => ({
+  day: null as { writeToken: Promise<void> } | null,
+}));
 const fastActions = vi.hoisted(() => ({
   endFastAction: vi.fn(),
   undoEndFastAction: vi.fn(),
@@ -97,7 +101,7 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
     enqueue: vi.fn(async () => "kept" as const),
     flush: vi.fn(async () => {}),
   }),
-  useQueuedDayContextCapture: () => () => null,
+  useQueuedDayContextCapture: () => () => queueCapture.day,
 }));
 
 const DATE = "2026-08-24";
@@ -1263,7 +1267,7 @@ describe("FoodLogBar projection publication", () => {
     ).toContain("Keep this receipt after an ordinary remount.");
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(screen.queryByRole("button", { name: "End fast" })).toBeNull();
-    expect(screen.queryByText("Serving logged. End your fast?")).toBeNull();
+    expect(screen.queryByText("End your fast?")).toBeNull();
     expect(actions.undoFoodServing).not.toHaveBeenCalled();
     expect(fastActions.endFastAction).not.toHaveBeenCalled();
     expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
@@ -1361,7 +1365,9 @@ describe("FoodLogBar projection publication", () => {
       expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2)
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
     view.rerender(twoBarTree({ showFirst: false }));
 
@@ -1422,13 +1428,15 @@ describe("FoodLogBar projection publication", () => {
       )
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
-    expect(screen.getByText("Serving logged. End your fast?")).toBeTruthy();
+    expect(screen.getByText("End your fast?")).toBeTruthy();
 
     await act(async () => ending.resolve(endOutcome));
 
-    expect(screen.getByText("Serving logged. End your fast?")).toBeTruthy();
+    expect(screen.getByText("End your fast?")).toBeTruthy();
     expect(screen.getByRole("button", { name: "End fast" })).toBeTruthy();
     expect(screen.queryByText("Older fast ended.")).toBeNull();
   });
@@ -1476,17 +1484,19 @@ describe("FoodLogBar projection publication", () => {
       )
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
 
     await act(async () => slow.resolve(slowOutcome));
 
     expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2);
     expect(
-      screen.getByText("2 servings of Cruciferous vegetables today")
+      screen.getByText("2 servings of Cruciferous vegetables logged · today")
     ).toBeTruthy();
     expect(
-      screen.queryByText("1 serving of Cruciferous vegetables today")
+      screen.queryByText("1 serving of Cruciferous vegetables logged · today")
     ).toBeNull();
   });
 
@@ -1526,7 +1536,9 @@ describe("FoodLogBar projection publication", () => {
 
     expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
   });
@@ -1648,13 +1660,15 @@ describe("FoodLogBar projection publication", () => {
       )
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
 
     await act(async () => removal.resolve(removalOutcome));
 
     expect(
-      screen.getByText("2 servings of Cruciferous vegetables today")
+      screen.getByText("2 servings of Cruciferous vegetables logged · today")
     ).toBeTruthy();
     expect(screen.queryByText("Serving removed.")).toBeNull();
   });
@@ -1709,13 +1723,15 @@ describe("FoodLogBar projection publication", () => {
       )
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
 
     await act(async () => inverse.resolve(inverseOutcome));
 
     expect(
-      screen.getByText("2 servings of Cruciferous vegetables today")
+      screen.getByText("2 servings of Cruciferous vegetables logged · today")
     ).toBeTruthy();
     expect(screen.queryByText("Serving undone.")).toBeNull();
   });
@@ -1763,13 +1779,15 @@ describe("FoodLogBar projection publication", () => {
       )
     );
     expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
+      await screen.findByText(
+        "2 servings of Cruciferous vegetables logged · today"
+      )
     ).toBeTruthy();
 
     await act(async () => decrement.resolve(decrementOutcome));
 
     expect(
-      screen.getByText("2 servings of Cruciferous vegetables today")
+      screen.getByText("2 servings of Cruciferous vegetables logged · today")
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
   });
@@ -1966,7 +1984,7 @@ describe("FoodLogBar projection publication", () => {
       // the read that used to follow every burst is where "Saved, but couldn't
       // refresh the count" came from, on a tap that saved nothing.
       expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
-      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+      expect(screen.queryByText(/, but couldn.t refresh/)).toBeNull();
       expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
       expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
         "2"
@@ -1975,6 +1993,33 @@ describe("FoodLogBar projection publication", () => {
         "2 servings"
       );
     } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("settles the tapped chip for a captured add, never for a refused one (#5900)", async () => {
+    window.matchMedia = normalMotionMediaQuery;
+    const online = vi
+      .spyOn(window.navigator, "onLine", "get")
+      .mockReturnValue(false);
+    try {
+      mountBar({ day: TWO_SERVINGS });
+      const settle = screen.getByTestId("food-settle-cruciferous");
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+      await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE);
+      expect(settle.dataset.settling).toBe("false");
+
+      queueCapture.day = { writeToken: Promise.resolve() };
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+      await screen.findByText("Saved offline — will sync when you reconnect.");
+      expect(settle.dataset.settling).toBe("true");
+    } finally {
+      queueCapture.day = null;
       online.mockRestore();
     }
   });
@@ -2088,7 +2133,7 @@ describe("FoodLogBar projection publication", () => {
       // Nothing invents a receipt out of a write nobody witnessed: there is no row id
       // to bind an Undo to, and no claim that anything saved.
       expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
-      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+      expect(screen.queryByText(/, but couldn.t refresh/)).toBeNull();
     }
   );
 
@@ -2119,7 +2164,7 @@ describe("FoodLogBar projection publication", () => {
     expect(
       screen.queryByText("Couldn't save that serving — try again.")
     ).toBeNull();
-    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    expect(screen.queryByText(/, but couldn.t refresh/)).toBeNull();
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
     expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
   });
@@ -2128,7 +2173,7 @@ describe("FoodLogBar projection publication", () => {
   // died is the one case that may say "Saved" — and must, because reporting a landed
   // serving as unsaved invites a duplicate re-tap, which is the more expensive error
   // of the two to make.
-  it("says the serving saved when only the repair read fails", async () => {
+  it("says the serving logged when only the repair read fails", async () => {
     actions.logFoodServing.mockReset().mockResolvedValue({
       ok: true,
       eventId: 41,
@@ -2148,7 +2193,7 @@ describe("FoodLogBar projection publication", () => {
 
     expect(
       screen.queryByText(
-        "Saved, but couldn't refresh the count — reload to check it."
+        "Logged, but couldn't refresh the count — reload to check it."
       )
     ).not.toBeNull();
     expect(
@@ -2175,7 +2220,7 @@ describe("FoodLogBar projection publication", () => {
     });
     await act(async () => {});
 
-    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    expect(screen.queryByText(/, but couldn.t refresh/)).toBeNull();
     expect(
       screen.queryByText("Couldn't save that serving — try again.")
     ).not.toBeNull();

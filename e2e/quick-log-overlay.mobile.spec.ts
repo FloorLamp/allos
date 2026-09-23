@@ -1338,7 +1338,7 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     );
     await expect(toast).toHaveCount(1);
     await expect(toast).toContainText(
-      "3 servings of Cruciferous vegetables today"
+      "3 servings of Cruciferous vegetables logged · today"
     );
     await settledClick(page, toast.getByRole("button", { name: "Undo" }));
     await expect(count).toHaveText("2");
@@ -1354,7 +1354,7 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     await expect(rolling).toHaveAttribute("data-reduced-motion", "true");
     await expect(rolling).toHaveAttribute("data-rolling", "false");
     await expect(toast).toContainText(
-      "3 servings of Cruciferous vegetables today"
+      "3 servings of Cruciferous vegetables logged · today"
     );
     await settledClick(page, toast.getByRole("button", { name: "Undo" }));
     await expect(count).toHaveText("2");
@@ -1364,7 +1364,7 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     // repairs this stale tab instead of keeping the add render's old 2.
     await add.click();
     await expect(toast).toContainText(
-      "3 servings of Cruciferous vegetables today"
+      "3 servings of Cruciferous vegetables logged · today"
     );
     const mealSlot = await food
       .getByTestId("food-meal-slots")
@@ -1490,7 +1490,7 @@ test("switching profiles clears the originating food receipt and cannot target i
     await settledClick(page, row.getByTestId(`log-${group}`));
     await expect(
       page.locator('[data-toast-key^="food-serving:"]')
-    ).toContainText("1 serving of Nuts & seeds today");
+    ).toContainText("1 serving of Nuts & seeds logged · today");
     await page.keyboard.press("Escape");
     await expect(food).toHaveCount(0);
 
