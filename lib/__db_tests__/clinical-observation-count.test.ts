@@ -1,30 +1,17 @@
-// DB INTEGRATION TIER — the /household member-card reads (#2116).
-//
-// The card loop runs ONCE PER ACCESSIBLE PROFILE, so a read that is merely wasteful on
-// one page is multiplied here. Two of its reads paid for far more than they used:
-//
-//   • the weight trend arrow pulled a 365-row daily series to look at its last two
-//     points — the cost #1367 already removed from the dashboard with
-//     getLatestBodyMetricDailyPoints, which /household was never migrated to;
-//   • the out-of-range badge ran the full DEDUP+LATEST pass and hydrated every matching
-//     row, every column plus both provider sub-selects, to take `.length`.
-//
-// The bar for a read-path consolidation is that BEHAVIOUR IS UNCHANGED, so this pins
-// the answers against the reads they replace — including the empty and single-row cases,
-// where an off-by-one in a count or a tail is invisible on a well-stocked fixture.
+// DB INTEGRATION TIER — countClinicalObservations against the row read it replaced
+// (#2116). The bar for a read-path consolidation is that BEHAVIOUR IS UNCHANGED, so
+// this pins the count against the list — including the empty and single-row cases,
+// where an off-by-one is invisible on a well-stocked fixture.
 //
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  getBodyMetricDailySeries,
-  getLatestBodyMetricDailyPoints,
   getClinicalObservations,
   countClinicalObservations,
   type ClinicalObservationFilters,
 } from "@/lib/queries";
-import { weightTrend } from "@/lib/household";
 import { shiftDateStr } from "@/lib/date";
 
 function makeProfile(name: string): number {
@@ -36,17 +23,6 @@ function makeProfile(name: string): number {
     "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')"
   ).run(id);
   return id;
-}
-
-function addWeight(
-  profileId: number,
-  date: string,
-  kg: number,
-  source: string | null = null
-): void {
-  db.prepare(
-    "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, ?)"
-  ).run(profileId, date, kg, source);
 }
 
 function addObservation(
@@ -70,52 +46,6 @@ function addObservation(
     flag
   );
 }
-
-// The arrow exactly as /household computed it before #2116 — off the full 365-row
-// series. Kept verbatim so the swap is pinned against the behaviour it replaced.
-function trendTheOldWay(profileId: number) {
-  const full = getBodyMetricDailySeries(profileId, "weight");
-  return weightTrend(
-    full[full.length - 1]?.value,
-    full[full.length - 2]?.value
-  );
-}
-
-describe("the household weight arrow reads two points, not a year (#2116)", () => {
-  it("agrees with the full series on a long, multi-source history", () => {
-    const p = makeProfile("HH Weight Long");
-    const d = (n: number) => shiftDateStr(today(p), n);
-    for (let i = 400; i >= 3; i -= 1) addWeight(p, d(-i), 80 + (i % 7) * 0.1);
-    // Two sources on the newest day — the #14 shape the daily fold collapses to ONE
-    // point. A raw-row tail would read these as two days and invent a trend.
-    addWeight(p, d(-2), 79.4);
-    addWeight(p, d(-1), 78.8, "withings");
-    addWeight(p, d(-1), 79.9, "manual-device");
-
-    const tail = getLatestBodyMetricDailyPoints(p, "weight");
-    expect(tail).toEqual(getBodyMetricDailySeries(p, "weight").slice(-2));
-    expect(
-      weightTrend(tail[tail.length - 1]?.value, tail[tail.length - 2]?.value)
-    ).toEqual(trendTheOldWay(p));
-  });
-
-  it("agrees on a single reading and on no readings at all", () => {
-    const one = makeProfile("HH Weight One");
-    addWeight(one, shiftDateStr(today(one), -1), 71.2);
-    const oneTail = getLatestBodyMetricDailyPoints(one, "weight");
-    expect(oneTail).toHaveLength(1);
-    expect(
-      weightTrend(
-        oneTail[oneTail.length - 1]?.value,
-        oneTail[oneTail.length - 2]?.value
-      )
-    ).toEqual(trendTheOldWay(one));
-
-    const none = makeProfile("HH Weight None");
-    expect(getLatestBodyMetricDailyPoints(none, "weight")).toEqual([]);
-    expect(weightTrend(undefined, undefined)).toEqual(trendTheOldWay(none));
-  });
-});
 
 describe("countClinicalObservations counts what the list would list (#2116)", () => {
   function seedMixed(name: string): number {

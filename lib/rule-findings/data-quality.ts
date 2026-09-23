@@ -47,10 +47,9 @@ import {
 // bus, and it NEVER notifies / never reaches the hero. STRUCTURAL, one-time gaps only
 // — never behavioral nagging (the hard boundary in lib/data-quality's header). No owned
 // SQL is added here (reads through profile-scoped queries), so the scoping guard holds.
-// The ONE gather → detect for a profile's structural gaps, leverage-ranked. Shared by
-// the dashboard presentation/coaching finding (buildDataQualityFindings) and the household
-// rollup (household/page.tsx), so every surface keys on the SAME gap model (one
-// question, one computation). No owned SQL added (reads through profile-scoped queries).
+// The ONE gather → detect for a profile's structural gaps, leverage-ranked, behind the
+// dashboard presentation/coaching finding (buildDataQualityFindings). No owned SQL
+// added (reads through profile-scoped queries).
 export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
   const bioAge = getBioAgeReadings(profileId);
   const smoking = resolveSmoking(

@@ -53,7 +53,6 @@ import type * as M6 from "@/app/(app)/data/trash-actions";
 import type * as M7 from "@/app/(app)/encounters/actions";
 import type * as M8 from "@/app/(app)/encounters/appointment-actions";
 import type * as M9 from "@/app/(app)/equipment/actions";
-import type * as M10 from "@/app/(app)/household/actions";
 import type * as M11 from "@/app/(app)/immunizations/actions";
 import type * as M12 from "@/app/(app)/integrations/calendar-feed/actions";
 import type * as M13 from "@/app/(app)/integrations/health-connect/actions";
@@ -176,7 +175,6 @@ type Census = {
     ActionsAreSerializable<typeof M8>
   >;
   "app/(app)/equipment/actions.ts": Expect<ActionsAreSerializable<typeof M9>>;
-  "app/(app)/household/actions.ts": Expect<ActionsAreSerializable<typeof M10>>;
   "app/(app)/immunizations/actions.ts": Expect<
     ActionsAreSerializable<typeof M11>
   >;
@@ -414,7 +412,6 @@ const CENSUSED_MODULES = [
   "app/(app)/encounters/actions.ts",
   "app/(app)/encounters/appointment-actions.ts",
   "app/(app)/equipment/actions.ts",
-  "app/(app)/household/actions.ts",
   "app/(app)/immunizations/actions.ts",
   "app/(app)/import/name-actions.ts",
   "app/(app)/integrations/calendar-feed/actions.ts",

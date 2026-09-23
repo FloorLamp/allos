@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconPlus, IconChevronDown } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
+import { foodGroupShortName } from "@/lib/food-groups";
 import { FOOD_QUICK_COUNT, proteinSplitIndex } from "@/lib/food-rank";
 import {
   FOOD_SLOTS,
@@ -156,14 +157,15 @@ const TIER_LABEL: Record<FoodGroupTier, string> = {
 // disclosure to unfold, which leaves nothing for the second mount to be. One name, one
 // mount, one testid, at every width — and #2305's defect (an assertion passing against
 // the `md:hidden` copy while the visible one was covered by nothing) is unreachable
-// because there is no longer a copy to pass against.
+// because there is no longer a copy to pass against. A chip is a dense surface, so
+// the name is the short one (#5098).
 function FoodRowLabel({ group }: { group: FoodGroup }) {
   return (
     <span
       data-testid={`food-name-${group.slug}`}
-      className="block truncate font-medium text-slate-800 dark:text-slate-100"
+      className="block min-w-0 truncate font-medium text-slate-800 dark:text-slate-100"
     >
-      {group.name}
+      {foodGroupShortName(group.slug)}
     </span>
   );
 }
@@ -189,14 +191,17 @@ function AddDoor({
   children: ReactNode;
 }) {
   if (!folds) return <div data-testid="food-add-panel">{children}</div>;
+  // Open, the door is the layer's close: the plus turns to ×, and its verb is not
+  // said beside it (#5098). The group is named, so a fold nested inside reads its own.
   return (
-    <Disclosure data-testid="food-add">
+    <Disclosure data-testid="food-add" className="group/add">
       <summary
         data-testid="food-add-door"
         className="fold-control flex list-none items-center gap-2 rounded-xl border-dashed border-(--border) px-3 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-300"
       >
-        <IconPlus className="h-4 w-4 shrink-0 transition-transform group-open:rotate-45" />
-        <span>{label}</span>
+        <IconPlus className="h-4 w-4 shrink-0 transition-transform group-open/add:rotate-45" />
+        <span className="group-open/add:hidden">{label}</span>
+        <span className="sr-only hidden group-open/add:inline">Close</span>
       </summary>
       <div data-testid="food-add-panel" className="mt-2">
         {children}
@@ -2183,9 +2188,7 @@ export default function FoodLogBar({
               slug={g.slug}
               className={`h-4 w-4 shrink-0 ${FOOD_GROUP_TIER_TINT[g.tier]}`}
             />
-            <div className="min-w-0">
-              <FoodRowLabel group={g} />
-            </div>
+            <FoodRowLabel group={g} />
             {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3). */}
             <FoodServingControl
               slug={g.slug}
@@ -2459,22 +2462,22 @@ export default function FoodLogBar({
                       count, because the ranked chips above it are no longer a list this
                       is the rest of. */}
                     <span>All groups</span>
-                    <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    {/* Turned by ITS OWN fold's `open`: `group-open:` would read the
+                      open add door this sits inside and point up while closed (#5098). */}
+                    <IconChevronDown className="h-4 w-4 transition-transform [[open]>summary>&]:rotate-180" />
                   </summary>
                   {/* The expanded tier sections keep their own layout — this
                     change is about the collapsed control's size and rhythm. */}
                   <div className="mt-4 space-y-5">
                     {TIER_ORDER.map((tier) => {
-                      const tierGroups = moreGroups.filter(
-                        (g) => g.tier === tier
-                      );
-                      if (tierGroups.length === 0) return null;
+                      const inTier = moreGroups.filter((g) => g.tier === tier);
+                      if (inTier.length === 0) return null;
                       return (
                         <div key={tier}>
                           <h3 className="mb-2 section-label">
                             {TIER_LABEL[tier]}
                           </h3>
-                          {rows(tierGroups)}
+                          {rows(inTier)}
                         </div>
                       );
                     })}

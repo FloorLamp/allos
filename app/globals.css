@@ -239,8 +239,8 @@
          `dark:hover:bg-ink-750`/`ink-800` in dark — NOT `hover:bg-black/5` /
          `hover:bg-white/10`.
      (Tinted borders — amber/rose/emerald, the Notice family — and focus/selected
-     `border-brand-*` borders are their own token set and stay literal.) Guarded by
-     border-alpha-language.test.ts and hover-fill-language.test.ts. */
+     `border-brand-*` borders are their own token set and stay literal.) The border
+     half is linted by BORDER_SLATE_BAN in eslint.config.mjs. */
   /* The STANDARD card tier (#2701): opaque Botanical surface, 1.5px border,
      and a restrained shadow. The Vitals frosted glass is retired —
      `backdrop-filter` was the single biggest paint cost on card-dense pages and
@@ -459,8 +459,8 @@
    and hand-roll the same markup without going through either (IntakeInteractionNotices
    ×3, ProfilePassport, CuratedSupplementSuggestions, FoodSuggestions,
    ServerTelegramSettings, FamilyManager). That divergence is known and deliberate
-   — lib/__tests__/notice-block.test.ts is where it is recorded — but a hand-rolled
-   tint is NOT part of the exception, and this comment used to promise it was.
+   — but a hand-rolled tint is NOT part of the exception (NOTICE_BLOCK_BAN in
+   eslint.config.mjs refuses one), and this comment used to promise it was.
 
    AND THERE IS A SECOND FRAMED, TINTED SHAPE BELOW `sm`: `[data-matrix-head]` on
    /settings/notifications (further down this file). #3550's review created it on
@@ -845,7 +845,7 @@
      layout) so call sites keep their own element + spacing; a brand/rose/tone
      text color utility can override the default muted slate. Winner of the
      8-variant sweep (issue #794 cluster 1): text-xs font-semibold, matching
-     .th. A source-scan guard (section-label.test.ts) blocks new hand-rolls. */
+     .th. */
   @apply text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
 }
 

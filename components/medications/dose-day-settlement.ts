@@ -37,13 +37,16 @@ export function useDoseDayResolution({
   const bulk = useWritePipeline("dose-day-stack");
   const row = { note, resolved };
 
-  function resolveAll(doseIds: readonly number[]) {
+  // `at` is the slot's stated wall time (#5813), one instant for every row the tap
+  // writes; absent posts what this always posted.
+  function resolveAll(doseIds: readonly number[], at?: string | null) {
     void bulk.run({
       key: doseIds.join(","),
       fields: {
         date,
         status: "taken",
         dose_ids: doseIds.join(","),
+        ...(at ? { at } : {}),
         ...(profileId != null ? { profile_id: String(profileId) } : {}),
       },
       action: resolveDayDoses,

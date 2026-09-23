@@ -9,6 +9,7 @@ import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { Notice } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
+import SectionHeading from "@/components/SectionHeading";
 
 // The GLOBAL SMTP relay (issue #985). Admin-only: one relay serves the whole
 // instance and backs the invite + self-service password-reset emails. The password
@@ -91,9 +92,7 @@ export default function SmtpSettings({
   return (
     <div className="card space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Outbound email (SMTP)
-        </h2>
+        <SectionHeading level={2}>Outbound email (SMTP)</SectionHeading>
         <SaveStatus {...status} />
       </div>
 

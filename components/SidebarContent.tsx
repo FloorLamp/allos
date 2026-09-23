@@ -160,8 +160,7 @@ export default function SidebarContent({
   // Reveals any admin-only nav entries; the pages themselves still call
   // requireAdmin().
   isAdmin?: boolean;
-  // True when the caller has >1 ACCESSIBLE profile; gates the Household overview
-  // (issue #31), which is meaningless with a single profile.
+  // True when the caller has >1 ACCESSIBLE profile; decides the identity chrome below.
   multiProfile?: boolean;
   // True unless the active profile is an infant (< 1 y); gates the Nutrition
   // entry (issue #591). Defaults true so a caller that doesn't thread it never
@@ -559,7 +558,6 @@ export default function SidebarContent({
         adultContentAvailable={adultContentAvailable}
         trainingRelevant={trainingRelevant}
         isAdmin={isAdmin}
-        multiProfile={multiProfile}
         foodLoggingRelevant={foodLoggingRelevant}
         hasIntakeItems={hasIntakeItems}
         relevance={relevance}

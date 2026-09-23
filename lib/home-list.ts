@@ -35,7 +35,6 @@ import {
   dashboardAttentionFactKey,
 } from "./dashboard-attention-identity";
 import type { Finding } from "./findings";
-import { pickNextAppointment } from "./household";
 import { TIME_BUCKET_OPENS_AT, type TimeBucket } from "./intake-schedule";
 import {
   dayEpisodeState,
@@ -491,13 +490,35 @@ function commitmentEntry(
   };
 }
 
+// The single "next appointment" pick (issue #303). Policy: the most attention-worthy
+// scheduled visit — soonest by calendar date, so a still-scheduled PAST visit
+// (overdue/unlogged, worth chasing — the same "Overdue" framing the Upcoming banding
+// uses) sorts ahead of a future one, and the nearest future visit wins when none are
+// overdue. Items missing a dueDate sort last (treated as far future) so a dated visit
+// always wins; null for an empty list. Ties (same calendar day) keep the first item, so
+// a caller that feeds appointments already ordered by date ASC, time_of_day ASC, id ASC
+// gets the earliest same-day slot.
+export function pickNextAppointment<T extends { dueDate: string | null }>(
+  items: T[]
+): T | null {
+  let best: T | null = null;
+  for (const item of items) {
+    if (best === null) {
+      best = item;
+      continue;
+    }
+    const a = item.dueDate ?? "9999-12-31";
+    const b = best.dueDate ?? "9999-12-31";
+    if (a < b) best = item;
+  }
+  return best;
+}
+
 function composeLater(
   input: HomeListInput,
   actions: PartitionedActions
 ): HomeLaterFold | null {
-  // Beyond the 1–7 day tail Home states ONE thing: the next appointment, chosen by the
-  // shared picker every other surface uses (#303), so the horizon cannot grow a second
-  // definition of "next".
+  // Beyond the 1–7 day tail Home states ONE thing: the next appointment.
   const nextAppointment = pickNextAppointment(
     actions.beyond.filter((item) => item.domain === "appointment")
   );

@@ -1,7 +1,7 @@
 // Set-based cross-profile SQL, safely (issue #1095 §3).
 //
 // The single-active-profile model can express a cross-profile view only by LOOPING
-// the per-profile readers over each member (lib/household.ts, lib/household-history.ts)
+// the per-profile readers over each member (lib/household-history.ts)
 // — it structurally avoids `WHERE profile_id IN (…)`. That loop-per-profile shape
 // can't cleanly express cross-DOMAIN + cross-profile joins (the #1050/#1053
 // linked-record surfaces, the #1009/#1012 merged timeline). This module is the rail

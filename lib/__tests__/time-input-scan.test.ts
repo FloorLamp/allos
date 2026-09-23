@@ -434,7 +434,7 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
 // a type cannot see is the FIFTH DIALECT — a surface that mounts the statement and then
 // draws its own text affordance BESIDE the door — and that is this scan's whole subject.
 //
-// MEMBERSHIP, NOT AN ALLOWLIST (the shape #4753's chip-residual scan settled on): a
+// MEMBERSHIP, NOT AN ALLOWLIST (the shape #4753 settled on): a
 // file that CALLS `useTimeStatement` is an adopted surface, as a fact about the file
 // rather than as a name in an array. But membership alone makes a sweep that can
 // quietly stop looking, so THE CENSUS ITSELF IS ASSERTED: these four surfaces, by name.
@@ -559,8 +559,7 @@ export function scanStatementSurface(
 
 /**
  * Every adopted surface, found rather than listed. Parsing cannot create the call, so
- * a file whose raw text lacks the name is skipped before the compiler sees it — the
- * same prefilter `chip-residual.test.ts` uses, for the same reason.
+ * a file whose raw text lacks the name is skipped before the compiler sees it.
  */
 function statementSurfaces(): [string, StatementSurface][] {
   return SCAN_DIRS.flatMap((dir) => walkTsx(path.join(REPO, dir)))
@@ -626,16 +625,16 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
     }
   );
 
-  // THE SHARED CONTROL'S OWN DEFINITION SPELLS THE QUESTION, and must. It is the one
-  // place the words are written — as the door's accessible name — so this is asserted
-  // rather than assumed: if the exclusion above ever stopped excluding it, the rule
-  // would fire on the very control it exists to protect.
+  // THE SHARED CONTROL DRAWS THE DOOR'S OWN CLOCK, and must. It is the one place the
+  // glyph is written, so this is asserted rather than assumed: if the exclusion above
+  // ever stopped excluding it, the rule would fire on the very control it exists to
+  // protect.
   it("does not range over the control that owns the question", () => {
     const control = scanStatementSurface(
       STATEMENT_CONTROL,
       fs.readFileSync(path.join(REPO, STATEMENT_CONTROL), "utf8")
     );
-    expect(control.retired.length).toBeGreaterThan(0);
+    expect(control.clock.length).toBeGreaterThan(0);
     expect(surfaces.map(([rel]) => rel)).not.toContain(STATEMENT_CONTROL);
   });
 
