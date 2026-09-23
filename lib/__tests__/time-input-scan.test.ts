@@ -427,7 +427,7 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
 // a type cannot see is the FIFTH DIALECT — a surface that mounts the statement and then
 // draws its own text affordance BESIDE the door — and that is this scan's whole subject.
 //
-// MEMBERSHIP, NOT AN ALLOWLIST (the shape #4753's chip-residual scan settled on): a
+// MEMBERSHIP, NOT AN ALLOWLIST (the shape #4753 settled on): a
 // file that CALLS `useTimeStatement` is an adopted surface, as a fact about the file
 // rather than as a name in an array. But membership alone makes a sweep that can
 // quietly stop looking, so THE CENSUS ITSELF IS ASSERTED: these four surfaces, by name.
@@ -552,8 +552,7 @@ export function scanStatementSurface(
 
 /**
  * Every adopted surface, found rather than listed. Parsing cannot create the call, so
- * a file whose raw text lacks the name is skipped before the compiler sees it — the
- * same prefilter `chip-residual.test.ts` uses, for the same reason.
+ * a file whose raw text lacks the name is skipped before the compiler sees it.
  */
 function statementSurfaces(): [string, StatementSurface][] {
   return SCAN_DIRS.flatMap((dir) => walkTsx(path.join(REPO, dir)))

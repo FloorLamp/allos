@@ -48,9 +48,8 @@ export type ChartLabelPosition = NonNullable<LabelProps["position"]>;
 // recharts element is the shape that actually works. (`ChartLegend` is a plain
 // React component because it renders OUTSIDE the recharts tree.)
 //
-// `lib/__tests__/chart-scaffold-scan.test.ts` fails CI on a raw
-// `strokeDasharray="…"` or tooltip `contentStyle={{` anywhere but here, and on a
-// `recharts` import outside the blessed card list. See `docs/internals/charts.md`.
+// `RAW_CURVE_BAN` in eslint.config.mjs fails lint on a literal curve `type=`; pass
+// `chartCurve` from here. See `docs/internals/charts.md`.
 
 // ── type sizes ──────────────────────────────────────────────────────────────
 
