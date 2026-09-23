@@ -211,7 +211,7 @@ export function deleteSymptomPhotoCore(
     db.prepare(
       `DELETE FROM symptom_photos WHERE id = ? AND profile_id = ?`
     ).run(id, profileId);
-    unlinkPhotoFiles("symptom", [
+    unlinkPhotoFiles("symptom", profileId, [
       row.stored_path,
       thumbSiblingPath(row.stored_path),
     ]);

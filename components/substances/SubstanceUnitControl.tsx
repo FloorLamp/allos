@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -17,6 +17,12 @@ import {
 } from "@/app/(app)/medical/substance-use/actions";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useOptionalDayContext } from "@/components/DayContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import RollingNumber from "@/components/RollingNumber";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { formatClockValue } from "@/lib/format-date";
+import { countDayWord } from "@/lib/day-word";
+import { microMotionPlan } from "@/lib/micro-motion";
 
 // THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
 // `LOG_MANIFEST.substance.pieces.rowControl`: the unit tap, its undo and the #998 cap
@@ -61,6 +67,19 @@ export default function SubstanceUnitControl({
   const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(weekCount);
+  // THE SHEET ROW'S RECEIPT (#5663 ruling 1): "1 today · 3 this week", from the
+  // write's own answer. Null until this mount lands a write — the sheet's gather
+  // carries no counts, and a row that has not written has nothing to state.
+  const [dayCount, setDayCount] = useState<number | null>(null);
+  // The cap verdict rides every write's answer (#998), so the line beside the tap
+  // moves with the counts rather than standing at the host's last read.
+  const [cap, setCap] = useState(capProgress);
+  const [seenCapProp, setSeenCapProp] = useState(capProgress);
+  if (seenCapProp !== capProgress) {
+    setSeenCapProp(capProgress);
+    setCap(capProgress);
+  }
+  const prefs = useFormatPrefs();
   const inQuickEntryRow = useQuickEntryRow();
   const dayContext = useOptionalDayContext();
   const writeDate = dayContext?.parts.day ?? date;
@@ -77,6 +96,37 @@ export default function SubstanceUnitControl({
   const openReceipt = useKeyedReceipt(
     `${subjectProfileId ?? ""}:${substance}:${writeDate ?? ""}`
   );
+  // The receipt belongs to the subject and day it counted, like the toast's Undo.
+  const receiptKey = `${subjectProfileId ?? ""}:${writeDate ?? ""}`;
+  const [seenReceiptKey, setSeenReceiptKey] = useState(receiptKey);
+  if (seenReceiptKey !== receiptKey) {
+    setSeenReceiptKey(receiptKey);
+    setDayCount(null);
+    setCap(capProgress);
+  }
+  // ONE SETTLE PER LANDED LOG (#5900 problem 2), exactly as
+  // `DoseStatusControl.settleConfirm`: one 300 ms run on the sheet's chip after a log
+  // the server accepted, never on mount, a refusal or an Undo. Under reduced motion
+  // the plan applies no class and the receipt line below simply changes.
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+  function settleConfirm() {
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettling(true);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettling(false);
+    }, settlePlan.ms);
+  }
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
@@ -112,21 +162,33 @@ export default function SubstanceUnitControl({
         if (!isCurrent()) return { kind: "keep" };
         if (kind === "log") statement.spend(stated);
         setCount(result.weekCount);
+        setDayCount(result.dayCount);
+        setCap(result.capProgress);
         if (
           kind === "log" &&
           inQuickEntryRow &&
           receipt.profileId != null &&
           "eventId" in result
         ) {
-          const { eventId, date } = result;
+          settleConfirm();
+          const { eventId, date, statedClock } = result;
           const subject = subjectProfileId ?? receipt.profileId;
           const unit =
             substanceDef(substance).unitSingular === "drink"
               ? "Standard drink"
               : "Use";
+          // Ruling 1's grammar, `<Thing> logged · <time>`. The slot is the minute the
+          // write accepted and drops when none was stated, as on the stool and
+          // measurements bodies (#5921): a tap's own moment is not a claim of use.
+          const clock = formatClockValue(
+            statedClock,
+            prefs.timeFormat,
+            "",
+            "upper-space"
+          );
           receipt.announce({
             key: `substance-log:${subject}:${substance}:${eventId}`,
-            message: `${unit} logged.`,
+            message: `${unit} logged${clock ? ` · ${clock}` : ""}`,
             undo: {
               undoneMessage: `${unit} undone.`,
               run: async () => {
@@ -139,6 +201,10 @@ export default function SubstanceUnitControl({
                 const undone = await undoSubstanceUnitAction(undoFd);
                 if (isCurrent() && undone.weekCount != null)
                   setCount(undone.weekCount);
+                if (isCurrent() && undone.dayCount != null)
+                  setDayCount(undone.dayCount);
+                if (isCurrent() && undone.capProgress !== undefined)
+                  setCap(undone.capProgress);
                 return undone.ok
                   ? { ok: true }
                   : {
@@ -161,24 +227,40 @@ export default function SubstanceUnitControl({
     });
   }
 
+  // The day word is the sheet switcher's own (#5663 ruling 5), so the line never says
+  // "today" under a Yesterday tab. A zero day drops its half, as `practiceRowFacts`
+  // does, rather than printing an absence.
+  const dayWord = writeDate
+    ? countDayWord(writeDate, dayContext?.today ?? writeDate, prefs)
+    : "today";
+
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
         {inQuickEntryRow ? (
-          <LabeledVerbChip
-            label={
-              substanceDef(substance).unitSingular === "drink"
-                ? "Standard drink"
-                : "Use"
-            }
-            verb="Log"
-            tone="neutral"
-            disabled={ledger.blocked("log")}
-            busy={ledger.pending("log")}
-            onAct={() => void tap("log")}
-            ariaLabel={substanceDef(substance).logLabel}
-            testId={`${testIdPrefix}-log-${substance}`}
-          />
+          <span
+            data-testid={`${testIdPrefix}-settle-${substance}`}
+            data-settling={settling ? "true" : "false"}
+            data-reduced-motion={reducedMotion ? "true" : "false"}
+            className={`inline-flex rounded-full${
+              settling ? ` ${settlePlan.className}` : ""
+            }`}
+          >
+            <LabeledVerbChip
+              label={
+                substanceDef(substance).unitSingular === "drink"
+                  ? "Standard drink"
+                  : "Use"
+              }
+              verb="Log"
+              tone="neutral"
+              disabled={ledger.blocked("log")}
+              busy={ledger.pending("log")}
+              onAct={() => void tap("log")}
+              ariaLabel={substanceDef(substance).logLabel}
+              testId={`${testIdPrefix}-log-${substance}`}
+            />
+          </span>
         ) : (
           <button
             type="button"
@@ -211,7 +293,24 @@ export default function SubstanceUnitControl({
         {statement.door}
       </div>
       {statement.reveal}
-      {capProgress ? (
+      {inQuickEntryRow && dayCount != null && count != null ? (
+        <p
+          className="text-sm text-slate-500 dark:text-slate-400"
+          data-testid={`${testIdPrefix}-receipt-${substance}`}
+        >
+          {dayCount > 0 ? (
+            <>
+              <RollingNumber
+                value={dayCount}
+                format={(n) => `${n} ${dayWord}`}
+              />
+              {" · "}
+            </>
+          ) : null}
+          <RollingNumber value={count} format={(n) => `${n} this week`} />
+        </p>
+      ) : null}
+      {cap ? (
         <p
           className={`text-sm ${
             capAttention
@@ -220,7 +319,7 @@ export default function SubstanceUnitControl({
           }`}
           data-testid={`${testIdPrefix}-cap-progress-${substance}`}
         >
-          {capProgress}
+          {cap}
         </p>
       ) : null}
       <InlineError data-testid={`${testIdPrefix}-error-${substance}`}>
