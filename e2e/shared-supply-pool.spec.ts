@@ -329,15 +329,6 @@ test.describe("shared supply pools", () => {
         })
       ).toBe(true);
       await followLink(page, supplementDoor, new RegExp(`${CABINET}$`));
-
-      // Household: the cabinet is a household-scoped surface, so its door lives
-      // beside History in that header.
-      await page.goto("/household");
-      await followLink(
-        page,
-        page.getByTestId("shared-supplies-link"),
-        new RegExp(`${CABINET}$`)
-      );
     } finally {
       await page.context().close();
     }

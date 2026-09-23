@@ -77,13 +77,9 @@ import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
 
 // Whether a nav leaf should be shown, given the viewer's context. This is the
 // single visibility predicate shared by the top-level entries and each group's
-// children in <Nav>, so the two filters can't drift. Four gates, each a
-// cosmetic hide over an authoritative server-side check:
+// children in <Nav>, so the two filters can't drift. Each gate is a cosmetic hide
+// over an authoritative server-side check:
 //   - `adminOnly`: hidden for non-admins (the page still calls requireAdmin()).
-//   - `requiresMultiProfile`: hidden unless the caller has 2+ ACCESSIBLE profiles
-//     (issue #31) — the Household cross-profile overview is meaningless with one
-//     profile, so a single-profile login (member or one-profile instance) never
-//     sees it while any login granted 2+ profiles does.
 //   - `adultOnlyHrefs`: hidden when the active profile is not a known adult.
 //     The destination independently enforces the same life-stage boundary.
 //   - `requiresFoodLogging`: gates the Nutrition entry for an infant profile
@@ -106,7 +102,6 @@ export function isNavLeafVisible(
   leaf: {
     href: string;
     adminOnly?: boolean;
-    requiresMultiProfile?: boolean;
     requiresFoodLogging?: boolean;
     requiresTraining?: boolean;
     relevanceKey?: NavRelevanceKey;
@@ -114,7 +109,6 @@ export function isNavLeafVisible(
   ctx: {
     isAdmin: boolean;
     adultContentAvailable: boolean;
-    multiProfile: boolean;
     foodLoggingRelevant: boolean;
     hasIntakeItems: boolean;
     trainingRelevant?: boolean;
@@ -123,7 +117,6 @@ export function isNavLeafVisible(
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
-  if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
   if (leaf.requiresTraining && ctx.trainingRelevant === false) return false;
   if (leaf.relevanceKey && !ctx.relevance[leaf.relevanceKey]) return false;
   if (

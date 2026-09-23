@@ -10,7 +10,6 @@ import {
   IconMoon,
   IconHourglass,
   IconCalendarClock,
-  IconUsersGroup,
   IconBarbell,
   IconChartLine,
   IconPill,
@@ -42,11 +41,6 @@ type Leaf = {
   // the page itself calls requireAdmin(), which is the real gate. (No top-level
   // entry uses this today; kept for future admin-only surfaces.)
   adminOnly?: boolean;
-  // `requiresMultiProfile` entries are dropped unless the caller has more than
-  // one ACCESSIBLE profile (issue #31): the Household cross-profile overview is
-  // meaningless with a single profile, so a single-profile login (member or a
-  // one-profile instance) never sees it, while any login granted 2+ profiles does.
-  requiresMultiProfile?: boolean;
   // `requiresFoodLogging` entries are dropped for an infant profile (< 1 y) — the
   // adult food-group serving catalog is meaningless there (issue #591). Cosmetic;
   // the page re-checks isFoodLoggingRelevant server-side. Eligible on unknown age.
@@ -130,12 +124,12 @@ const RECORDS: Group = {
     // It is a physical-object REGISTRY — bottles that intake items link to — and the
     // app already navigates to its twin, the /equipment registry, from the consumers
     // that create and use it rather than from the sidebar. Its old row was worse than
-    // an ordinary one: `requiresMultiProfile` made it materialize unannounced the
+    // an ordinary one: a multi-profile gate made it materialize unannounced the
     // moment a second profile was added, wearing the SAME IconPill as the Medications
     // row directly above it — the one signal that could have told them apart.
     // Its doors now: the Medications and Nutrition → Supplements headers (with a
-    // count), the shared-bottle chip and the refill section of a linked item, and the
-    // Household header (the cabinet is household-scoped). The ROUTE is unchanged, and
+    // count), and the shared-bottle chip and the refill section of a linked item. The
+    // ROUTE is unchanged, and
     // /supplies highlights Medications through NAV_PARENT_ROUTES (lib/nav.ts).
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     // Cycle shows when cycle tracking is relevant for the active profile —
@@ -166,15 +160,14 @@ const RECORDS: Group = {
 };
 
 // The episodic group (#3079). Five top-level rows measured at ZERO deliberate
-// visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming, Household,
-// Wellness, Longevity — plus Progress photos, which shares their shape. The
-// measurement did not find six redundant pages: each holds writes that exist
-// nowhere else (protocol creation only at /longevity#protocols, practice CRUD and
-// back-dated logging only at /wellness, member setup only at /household, retro
-// symptom entry for an arbitrary past day only at /history?day=, restore /
-// preventive-override / care-plan completion only at /upcoming). NOTHING here is
-// retired, no URL moves, and every gate below keeps the semantics it had as a
-// top-level row.
+// visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming,
+// Household (retired in #5667), Wellness, Longevity — plus Progress photos, which
+// shares their shape. The measurement did not find six redundant pages: each holds
+// writes that exist nowhere else (protocol creation only at /longevity#protocols,
+// practice CRUD and back-dated logging only at /wellness, retro symptom entry for an
+// arbitrary past day only at /history?day=, restore / preventive-override /
+// care-plan completion only at /upcoming). No URL moves, and every gate below keeps
+// the semantics it had as a top-level row.
 //
 // What the measurement found is FOUR DIFFERENT CAUSES, and the per-child notes
 // below are the point of this group — only one of the six is a defect, and a
@@ -244,17 +237,6 @@ const PLAN_REVIEW: Group = {
     // same isNavLeafVisible predicate as the top level, so the life-stage boundary
     // is unchanged by the move.
     { href: "/longevity", label: "Longevity", icon: IconHourglass },
-    // HOUSEHOLD — already role-demoted by #1463 to a STATUS BOARD whose actions
-    // cede to Upcoming. A board that needs no reading is a board nobody opens; the
-    // nav is only now reflecting a role change that shipped two issues ago.
-    // requiresMultiProfile is unchanged (#31) — a single-profile login still never
-    // sees it, and with no other child gated out the group simply loses a row.
-    {
-      href: "/household",
-      label: "Household",
-      icon: IconUsersGroup,
-      requiresMultiProfile: true,
-    },
     // PROGRESS PHOTOS (#1119) — not one of the zero-use five, and included on shape
     // rather than on measurement: a data-gated visual review surface opened in
     // bursts around a training block. Its `progress` relevance bit and the
@@ -427,7 +409,6 @@ function NavGroup({
   inDrawer,
   adultContentAvailable,
   isAdmin,
-  multiProfile,
   foodLoggingRelevant,
   hasIntakeItems,
   trainingRelevant,
@@ -439,7 +420,6 @@ function NavGroup({
   inDrawer: boolean;
   adultContentAvailable: boolean;
   isAdmin: boolean;
-  multiProfile: boolean;
   foodLoggingRelevant: boolean;
   hasIntakeItems: boolean;
   trainingRelevant: boolean;
@@ -449,14 +429,13 @@ function NavGroup({
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
   // child honors the adult-content boundary (ADULT_ONLY_HREFS), `adminOnly`,
-  // `requiresMultiProfile`, `requiresFoodLogging`, and the relevance bitset
+  // `requiresFoodLogging`, and the relevance bitset
   // identically — otherwise appending a gated leaf to a group's children (which
   // the array shape invites) would leak it in the sidebar.
   const children = group.children.filter((c) =>
     isNavLeafVisible(c, {
       isAdmin,
       adultContentAvailable,
-      multiProfile,
       foodLoggingRelevant,
       hasIntakeItems,
       trainingRelevant,
@@ -570,7 +549,6 @@ export default function Nav({
   inDrawer = false,
   adultContentAvailable = true,
   isAdmin = false,
-  multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
   trainingRelevant = true,
@@ -583,9 +561,6 @@ export default function Nav({
   inDrawer?: boolean;
   adultContentAvailable?: boolean;
   isAdmin?: boolean;
-  // True when the caller has more than one ACCESSIBLE profile; gates entries
-  // flagged `requiresMultiProfile` (e.g. the Household cross-profile overview).
-  multiProfile?: boolean;
   // True unless the active profile is an infant (< 1 y); gates entries flagged
   // `requiresFoodLogging` (Nutrition). Defaults true so a caller that doesn't
   // thread it never over-hides.
@@ -614,7 +589,6 @@ export default function Nav({
       : isNavLeafVisible(e, {
           isAdmin,
           adultContentAvailable,
-          multiProfile,
           foodLoggingRelevant,
           hasIntakeItems,
           trainingRelevant,
@@ -632,7 +606,6 @@ export default function Nav({
             inDrawer={inDrawer}
             adultContentAvailable={adultContentAvailable}
             isAdmin={isAdmin}
-            multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}
             hasIntakeItems={hasIntakeItems}
             trainingRelevant={trainingRelevant}
