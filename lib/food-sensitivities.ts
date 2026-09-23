@@ -26,7 +26,8 @@ import { foodGroupName, isValidFoodGroup } from "./food-groups";
 import { giEffectBySlug } from "./gi-effects";
 
 /** Which vocabulary a trigger slug is drawn from. */
-export type FoodSensitivityTriggerKind = "group" | "property";
+export const TRIGGER_KINDS = ["group", "property"] as const;
+export type FoodSensitivityTriggerKind = (typeof TRIGGER_KINDS)[number];
 
 /**
  * A property of a meal, not of a food group — the closed vocabulary a `This meal` chip
@@ -40,21 +41,42 @@ export interface MealProperty {
   label: string;
 }
 
-export const MEAL_PROPERTIES: readonly MealProperty[] = [
+export const MEAL_PROPERTIES = [
   { slug: "spicy", label: "Spicy" },
   { slug: "high_fat", label: "High fat" },
   { slug: "caffeine", label: "Caffeine" },
   { slug: "sweetener", label: "Sweetener" },
-];
+] as const satisfies readonly MealProperty[];
 
-const PROPERTY_BY_SLUG = new Map(MEAL_PROPERTIES.map((p) => [p.slug, p]));
+export type MealPropertySlug = (typeof MEAL_PROPERTIES)[number]["slug"];
+
+const PROPERTY_BY_SLUG = new Map<string, MealProperty>(
+  MEAL_PROPERTIES.map((p) => [p.slug, p])
+);
 
 export function mealPropertyBySlug(slug: string): MealProperty | undefined {
   return PROPERTY_BY_SLUG.get(slug);
 }
 
-export function isMealProperty(slug: string): boolean {
+export function isMealProperty(slug: string): slug is MealPropertySlug {
   return PROPERTY_BY_SLUG.has(slug);
+}
+
+/**
+ * The marks a tap posted (comma-separated slugs, or the offline intent's array), in
+ * vocabulary order and deduplicated, so one set of marks has one stored spelling. Null
+ * when any slug is outside the vocabulary: the write refuses rather than storing a mark
+ * no reader knows.
+ */
+export function parseMealProperties(raw: unknown): MealPropertySlug[] | null {
+  const posted = String(raw ?? "")
+    .split(",")
+    .map((slug) => slug.trim())
+    .filter(Boolean);
+  if (!posted.every(isMealProperty)) return null;
+  return MEAL_PROPERTIES.map((p) => p.slug).filter((slug) =>
+    posted.includes(slug)
+  );
 }
 
 /** A declared sensitivity, as stored. */

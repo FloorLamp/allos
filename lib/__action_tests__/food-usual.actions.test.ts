@@ -96,6 +96,29 @@ describe("logUsualRoutine, food half", () => {
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 
+  it("marks every member of the bundle (#5865)", async () => {
+    const { profile, anchor } = seedUsualMorning("usual-marked");
+    await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        properties: "caffeine",
+      })
+    );
+    const written = db
+      .prepare(
+        `SELECT bundle_id, properties FROM food_log_events
+          WHERE profile_id = ? AND date = ?`
+      )
+      .all(profile.id, anchor) as { bundle_id: string; properties: string }[];
+    expect(written).toHaveLength(2);
+    expect(new Set(written.map((r) => r.bundle_id)).size).toBe(1);
+    expect(written.map((r) => r.properties)).toEqual([
+      '["caffeine"]',
+      '["caffeine"]',
+    ]);
+  });
+
   it("refuses a second tap rather than logging a second breakfast", async () => {
     const { profile, anchor } = seedUsualMorning("usual-repeat");
     await logUsualRoutine(

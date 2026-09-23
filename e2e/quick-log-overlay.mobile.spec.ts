@@ -1379,6 +1379,81 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
   }
 });
 
+// #5865: the `This meal` chips exist only for a declared property trigger, and a pressed
+// chip rides the serving it marks. The sensitivity is this test's own row, removed after.
+test("the food sheet offers `This meal · Spicy` only once spicy is declared, and the tap carries it", async ({
+  browser,
+}) => {
+  const group = "legumes";
+  const profileId = shellProfileId();
+  const run = (sql: string, ...args: unknown[]) => {
+    const db = openDb();
+    try {
+      return db.prepare(sql).run(...args);
+    } finally {
+      db.close();
+    }
+  };
+  const newestEvent = () => {
+    const db = openDb();
+    try {
+      return db
+        .prepare(
+          "SELECT COALESCE(MAX(id), 0) AS id, properties FROM food_log_events WHERE profile_id = ?"
+        )
+        .get(profileId) as { id: number; properties: string | null };
+    } finally {
+      db.close();
+    }
+  };
+  const clearLegumes = () => {
+    for (const table of ["food_log_events", "food_daily_totals"])
+      run(
+        `DELETE FROM ${table} WHERE profile_id = ? AND group_key = ?`,
+        profileId,
+        group
+      );
+  };
+  clearLegumes();
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const plain = await openQuickEntry(page, "log-food");
+    await expect(plain.getByTestId("food-log-bar")).toBeVisible();
+    await expect(plain.getByTestId("food-meal-marks")).toHaveCount(0);
+
+    run(
+      `INSERT INTO food_sensitivities (profile_id, trigger_kind, trigger_slug, effect)
+       VALUES (?, 'property', 'spicy', 'loose_stools')`,
+      profileId
+    );
+    await page.goto("/");
+    const food = await openQuickEntry(page, "log-food");
+    const marks = food.getByTestId("food-meal-marks");
+    await expect(marks).toContainText("This meal");
+    const spicy = marks.getByRole("button", { name: "Spicy" });
+    await hydratedClick(page, spicy);
+    await expect(spicy).toHaveAttribute("aria-pressed", "true");
+
+    const row = food.getByTestId(`food-group-${group}`);
+    if (!(await row.isVisible())) {
+      await food.getByTestId("food-more-groups-summary").click();
+    }
+    await settledClick(page, row.getByTestId(`log-${group}`));
+    await expect(row.getByTestId(`count-${group}`)).toHaveText("1");
+    await expect
+      .poll(() => newestEvent())
+      .toMatchObject({ properties: '["spicy"]' });
+  } finally {
+    run(
+      "DELETE FROM food_sensitivities WHERE profile_id = ? AND trigger_slug = 'spicy'",
+      profileId
+    );
+    clearLegumes();
+    await page.context().close();
+  }
+});
+
 test("switching profiles clears the originating food receipt and cannot target its peer (#3611)", async ({
   browser,
 }) => {

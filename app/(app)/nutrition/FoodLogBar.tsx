@@ -108,6 +108,8 @@ import Disclosure from "@/components/Disclosure";
 import SegmentedControl from "@/components/SegmentedControl";
 import DayLedger from "./DayLedger";
 import ProteinQuickAdd from "./ProteinQuickAdd";
+import MealMarks, { mealMarksSuffix, useMealMarks } from "./MealMarks";
+import type { MealProperty } from "@/lib/food-sensitivities";
 import type { LedgerGroup } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TAP_REACH } from "@/lib/log-manifest";
@@ -257,6 +259,7 @@ export default function FoodLogBar({
   dayLedger,
   subjectProfileId,
   showDayContext = true,
+  mealProperties = [],
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -342,6 +345,8 @@ export default function FoodLogBar({
   subjectProfileId?: number;
   /** The sheet already renders its owning DayContext control above this body. */
   showDayContext?: boolean;
+  /** The subject's declared meal-property triggers: the `This meal` chips (#5865). */
+  mealProperties?: MealProperty[];
 }) {
   const {
     activeDate,
@@ -595,6 +600,9 @@ export default function FoodLogBar({
       profileId: scope.profileId,
       profileToken: scope.token,
     });
+  }
+  function profileError(scope: FoodNoticeScope | null, message: string) {
+    profileToast(scope, message, { tone: "error" });
   }
 
   // The row itself is the immediate receipt. A successful add gets the shipped
@@ -1024,12 +1032,9 @@ export default function FoodLogBar({
     // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
     // online-only and says so rather than pretending, exactly as the group "−" does.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      profileToast(
+      profileError(
         noticeScope,
-        "You're offline — removing a serving needs a connection.",
-        {
-          tone: "error",
-        }
+        "You're offline — removing a serving needs a connection."
       );
       return;
     }
@@ -1052,12 +1057,11 @@ export default function FoodLogBar({
       finishServingMutations(removalEpochs);
       if (removalUiGeneration.current === removalUi) setRemovingId(null);
       if (current || !isMountedProfile())
-        profileToast(
+        profileError(
           noticeScope,
           shouldQueueOffline(navigator.onLine !== false, err)
             ? "You're offline — removing a serving needs a connection."
-            : "Couldn't remove that serving — try again.",
-          { tone: "error" }
+            : "Couldn't remove that serving — try again."
         );
       return;
     }
@@ -1066,7 +1070,7 @@ export default function FoodLogBar({
     if (removalUiGeneration.current === removalUi) setRemovingId(null);
     if (!outcome.ok) {
       if (current || !isMountedProfile())
-        profileToast(noticeScope, outcome.error, { tone: "error" });
+        profileError(noticeScope, outcome.error);
       return;
     }
     if (!current) {
@@ -1178,6 +1182,7 @@ export default function FoodLogBar({
   // time cannot describe different minutes.
   const statedAt = statement.instant;
   const statedTime = statement.at ?? "";
+  const [marks, setMarks] = useMealMarks(`${activeDate}:${activeSlot}`);
 
   // The meal window the statement in force FILES under (#2269) — the section a "+" will
   // land the serving in, since a stated time wins over the tab at log time — derived
@@ -1267,9 +1272,7 @@ export default function FoodLogBar({
     // own capture arm so the two never word the same refusal differently.
     const sayCaptureRefused = () => {
       if (isCurrentMutation() || !isMountedProfile())
-        profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
-          tone: "error",
-        });
+        profileError(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE);
     };
     const queueOffline = async (): Promise<boolean> => {
       // SOMEBODY ELSE'S SERVING, AND IT SAYS SO. This arm and the one below are the
@@ -1281,9 +1284,7 @@ export default function FoodLogBar({
       // below made the function look like it always explained itself.
       if (subjectProfileId != null && subjectProfileId !== activeProfileId) {
         if (isCurrentMutation() || !isMountedProfile())
-          profileToast(noticeScope, OFFLINE_OTHER_SUBJECT_MESSAGE, {
-            tone: "error",
-          });
+          profileError(noticeScope, OFFLINE_OTHER_SUBJECT_MESSAGE);
         return false;
       }
       // NO DAY TO REPLAY INTO IS A REFUSAL, AND IT SAYS SO (#3038). The bar has
@@ -1312,6 +1313,7 @@ export default function FoodLogBar({
             // rather than trusting it, and an unusable one costs the statement, never the
             // serving.
             eatenAt: statedAt,
+            properties: marks,
           },
           capturedDayContext
         )) === "kept";
@@ -1330,10 +1332,9 @@ export default function FoodLogBar({
     };
     const undoNeedsConnection = () => {
       if (isCurrentMutation() || !isMountedProfile())
-        profileToast(
+        profileError(
           noticeScope,
-          "You're offline — removing a serving needs a connection.",
-          { tone: "error" }
+          "You're offline — removing a serving needs a connection."
         );
     };
     // Whether the tap reached a write at all, and what the write said — modeled so
@@ -1431,6 +1432,7 @@ export default function FoodLogBar({
         // stale the render is (WhenControl invariant 4). Only an add states a time; an
         // undo removes a serving and asserts nothing about when anything was eaten.
         if (statedTime && delta === 1) fd.set("occurred_at", statedTime);
+        if (delta === 1) fd.set("properties", marks.join(","));
         return {
           kind: "wrote",
           outcome:
@@ -1505,10 +1507,9 @@ export default function FoodLogBar({
               settled.completed &&
               settled.reportFailure
             )
-              profileToast(
+              profileError(
                 noticeScope,
-                "Couldn't save one of those servings — try again.",
-                { tone: "error" }
+                "Couldn't save one of those servings — try again."
               );
             if (!isCurrentMutation() && isMountedProfile()) {
               reconcileAfterStaleMutation();
@@ -1594,10 +1595,9 @@ export default function FoodLogBar({
             settled?.completed &&
             settled.reportFailure
           )
-            profileToast(
+            profileError(
               noticeScope,
-              outcome.error || "Couldn't save that serving — try again.",
-              { tone: "error" }
+              outcome.error || "Couldn't save that serving — try again."
             );
           return { kind: "keep" };
         }
@@ -1616,12 +1616,9 @@ export default function FoodLogBar({
           return { kind: "keep" };
         }
         if (expectedServings == null && expectedEventId == null) {
-          profileToast(
+          profileError(
             noticeScope,
-            outcome.error || "Couldn't save that serving — try again.",
-            {
-              tone: "error",
-            }
+            outcome.error || "Couldn't save that serving — try again."
           );
         }
         return { kind: "rollback" };
@@ -1668,10 +1665,9 @@ export default function FoodLogBar({
               settled?.completed &&
               settled.reportFailure
             )
-              profileToast(
+              profileError(
                 noticeScope,
-                "Couldn't save that serving — try again.",
-                { tone: "error" }
+                "Couldn't save that serving — try again."
               );
           }
           reconcileAfterStaleMutation();
@@ -1683,9 +1679,7 @@ export default function FoodLogBar({
           settleAddBurst({ kind: "kept" });
           return { kind: "keep" };
         }
-        profileToast(noticeScope, "Couldn't save that serving — try again.", {
-          tone: "error",
-        });
+        profileError(noticeScope, "Couldn't save that serving — try again.");
         return { kind: "rollback" };
       },
     });
@@ -1756,14 +1750,11 @@ export default function FoodLogBar({
           noticeScope &&
           (addSettlement.landed || addSettlement.reportFailure)
         ) {
-          profileToast(
+          profileError(
             noticeScope,
             addSettlement.landed
               ? "Saved, but couldn't refresh the count — reload to check it."
-              : "Couldn't save that serving — try again.",
-            {
-              tone: "error",
-            }
+              : "Couldn't save that serving — try again."
           );
         }
         return (
@@ -1793,6 +1784,7 @@ export default function FoodLogBar({
           let inverseEpoch: number | null = null;
           announceUndoable({
             ...feedback,
+            message: feedback.message + mealMarksSuffix(mealProperties, marks),
             profileId: noticeScope.profileId,
             profileToken: noticeScope.token,
             owner: completedOwner,
@@ -1823,15 +1815,14 @@ export default function FoodLogBar({
           });
         }
         if (addSettlement.reportFailure && noticeScope) {
-          profileToast(
+          profileError(
             noticeScope,
-            "Couldn't save one of those servings — try again.",
-            { tone: "error" }
+            "Couldn't save one of those servings — try again."
           );
         }
       } else if (stillLatest && !truth.ok) {
         if (noticeScope) {
-          profileToast(noticeScope, truth.error, { tone: "error" });
+          profileError(noticeScope, truth.error);
         }
       }
     }
@@ -2065,6 +2056,7 @@ export default function FoodLogBar({
         // one where the Telegram tap may not — there the label is the only thing that
         // names the window. No statement posts no field, as it always has.
         if (statedTime) fd.set("occurred_at", statedTime);
+        fd.set("properties", marks.join(","));
         return logUsualRoutine(stampLoggedVia(fd));
       },
       settle: (result) => {
@@ -2072,12 +2064,9 @@ export default function FoodLogBar({
           // The offer went stale between render and tap (logged from another device,
           // from the Telegram button). Answered from the typed outcome — never
           // confirmed unconditionally — and the optimistic bump rolls back.
-          profileToast(
+          profileError(
             noticeScope,
-            result.error || "Couldn't log those servings — try again.",
-            {
-              tone: "error",
-            }
+            result.error || "Couldn't log those servings — try again."
           );
           return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
         }
@@ -2118,9 +2107,7 @@ export default function FoodLogBar({
         // Online-only by declaration (lib/offline/queue.ts): the offer's justification
         // is server state, and an additive replay could double-log a window. The
         // single-serving rows beside it still queue, so nothing is unreachable.
-        profileToast(noticeScope, "Couldn't log those servings — try again.", {
-          tone: "error",
-        });
+        profileError(noticeScope, "Couldn't log those servings — try again.");
         return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
       },
     });
@@ -2319,6 +2306,11 @@ export default function FoodLogBar({
                 before the tap, not after it. */}
               {statement.door}
             </CardSectionHeader>
+            <MealMarks
+              properties={mealProperties}
+              pressed={marks}
+              onChange={setMarks}
+            />
             {/* TAP WRITES NOW, AND THE TIME IS BEHIND THE CLOCK DOOR (#4426's
               rendering ruling of 2026-09-02). It is a question most taps never answer,
               so it collapses behind one affordance and the bare tap keeps its meaning —
