@@ -336,10 +336,10 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await medChip.click();
     await expect(page.getByTestId("cockpit-med-panel")).toHaveCount(0);
     await expect(page.getByTestId("symptom-add-picker-toggle")).toHaveClass(
-      /\bbtn-ghost\b/
+      /\bbutton-control\b/
     );
     const tempToggle = page.getByTestId("temp-quick-toggle");
-    await expect(tempToggle).toHaveClass(/\bbtn-ghost\b/);
+    await expect(tempToggle).toHaveClass(/\bbutton-control\b/);
     await expect(tempToggle.locator("svg")).toHaveCount(1);
     await expect(tempToggle).not.toContainText("🌡");
     await expect(page.getByTestId("symptom-day-primary")).not.toHaveClass(

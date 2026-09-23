@@ -4,8 +4,10 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
 
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type FormEvent,
@@ -35,7 +37,11 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import type { WhenValue } from "@/components/WhenControl";
+import { useTimeStatement } from "@/components/TimeStatement";
+import RollingNumber from "@/components/RollingNumber";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { microMotionPlan } from "@/lib/micro-motion";
 import {
   useCockpitDay,
   useDayBinding,
@@ -48,6 +54,8 @@ import {
 } from "@/components/illness/CockpitPanelContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, whenOnDay } from "@/lib/stated-time";
+import { dateStrInTz } from "@/lib/date";
+import { countDayWord } from "@/lib/day-word";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatClockValue } from "@/lib/format-date";
 import {
@@ -261,30 +269,49 @@ export default function SymptomLogBar({
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("symptom-severity");
 
+  // THE RECEIPT (#5663 ruling 1): after a symptom write this bar landed, one line
+  // under the rows states the day's count and the minute it landed, and settles
+  // once (#5900). It belongs to the day and subject that earned it; re-pointed at
+  // another, the line goes rather than describing a write made somewhere else.
+  const receiptScope = `${profileId ?? ""}:${activeDate}`;
+  const [receipt, setReceipt] = useState<{
+    scope: string;
+    clock: string;
+  } | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const tempOpen = panels.openKey === TEMPERATURE_PANEL;
   const currentPanel = useLatestRef(panels.openKey);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
-  // Reading time (#800/#843) through the shared control, which is what retires this
-  // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
-  // day the toggle is showing, so the control renders it as text and offers only the clock —
-  // and its invariant 3 replaces the old seeded-now field: an untouched time states
-  // NOTHING and the action stamps the profile's current minute, which is what a
-  // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
-  // still one tap away, on the same absolute-local terms every other statement uses.
   const tempZone = useTimezone();
   // The login's own clock convention (#964) — the fever offer states the reading's
   // minute, and it says it the way every other rendered time on the page does.
   const formatPrefs = useFormatPrefs();
-  const [tempWhen, setTempWhen] = useState<WhenValue>(() =>
-    whenOnDay(date, timeZone ?? tempZone)
-  );
-  // Switching the day re-anchors the pair rather than leaving a time stated on the
-  // day the user just left — the WhenControl's own invariant 1, applied by the owner
-  // of the day it is pinned to.
+  // THE READING'S TIME, THROUGH THE ONE WHEN DOOR (#5663 ruling 3). The door is
+  // closed by default and an untouched door states nothing, so the action stamps the
+  // profile's current minute: thermometer-to-phone stays one step. On a past day there
+  // is no "now" (#4685), so the statement is required and stays open. A day change
+  // drops the statement rather than carrying a minute to a day it was not about.
+  const tempStatement = useTimeStatement({
+    shown: tempOpen,
+    day: activeDate,
+    required: !isPrimaryDay,
+    timeLabel: "Time",
+    testId: "temp-quick-when",
+    tz: timeZone,
+  });
   function selectDay(next: string): void {
     card?.select(next);
-    setTempWhen(whenOnDay(next, timeZone ?? tempZone));
     // THE STAGE BELONGS TO THE DAY IT WAS MADE ON (#4691). A selection carried
     // across the toggle would spend itself on a day the person never chose it
     // for, which is the same mistake the reading time above is re-anchored to
@@ -409,30 +436,59 @@ export default function SymptomLogBar({
     // is today and stores the reading untimed otherwise, off the clock seam. That is
     // one rule in one place — the fourth hand-written spelling of "does this day have
     // a now", reading its own `new Date()`, lived here and is gone.
+    // The rows show what the server kept, so a landed symptom joins the day's list
+    // and a refused one is not counted as logged.
+    const logged: string[] = [];
     for (const s of intakeStaged.symptoms) {
       const fd = new FormData();
       fd.set("symptom", s.slug);
       fd.set("severity", String(s.severity));
       fd.set("date", targetDate);
       if (s.note) fd.set("note", s.note);
-      await logSymptom(withTarget(fd));
+      const res = await logSymptom(withTarget(fd));
+      if (!res.ok) continue;
+      logged.push(s.label);
+      setSeveritiesByDate((m) => ({
+        ...m,
+        [targetDate]: { ...(m[targetDate] ?? {}), [res.symptom]: res.severity },
+      }));
+      if (s.note)
+        setNotesByDate((m) => ({
+          ...m,
+          [targetDate]: { ...(m[targetDate] ?? {}), [res.symptom]: s.note! },
+        }));
     }
+    let temperatureLogged = false;
     if (intakeStaged.temperature) {
       const fd = new FormData();
       fd.set("temperature", String(intakeStaged.temperature.value));
       fd.set("temp_unit", intakeStaged.temperature.unit);
       fd.set("date", targetDate);
-      await logTemperature(withTarget(fd));
+      temperatureLogged = (await logTemperature(withTarget(fd))).ok;
     }
-    const count = intakeStaged.symptoms.length;
     setIntakeStaged(null);
     setIntakeText("");
     setIntakePending(false);
-    toast(
-      count > 0
-        ? `Logged ${count} symptom${count === 1 ? "" : "s"}.`
-        : "Logged."
-    );
+    if (logged.length > 0)
+      confirmLanded(
+        logged.length === 1
+          ? `${logged[0]} logged`
+          : `${logged.length} symptoms logged`,
+        targetDate
+      );
+    else if (temperatureLogged) toast("Temperature logged");
+    // A PARTIAL REFUSAL IS SAID, not folded into the success above: each refused
+    // half gets its own sentence, so a landed symptom never hides a dropped reading.
+    const refused = intakeStaged.symptoms.length - logged.length;
+    if (intakeStaged.temperature && !temperatureLogged)
+      toast("Couldn't log the temperature. Try again.", { tone: "error" });
+    if (refused > 0)
+      toast(
+        refused === 1
+          ? "Couldn't log 1 symptom. Try again."
+          : `Couldn't log ${refused} symptoms. Try again.`,
+        { tone: "error" }
+      );
   }
 
   function toggleSymptomPicker() {
@@ -458,7 +514,8 @@ export default function SymptomLogBar({
     // night's reading — the one the fever-free clock needs evidence of (#4685) —
     // through the same dated core a reading logged today goes through.
     fd.set("date", activeDate);
-    const hhmm = statedHhmm(tempWhen.statedAt, timeZone ?? tempZone);
+    const hhmm = tempStatement.at;
+    const statedAt = tempStatement.instant;
     // ON A PAST DAY THE MINUTE IS THE ASK (#4685). "Now" is not a time on a day that
     // has ended, so there is nothing honest for the action to fall back to — it
     // stores such a reading untimed, and an untimed reading is anchored at noon,
@@ -483,13 +540,15 @@ export default function SymptomLogBar({
       ) {
         form.reset();
         tempUnitDetection.reset();
-        setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
+        tempStatement.spend(hhmm);
         if (res.flag === "high" && (!hasOpenEpisode || offersDose)) {
           showFeverOffer({
             degF: res.degF,
-            when: res.statedTimeRefused
-              ? whenOnDay(activeDate, timeZone ?? tempZone)
-              : tempWhen,
+            when: whenOnDay(
+              activeDate,
+              timeZone ?? tempZone,
+              res.statedTimeRefused ? null : statedAt
+            ),
           });
         } else {
           showFeverOffer(null);
@@ -661,11 +720,48 @@ export default function SymptomLogBar({
     });
   }
 
+  // A SYMPTOM WRITE LANDED (#5663 ruling 1, #5900). The toast confirms it in the one
+  // grammar, the receipt line states it, and that line settles once. Symptoms are
+  // filed by DAY, so the toast's slot is the day switcher's word for the day written
+  // (ruling 1's "Good mood logged · today", ruling 5's word), never a minute. The
+  // receipt names the minute it was logged, and only on today, where that minute is
+  // one of the day's.
+  //
+  // NO UNDO. `logSymptom` keeps the day's worst severity and answers only the result,
+  // so the bar cannot tell a new row from a raised one, and `removeSymptom` deletes the
+  // day's row whatever it holds by then. Neither is a complete inverse
+  // (lib/undo-offer.ts); the row's × and its own Undo stay the way back.
+  function confirmLanded(message: string, day: string): void {
+    const tz = timeZone ?? tempZone;
+    const today = dateStrInTz(tz);
+    toast(`${message} · ${countDayWord(day, today, formatPrefs)}`);
+    setReceipt({
+      scope: `${profileId ?? ""}:${day}`,
+      clock:
+        day === today
+          ? formatClockValue(
+              statedHhmm(new Date().toISOString(), tz),
+              formatPrefs.timeFormat,
+              "",
+              "upper-space"
+            )
+          : "",
+    });
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettling(true);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettling(false);
+    }, settlePlan.ms);
+  }
+
   // Tap RAISES (worst-severity), matching the server. The picker's save taps at the
   // severity it staged (#4752 §3); it no longer fires on the chip.
-  async function tap(key: string, severity: number) {
+  async function tap(key: string, severity: number, label: string) {
     const prev = severities[key] ?? 0;
-    await ledger.tap({
+    const day = activeDate;
+    const tapped = await ledger.tap({
       // Keyed on the TRANSITION, like the dose control's: a row's chips all write the
       // same day's severity, so "the same write twice" is prev→next, not the chip.
       // Two taps of one chip share a key and the second is absorbed; every deliberate
@@ -695,6 +791,8 @@ export default function SymptomLogBar({
         return { kind: "rollback" };
       },
     });
+    if (tapped.status === "settled" && tapped.result.ok)
+      confirmLanded(`${label} logged`, day);
   }
 
   // Selecting is idempotent and reversible: the lit chip puts itself back down,
@@ -713,10 +811,10 @@ export default function SymptomLogBar({
   // a symptom that is no longer in the picker.
   async function savePick(): Promise<void> {
     if (!picked) return;
-    const { key } = picked;
+    const { key, label } = picked;
     const severity = pickedSeverity;
     setPicked(null);
-    await tap(key, severity);
+    await tap(key, severity, label);
   }
 
   function addCustom(name: string = customDraft) {
@@ -754,7 +852,7 @@ export default function SymptomLogBar({
             data-testid="symptom-logged-count"
             className="ml-2 font-normal normal-case tracking-normal"
           >
-            {loggedCount} logged
+            <RollingNumber value={loggedCount} format={(n) => `${n} logged`} />
           </span>
         </p>
       )}
@@ -802,43 +900,43 @@ export default function SymptomLogBar({
             No symptoms logged{hasToggle ? " for this day" : ""}.
           </p>
         )}
-        <button
-          type="button"
-          data-testid="symptom-add-picker-toggle"
-          aria-expanded={pickerOpen}
-          aria-controls="symptom-add-picker"
-          onClick={toggleSymptomPicker}
-          className="btn-ghost btn-sm ml-auto"
-        >
-          <IconChevronDown
-            className={`h-3.5 w-3.5 transition-transform ${pickerOpen ? "rotate-180" : ""}`}
-          />
-          Add symptom
-        </button>
-        {showTemperature && (
-          <button
-            type="button"
-            data-testid="temp-quick-toggle"
-            aria-expanded={tempOpen}
-            aria-controls="temp-quick-entry"
-            onClick={toggleTemperatureEntry}
-            className="btn-ghost btn-sm"
+        {/* The far end of the row (#5487 fix 4). The primitive takes no layout
+            class, so this group carries the push. */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            data-testid="symptom-add-picker-toggle"
+            aria-expanded={pickerOpen}
+            aria-controls="symptom-add-picker"
+            onClick={toggleSymptomPicker}
           >
             <IconChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${tempOpen ? "rotate-180" : ""}`}
+              className={`h-3.5 w-3.5 transition-transform ${pickerOpen ? "rotate-180" : ""}`}
             />
-            <span>Log temperature</span>
-          </button>
-        )}
-        {analysisHref && (
-          <DestinationActionLink
-            href={analysisHref}
-            data-testid="symptom-analysis-link"
-          >
-            <IconChartBar className="h-3.5 w-3.5" />
-            Symptom trends
-          </DestinationActionLink>
-        )}
+            Add symptom
+          </Button>
+          {showTemperature && (
+            <Button
+              data-testid="temp-quick-toggle"
+              aria-expanded={tempOpen}
+              aria-controls="temp-quick-entry"
+              onClick={toggleTemperatureEntry}
+            >
+              <IconChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${tempOpen ? "rotate-180" : ""}`}
+              />
+              <span>Log temperature</span>
+            </Button>
+          )}
+          {analysisHref && (
+            <DestinationActionLink
+              href={analysisHref}
+              data-testid="symptom-analysis-link"
+            >
+              <IconChartBar className="h-3.5 w-3.5" />
+              Symptom trends
+            </DestinationActionLink>
+          )}
+        </div>
       </div>
 
       {pickerOpen && (
@@ -950,7 +1048,7 @@ export default function SymptomLogBar({
                       <Button
                         type="button"
                         onClick={() => {
-                          void tap(u, 1);
+                          void tap(u, 1, u);
                           dropUnmapped(idx);
                         }}
                       >
@@ -1134,35 +1232,21 @@ export default function SymptomLogBar({
                 required
                 autoFocus
               />
-              <WhenControl
-                mode="state"
-                value={tempWhen}
-                onChange={setTempWhen}
-                tz={timeZone}
-                // ONE DAY, the day the bar is standing on: a reading is filed against
-                // the day the toggle is showing, so the control renders it as text and
-                // the pair rule holds with nothing to enforce.
-                minDate={activeDate}
-                maxDate={activeDate}
-                // A past day has no "now" to fall back to (#4685), so the minute is
-                // required there and optional on today.
-                timeRequired={!isPrimaryDay}
-                // "Time" (#4426): an always-on-screen field inside a form says what the
-                // box is, and every sibling mount of this control already says exactly
-                // that. "Reading time" read as a duration of reading and was the last
-                // one-tap bar label spelling the plain field its own way.
-                timeLabel="Time"
-                testId="temp-quick"
-              />
-              <SubmitButton
-                data-testid="temp-quick-save"
-                disabled={tempPending}
-                busy={tempPending}
-                variant="primary"
-              >
-                Log temp
-              </SubmitButton>
+              <div className="flex items-center gap-2">
+                <SubmitButton
+                  data-testid="temp-quick-save"
+                  disabled={tempPending}
+                  busy={tempPending}
+                  variant="primary"
+                >
+                  Log temp
+                </SubmitButton>
+                {tempStatement.door}
+              </div>
             </div>
+            {tempStatement.reveal ? (
+              <div className="mt-2">{tempStatement.reveal}</div>
+            ) : null}
             {tempError && (
               <p
                 role="alert"
@@ -1314,6 +1398,20 @@ export default function SymptomLogBar({
             );
           })}
         </ul>
+      )}
+      {receipt?.scope === receiptScope && loggedCount > 0 && (
+        <p
+          data-testid="symptom-log-receipt"
+          data-motion="settle"
+          data-settling={settling ? "true" : "false"}
+          aria-live="polite"
+          className={`mt-2 text-sm text-slate-500 dark:text-slate-400${
+            settling ? ` ${settlePlan.className}` : ""
+          }`}
+        >
+          Logged <RollingNumber value={loggedCount} />
+          {receipt.clock ? ` · ${receipt.clock}` : ""}
+        </p>
       )}
     </div>
   );
