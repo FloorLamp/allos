@@ -95,7 +95,7 @@ test.describe("Provider registry closeout", () => {
       affiliations.getByRole("link", { name: /Bell Cardiology \(e2e\)/ })
     ).toBeVisible();
     const addAffiliation = affiliations.getByTestId("affiliation-add-toggle");
-    await expect(addAffiliation).toHaveClass(/\bbtn\b/);
+    await expect(addAffiliation).toHaveClass(/\bbutton-control-primary\b/);
     await addAffiliation.click();
     await expect(
       page.getByRole("dialog", { name: "Link affiliation" })
@@ -306,9 +306,9 @@ test.describe("Provider registry closeout", () => {
     // suggestion; decline it. On a later run it is already declined (gone). Either
     // way, the end state asserted is the same: no Ng Family Practice suggestion.
     if (await suggestions.count()) {
-      await expect(suggestions.getByTestId("affiliation-accept")).toHaveClass(
-        /\bbtn\b/
-      );
+      const accept = suggestions.getByTestId("affiliation-accept");
+      await expect(accept).toHaveAttribute("data-button-control", "");
+      await expect(accept).not.toHaveClass(/\bbutton-control-primary\b/);
       const decline = suggestions.getByTestId("affiliation-decline");
       if (await decline.count()) await settledClick(page, decline.first()); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned Sam Ng fixture, sole suggestion
     }

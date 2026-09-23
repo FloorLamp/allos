@@ -195,14 +195,12 @@ export default function ConsumptionSection({
         capAttention={capAttention}
         testIdPrefix="substance"
       />
-      <button
-        type="button"
-        className="btn-ghost btn-sm self-start"
+      <Button
         data-testid={`substance-history-add-${substance}`}
         onClick={() => setAddOpen(true)}
       >
         Add for another day
-      </button>
+      </Button>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {def.unitNote}
       </p>

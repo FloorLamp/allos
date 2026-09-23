@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DestinationActionLink } from "@/components/DestinationLink";
 import { notFound } from "next/navigation";
 import {
   IconBuildingHospital,
@@ -24,7 +25,7 @@ import {
   episodeForProfileId,
 } from "@/lib/illness-episode";
 import { episodeCollapsedStatus } from "@/lib/illness-episode-format";
-import { episodeHref, historyDayHref } from "@/lib/hrefs";
+import { episodeHref, historyDayHref, importHref } from "@/lib/hrefs";
 import FromThisVisit from "@/components/visit-links/FromThisVisit";
 import VisitEpisodes, {
   type VisitEpisodeTrailItem,
@@ -376,22 +377,18 @@ export default async function EncounterDetailPage(props: {
           </span>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {encounter.document_id ? (
-              <Link
-                href={`/import/${encounter.document_id}`}
-                className="btn btn-sm"
-              >
+              <DestinationActionLink href={importHref(encounter.document_id)}>
                 <IconFileText className="h-4 w-4" stroke={1.75} />
                 View source document
-              </Link>
+              </DestinationActionLink>
             ) : null}
-            <Link
+            <DestinationActionLink
               href={historyDayHref(encounter.date)}
-              className="btn-ghost btn-sm"
               data-testid="encounter-timeline-link"
             >
               <IconTimeline className="h-4 w-4" stroke={1.75} />
               View this day in History
-            </Link>
+            </DestinationActionLink>
           </div>
         </section>
 

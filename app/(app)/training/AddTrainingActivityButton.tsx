@@ -2,6 +2,7 @@
 
 import { IconPlus } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import Button from "@/components/Button";
 import { useCreateActionLabel } from "@/components/CreateAction";
 
 // The Training Log's page-level create belongs in the page create slot (#3486/#3731).
@@ -12,14 +13,14 @@ export default function AddTrainingActivityButton() {
   const label = useCreateActionLabel();
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="primary"
+      layout="hidden-below-md"
       onClick={() => openCreate()}
       data-testid="training-log-add-activity"
-      className="btn hidden md:inline-flex"
     >
       <IconPlus className="h-4 w-4" stroke={2.5} />
       {label}
-    </button>
+    </Button>
   );
 }

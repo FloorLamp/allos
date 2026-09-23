@@ -108,6 +108,10 @@ describe("Button", () => {
       layout: "hidden-below-sm" as const,
       expected: ["button-control", "hidden", "sm:inline-flex"],
     },
+    {
+      layout: "hidden-below-md" as const,
+      expected: ["button-control", "hidden", "md:inline-flex"],
+    },
   ])("layout $layout adds only layout", ({ layout, expected }) => {
     render(
       <Button layout={layout} data-testid="laid-out">

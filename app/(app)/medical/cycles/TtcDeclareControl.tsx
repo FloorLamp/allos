@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/Toast";
+import Button from "@/components/Button";
 import DateField from "@/components/DateField";
 import { setTtcStartAction } from "./ttc-actions";
 import InlineError from "@/components/InlineError";
@@ -51,15 +52,13 @@ export default function TtcDeclareControl({
   if (ttcStart) {
     return (
       <div className="space-y-2" data-testid="ttc-declare">
-        <button
-          type="button"
-          className="btn-ghost"
+        <Button
           disabled={pending}
           data-testid="ttc-stop"
           onClick={() => submit("", "Trying-to-conceive tracking stopped")}
         >
           {pending ? "Saving…" : "Stop trying-to-conceive tracking"}
-        </button>
+        </Button>
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Stopping hides these surfaces. The observations you&rsquo;ve recorded
           stay exactly where they are.
@@ -82,15 +81,14 @@ export default function TtcDeclareControl({
           data-testid="ttc-start-input"
           onChange={setDate}
         />
-        <button
-          type="button"
-          className="btn"
+        <Button
+          variant="primary"
           disabled={pending || date === ""}
           data-testid="ttc-start-save"
           onClick={() => submit(date, "Trying-to-conceive tracking on")}
         >
           {pending ? "Saving…" : "Start tracking"}
-        </button>
+        </Button>
       </div>
       <InlineError>{error}</InlineError>
     </div>
