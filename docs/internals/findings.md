@@ -84,7 +84,10 @@ See [notification suppression](notifications.md#suppression-and-safety).
   event care status does not automatically authorize a push channel.
 - Paired observations use declared factors the user recorded, coverage floors,
   and the existing registry. Do not add an exploratory correlation miner or
-  imply causation. Below the floor, stay silent.
+  imply causation. Below the floor, stay silent. A declared pair is the one
+  user-authored entry: the person names a food trigger and its effect, and the
+  factor is a meal they logged or marked
+  ([food sensitivities](food-sensitivities.md)).
 - Household setup health derives structural checks at read time. It does not
   create stored finding state or a new notification engine.
 - Intake suggestions are proposals, not findings. Reconsider that distinction

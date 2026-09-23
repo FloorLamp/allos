@@ -15,7 +15,11 @@ function receiptScopeErrors(source: string): string[] {
   const errors: string[] = [];
   if (source.split(RECEIPT_SCOPE_CAPTURE).length - 1 !== 4)
     errors.push("every interaction must capture the current receipt scope");
-  if (/\b(?:profileToast|offerEndFast|undoEnd)\(\s*null\b/.test(source))
+  if (
+    /\b(?:profileToast|profileError|offerEndFast|undoEnd)\(\s*null\b/.test(
+      source
+    )
+  )
     errors.push("a food outcome bypasses its captured receipt scope");
   if (
     !source.includes("reserveToastLifecycle") ||
@@ -159,7 +163,7 @@ describe("applyFoodServingPlacements", () => {
     // Pin the downstream outcomes too: queue/refusal, correction/removal,
     // serving and usual fast offers, and fast Undo may not silently drop scope.
     for (const target of [
-      "profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE",
+      "profileError(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE",
       'profileToast(noticeScope, "Serving corrected.")',
       'profileToast(noticeScope, "Serving removed."',
       "offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner)",

@@ -65,6 +65,9 @@ describe("20260814-remove-legacy-schema-shells", () => {
       // #5304: what the person wrote about this serving. Additive and nullable,
       // appended by 20260905-event-notes.
       "notes",
+      // #5865: the meal's marks. Additive and nullable, appended by
+      // 20260922-food-log-event-properties.
+      "properties",
     ]);
     expect(names(db, "intake_item_logs")).toEqual([
       "id",

@@ -1,5 +1,6 @@
 "use server";
 
+import { parseMealProperties } from "@/lib/food-sensitivities";
 import { revalidateRoute } from "@/lib/revalidate";
 import {
   getAccessibleProfiles,
@@ -315,6 +316,8 @@ export async function logUsualRoutine(
   // `usualRoutineOffer` and the two controls do, rather than a fourth thing.
   if (groups.length === 0 && doseIds.length === 0 && !(proteinGrams > 0))
     return { ok: false, error: "Nothing to log." };
+  const properties = parseMealProperties(formData.get("properties"));
+  if (!properties) return { ok: false, error: "Unknown meal mark." };
   const day = today(profile.id);
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : day;
@@ -360,7 +363,8 @@ export async function logUsualRoutine(
     // the window it named, and the answer below reports the minute that was lost.
     statedTime.kind === "accepted"
       ? { eatenAt: utcInstant(statedTime.at), source: "stated" }
-      : undefined
+      : undefined,
+    properties
   );
   if (outcome.kind === "invalid-date")
     return { ok: false, error: "That day is out of range." };

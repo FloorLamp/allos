@@ -71,6 +71,7 @@ import {
 import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { parseMealProperties } from "@/lib/food-sensitivities";
 import { judgeEatenAt } from "@/lib/food-eating-time";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
@@ -1139,6 +1140,7 @@ function applyFoodIntent(
   // a second, independent clock silently rewrites a seconds-old tap into a different
   // instant. In production the seam IS real time, so this is inert.
   const loggedAt = resolveCapturedInstant(capturedAt, clockNow());
+  const refuse = (reason: string) => ({ status: "rejected" as const, reason });
   if (payload.entry === "serving") {
     const group = typeof payload.groupKey === "string" ? payload.groupKey : "";
     // A captured slot must still be a real slot; a garbage one rejects rather
@@ -1148,6 +1150,11 @@ function applyFoodIntent(
       if (!isFoodSlot(payload.mealSlot)) return { status: "rejected" };
       mealSlot = payload.mealSlot;
     }
+    const properties = parseMealProperties(payload.properties);
+    if (!properties)
+      return refuse(
+        "That meal mark isn't one this app knows, so it wasn't logged."
+      );
     // The stated eating time (#2053), validated rather than trusted: an instant that
     // is in the future, or whose profile-local date isn't the day this serving is
     // landing on, costs the STATEMENT and never the serving.
@@ -1186,27 +1193,24 @@ function applyFoodIntent(
       // replay and a live tap cannot answer the same payload differently.
       verdict.kind === "accepted"
         ? { eatenAt: utcInstant(verdict.at), source: "stated" as const }
-        : mealSlot
+        : mealSlot,
+      undefined,
+      undefined,
+      properties
     );
-    if (outcome.kind === "unknown-group") {
-      return {
-        status: "rejected",
-        reason:
-          "This food group is no longer available, so the serving wasn't logged.",
-      };
-    }
+    if (outcome.kind === "unknown-group")
+      return refuse(
+        "This food group is no longer available, so the serving wasn't logged."
+      );
     // The core's day bound (#4118), which this path had none of: a queued write carries
     // a CLIENT-captured date and, until that bound, `isRealIsoDate` was the whole check
     // — so a phone whose clock was a day fast queued a serving into the future and the
     // replay stored it. Permanently rejected rather than re-dated: the queue never
     // invents a day (that is D20's rule for doses, and this is its food sibling).
-    if (outcome.kind === "invalid-date") {
-      return {
-        status: "rejected",
-        reason:
-          "That day isn't one this can be logged on, so the serving wasn't logged.",
-      };
-    }
+    if (outcome.kind === "invalid-date")
+      return refuse(
+        "That day isn't one this can be logged on, so the serving wasn't logged."
+      );
     return {
       status: "done",
       ...(verdict.kind === "refused" ? { timeNotice: verdict.reason } : {}),
@@ -1222,20 +1226,14 @@ function applyFoodIntent(
       OFFLINE_REPLAY,
       loggedAt
     );
-    if (outcome.kind === "invalid") {
-      return {
-        status: "rejected",
-        reason:
-          "The protein amount wasn't valid (1–300 grams), so it wasn't logged.",
-      };
-    }
-    if (outcome.kind === "invalid-date") {
-      return {
-        status: "rejected",
-        reason:
-          "That day isn't one this can be logged on, so it wasn't logged.",
-      };
-    }
+    if (outcome.kind === "invalid")
+      return refuse(
+        "The protein amount wasn't valid (1–300 grams), so it wasn't logged."
+      );
+    if (outcome.kind === "invalid-date")
+      return refuse(
+        "That day isn't one this can be logged on, so it wasn't logged."
+      );
     return { status: "done" };
   }
   // Unknown entry discriminant — permanently malformed.
