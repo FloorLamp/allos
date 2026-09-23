@@ -768,7 +768,7 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
   // as its ACCESSIBLE NAME, which is the ruling's whole point (2026-09-02): one glyph,
   // one wording, nothing on the row spelling it a second way.
   const door = page.getByTestId("food-when-toggle");
-  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(door).toHaveAccessibleName("When");
   await expect(door).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("food-eating-time")).toHaveCount(0);
   await openWhenFold(page);
@@ -915,10 +915,10 @@ test("the past day relabels the consequence, not the door, and its answer is per
   const bar = page.getByTestId("food-log-bar");
   await expect(bar).toBeVisible();
   const door = page.getByTestId("food-when-toggle");
-  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(door).toHaveAccessibleName("When");
 
   await hydratedClick(page, page.getByTestId("food-day-yesterday"));
-  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(door).toHaveAccessibleName("When");
   await openWhenFold(page);
   // The shared control renders a FIXED day as text, and names it relatively only for
   // today — a past day reads as its own WRITTEN date (#5489 fix 3: the storage
@@ -938,7 +938,7 @@ test("the past day relabels the consequence, not the door, and its answer is per
     `recorded as eaten at ${EARLIER_HOUR}`
   );
   await hydratedClick(page, page.getByTestId("food-day-today"));
-  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(door).toHaveAccessibleName("When");
   await expect(page.getByTestId("food-when-time")).toHaveValue("");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
