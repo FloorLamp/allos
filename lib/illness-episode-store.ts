@@ -438,6 +438,19 @@ export function syncOpenIllnessEpisode(
   const open = getOpenEpisodeRow(profileId, norm);
   if (shouldBeOpen) {
     if (open) return;
+    // A start day at or before a closed row's last day continues that illness (#6007):
+    // reopen the latest such row, widened back to `onDate` (a NULL start stays NULL),
+    // instead of inserting a second row over the same days.
+    const reopened = db
+      .prepare(
+        `UPDATE illness_episodes SET end_date = NULL, start_date = MIN(start_date, ?)
+          WHERE profile_id = ? AND id = (
+            SELECT id FROM illness_episodes
+             WHERE profile_id = ? AND situation = ? COLLATE NOCASE AND end_date >= ?
+             ORDER BY end_date DESC, id DESC LIMIT 1)`
+      )
+      .run(onDate, profileId, profileId, norm, onDate);
+    if (reopened.changes > 0) return;
     db.prepare(
       `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
        VALUES (?, ?, ?, NULL)`

@@ -19,6 +19,10 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptom-actions";
+import {
+  endEpisodeAction,
+  reopenEpisodeAction,
+} from "@/app/(app)/medical/episodes/actions";
 import { toggleSituationIllnessType } from "@/app/(app)/nutrition/intake-actions";
 import {
   getSituations,
@@ -28,10 +32,15 @@ import {
   setActiveSituations,
   setSituationIllnessType,
 } from "@/lib/settings/profile-attrs";
-import { openEpisodeIdForDate } from "@/lib/illness-episode-store";
-import { getSituationEvents } from "@/lib/settings";
+import {
+  createEpisodeRow,
+  listEpisodeRows,
+  openEpisodeIdForDate,
+} from "@/lib/illness-episode-store";
+import { getSituationEvents, setTimezone } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import { seedActor, fd } from "@/lib/__action_tests__/harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 
 const ILLNESS = "Illness";
 
@@ -244,5 +253,62 @@ describe("the door's start day (#5969)", () => {
       expect(rows).toEqual([]);
       expect(getActiveSituations(profile.id)).not.toContain(ILLNESS);
     }
+  });
+});
+
+// ── A BACKDATED DOOR AFTER A CLOSE (#6007) ───────────────────────────────────
+//
+// Mark better today, then answer yesterday's leftover fever: the door's start day falls
+// inside the episode just closed. The same illness continues, so the door reopens that
+// row rather than opening a second one over the same days.
+describe("a backdated door after a close (#6007)", () => {
+  function closedEpisode(name: string) {
+    const { profile } = seedActor({ profileName: name });
+    setTimezone(profile.id, "America/New_York");
+    const day = (offset: number) => shiftDateStr(today(profile.id), offset);
+    return { profile, day };
+  }
+
+  it("reopens the episode it overlaps instead of opening a second", async () => {
+    const { profile, day } = closedEpisode("backdated-reopen");
+    const opened = await activateIllnessForSymptoms(fd({ date: day(-3) }));
+    const ended = await endEpisodeAction(fd({ episodeId: opened.episodeId }));
+    expect(ended.ok).toBe(true);
+
+    const res = await activateIllnessForSymptoms(fd({ date: day(-1) }));
+    expect(res.ok).toBe(true);
+    expect(res.episodeId).toBe(opened.episodeId);
+    expect(listEpisodeRows(profile.id)).toMatchObject([
+      { id: opened.episodeId, start_date: day(-3), end_date: null },
+    ]);
+  });
+
+  it("an ordinary close then reopen keeps the one row", async () => {
+    const { profile, day } = closedEpisode("ordinary-reopen");
+    const opened = await activateIllnessForSymptoms(fd({ date: day(-3) }));
+    await endEpisodeAction(fd({ episodeId: opened.episodeId }));
+
+    const res = await reopenEpisodeAction(fd({ episodeId: opened.episodeId }));
+    expect(res.ok).toBe(true);
+    expect(listEpisodeRows(profile.id)).toMatchObject([
+      { id: opened.episodeId, start_date: day(-3), end_date: null },
+    ]);
+  });
+
+  it("a backdated day past an older episode still opens a new row", async () => {
+    const { profile, day } = closedEpisode("backdated-new");
+    const older = createEpisodeRow(
+      profile.id as WriteAuthorizedProfileId,
+      ILLNESS,
+      day(-10),
+      day(-6)
+    );
+
+    const res = await activateIllnessForSymptoms(fd({ date: day(-1) }));
+    expect(res.ok).toBe(true);
+    expect(listEpisodeRows(profile.id)).toMatchObject([
+      { id: res.episodeId, start_date: day(-1), end_date: null },
+      { id: older, start_date: day(-10), end_date: day(-6) },
+    ]);
   });
 });
