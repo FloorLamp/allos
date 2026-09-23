@@ -68,6 +68,7 @@ import { logHeading } from "@/lib/log-manifest";
 import {
   HISTORY_KIND_LABELS,
   detailSegment,
+  historyClock,
   historyRowPick,
   type HistoryKind,
   type HistoryRollup,
@@ -978,8 +979,7 @@ export default function HistoryRows({
                   /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
-                     chevron and lib/__tests__/destination-link-primitive.test.ts
-                     refuses a hand-rolled one inside a link. So the row has exactly one
+                     chevron. So the row has exactly one
                      control and one cue, and a row can never show both verbs. */
                   <DestinationLink
                     href={row.href}
@@ -1136,7 +1136,7 @@ export default function HistoryRows({
                       <dt className="font-medium text-slate-700 dark:text-slate-200">
                         {item.label}
                       </dt>
-                      <dd>
+                      <dd className={item.clock ? "flex gap-2" : undefined}>
                         {item.unit || item.flag ? (
                           <MedicalValue
                             value={item.value}
@@ -1146,6 +1146,11 @@ export default function HistoryRows({
                         ) : (
                           item.value
                         )}
+                        {item.clock ? (
+                          <span className="ml-auto text-slate-500 tabular-nums dark:text-slate-400">
+                            {historyClock(item.clock, "stated", prefs)}
+                          </span>
+                        ) : null}
                       </dd>
                     </div>
                   ))}

@@ -93,8 +93,8 @@ export function useReorderSensors(lift: LiftMode) {
 // the moving item toward the dimensions of the slot it passes over. With uniform
 // items that scale is ~1 and invisible; with items of varying height (the
 // dashboard's cards) it visibly squashes and stretches the dragged card. Consumers
-// apply `CSS.Translate.toString(transform)` — the translation only. See
-// lib/__tests__/sortable-transform-scan.test.ts, which pins that.
+// apply `CSS.Translate.toString(transform)` — the translation only.
+// `SORTABLE_TRANSFORM_BAN` in eslint.config.mjs pins that.
 //
 // The vocabulary itself lives in lib/drag-order.ts beside the list math, so a pure
 // module can decide a strategy without importing this client component.

@@ -11,7 +11,8 @@ import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import DaylightChip, { type DaylightUv } from "@/components/DaylightChip";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import { intradayFreshness, type IntradayModel } from "@/lib/intraday";
+import IntradayFreshness from "@/components/IntradayFreshness";
+import type { IntradayModel } from "@/lib/intraday";
 import { INTRADAY_PANEL_ANCHOR } from "@/lib/hrefs";
 import type { SleepWaitingState } from "@/lib/sleep-waiting";
 import type { HomeLocation } from "@/lib/home-location";
@@ -73,7 +74,6 @@ export default function IntradayPanel({
    *  it and this component never re-words it. */
   waitingDetail?: string | null;
 }) {
-  const freshness = intradayFreshness(model);
   return (
     // `scroll-mt-4` for the same reason every other anchored section on the app
     // carries it: landing on an id puts the element's top edge under the sticky
@@ -102,14 +102,11 @@ export default function IntradayPanel({
         {/* The lag sentence (#4767 item 5), on today only. See `intradayFreshness`:
             the axis runs to midnight whatever the watch has sent, so the distance
             between the last sample and now is stated rather than drawn. */}
-        {freshness && (
-          <p
-            className="text-xs text-slate-500 dark:text-slate-400"
-            data-testid="intraday-freshness"
-          >
-            {freshness}
-          </p>
-        )}
+        <IntradayFreshness
+          model={model}
+          profileId={profileId}
+          className="text-xs text-slate-500 dark:text-slate-400"
+        />
       </div>
       {waiting && (
         <p

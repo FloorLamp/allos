@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Static guard for the date/time display-pref rollout (#964, finished by #1020) —
-// the profile-scoping / telegram-chokepoint source-scan pattern applied to date
+// the profile-scoping source-scan pattern applied to date
 // rendering. It reads the repo's own production source as TEXT (no DB, no
 // browser, so it stays "pure" in the vitest sense) and enforces two rules:
 //
@@ -198,7 +198,7 @@ const NATIVE_DATE_RE = /\btype=["']date["']/g;
 
 // Comments must be stripped first: DateField's own header documents the control
 // it replaces ("replacement for <input type=\"date\">"), and prose must not count
-// as an offender. Same treatment notes-text.test.ts applies.
+// as an offender.
 function stripComments(text: string): string {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
