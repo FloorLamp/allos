@@ -48,6 +48,7 @@ import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
 import type { AppRoute } from "./hrefs";
 import type { MergeableRow } from "./timeline-multi";
 import type { TimelineEvent } from "./timeline-format";
+import { flagLabel, isOutOfRange } from "./reference-range/flags";
 import { isRealIsoDate } from "./date";
 
 // THE CLOSED KIND REGISTRY (#3958), one family at a time and in chip order.
@@ -448,6 +449,27 @@ export interface HistoryRow extends MergeableRow {
   iconType?: string;
   iconTitle?: string;
   iconSportNames?: string[];
+  /**
+   * The row's own subject cell (#6012): a single out-of-range result's flag label.
+   * Absent on every other row. See `resultRowSubject`.
+   */
+  subject?: string;
+}
+
+/**
+ * A SINGLE CLINICAL RESULT SAYS WHETHER IT WAS OUT OF RANGE (#6012).
+ *
+ * A results row standing for one reading carries the stored flag's label ("High",
+ * "Low") in the subject cell. A row of several keeps its count ("2 results, 2 out
+ * of range") and no subject. Nothing is recomputed: this reads the flag the
+ * observation already stores.
+ */
+export function resultRowSubject(
+  items: TimelineEvent["detailItems"]
+): string | undefined {
+  if (items?.length !== 1) return undefined;
+  const flag = items[0].flag;
+  return isOutOfRange(flag) ? flagLabel(flag) : undefined;
 }
 
 /**

@@ -7,7 +7,7 @@
 // + tool_choice) into a POST to `${baseUrl}/chat/completions`, and translates the
 // response (text or a function/tool call, finish_reason, usage) back into the
 // Anthropic-shaped message the call sites read. Only the widely-supported params are
-// sent — model, messages, max_tokens, tools, tool_choice — so an "OpenAI-compatible"
+// sent — model, messages, token limit, tools, tool_choice — so an "OpenAI-compatible"
 // backend that rejects exotic params (the CometAPI-compatibility caveat) still works.
 //
 // The pure translation functions are exported and unit-tested with fixtures; the
@@ -51,22 +51,32 @@ export interface AnthropicRequest {
 
 type OpenAiContentPart =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
 
 // Translate one Anthropic content block into an OpenAI content part. Text stays text;
-// an image (or a base64 document, best-effort) becomes an image_url data URI — the
-// only cross-provider way to carry an inline image. Unknown blocks fall back to their
-// text if present, else are dropped.
+// images use image_url; PDF documents use file content parts. Unknown blocks are
+// dropped.
 function contentPart(block: AnthropicContentBlock): OpenAiContentPart | null {
   if (block.type === "text")
     return { type: "text", text: (block as AnthropicTextBlock).text };
   if (block.type === "image" || block.type === "document") {
     const src = (block as AnthropicImageBlock).source;
-    if (src && src.type === "base64")
+    if (src && src.type === "base64") {
+      if (block.type === "document") {
+        return {
+          type: "file",
+          file: {
+            filename: "document.pdf",
+            file_data: `data:${src.media_type};base64,${src.data}`,
+          },
+        };
+      }
       return {
         type: "image_url",
         image_url: { url: `data:${src.media_type};base64,${src.data}` },
       };
+    }
   }
   return null;
 }
@@ -210,6 +220,17 @@ async function dispatch(
   req: AnthropicRequest
 ): Promise<ShapedMessage> {
   const f = opts.fetchImpl ?? fetch;
+  const body = toOpenAiRequest(req);
+  // OpenAI's reasoning models require the current completion-token parameter.
+  // Keep the legacy parameter for other compatible servers.
+  if (new URL(opts.baseUrl).hostname === "api.openai.com") {
+    body.max_completion_tokens = body.max_tokens;
+    delete body.max_tokens;
+    // Luna's Chat Completions endpoint only accepts function tools without reasoning.
+    if (req.model === "gpt-5.6-luna" && req.tools?.length) {
+      body.reasoning_effort = "none";
+    }
+  }
   const res = await f(chatCompletionsUrl(opts.baseUrl), {
     method: "POST",
     headers: {
@@ -217,7 +238,7 @@ async function dispatch(
       // Local servers ignore the key; a real one needs the bearer.
       ...(opts.apiKey ? { authorization: `Bearer ${opts.apiKey}` } : {}),
     },
-    body: JSON.stringify(toOpenAiRequest(req)),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

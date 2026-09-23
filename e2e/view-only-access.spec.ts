@@ -141,7 +141,7 @@ test.describe("View-only access (issue #33)", () => {
     // The write path completes: the success toast appears and we STAY on the
     // Trends page — no requireWriteAccess redirect to root (contrast the read
     // member, who is bounced to "/").
-    await expect(memberPage.getByText("Measurements saved")).toBeVisible();
+    await expect(memberPage.getByText("Measurements logged")).toBeVisible();
     await expect(memberPage).toHaveURL(/\/trends/);
 
     await memberPage.context().close();

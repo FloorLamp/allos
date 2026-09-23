@@ -528,7 +528,7 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
 
     // After save: overlay closed, toast shown, STAY PUT. All three matter — the
     // last one is the issue.
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     expect(page.url()).toBe(dashboardUrl);
 

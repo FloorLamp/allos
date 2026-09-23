@@ -427,7 +427,7 @@ test("a refused measurements save says so and claims nothing", async ({
   // The form stays open for the retry, with no success toast and no inline
   // error contradicting the sentence.
   await expect(form).toBeVisible();
-  await expect(page.getByText(/Measurements saved/)).toHaveCount(0);
+  await expect(page.getByText(/Measurements logged/)).toHaveCount(0);
   await context.setOffline(false);
 });
 
@@ -738,7 +738,7 @@ test("a refused quick weigh-in says so and claims nothing", async ({
     await expectRefusedOnly(page);
     // No success claim of either kind — the online toast or the offline queue's
     // promise.
-    await expect(page.getByText("Measurements saved")).toHaveCount(0);
+    await expect(page.getByText("Measurements logged")).toHaveCount(0);
     await context.setOffline(false);
   } finally {
     await context.close();

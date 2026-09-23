@@ -23,8 +23,9 @@ import {
   setProfileBirthdate,
   getProfileSettingKeysWithPrefix,
   resolveSituationId,
+  setTimezone,
 } from "@/lib/settings";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import {
   serializeSituationEvents,
   type SituationEvent,
@@ -43,6 +44,7 @@ import {
   getActiveSituations,
   setActiveSituations,
 } from "@/lib/settings/profile-attrs";
+import { snoozeFinding } from "@/lib/queries/upcoming/suppressions";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -389,5 +391,191 @@ describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
     );
     expect(markers).toHaveLength(1);
     expect(markers[0]).toContain(`:${date}:infant_fever`);
+  });
+});
+
+// ── STALE WHEN THE RUN STARTED, NOT WHEN THE DAY ROLLED (#5984) ──────────────
+//
+// The refusal above is for a finding that was already a day old when the event that
+// surfaced it happened. A reading that was current when it was logged still pushes when
+// its dispatch, or a retry of a failed one, runs after local midnight. The profile has
+// its own zone so "midnight" is the profile's, not the tier's UTC.
+describe("a live reading across local midnight (#5984)", () => {
+  const TZ = "America/Chicago";
+  const at = (day: string, hhmm: string) =>
+    vi.setSystemTime(zonedWallTimeToUtc(TZ, day, hhmm)!);
+
+  const MARKER = "notify_last_tempredflag_";
+  const OWED = "notify_owed_tempredflag_";
+
+  function zonedProfile(name: string): { p: number; day: string } {
+    const p = newProfile(name);
+    setTimezone(p, TZ);
+    configureHA(p);
+    return { p, day: today(p) };
+  }
+  function feverishProfile(name: string): { p: number; day: string } {
+    const profile = zonedProfile(name);
+    makeSick(profile.p, 1);
+    return profile;
+  }
+  // The webhook fails `failures` times, then succeeds.
+  function failingFetch(failures: number): ReturnType<typeof vi.fn> {
+    const mock = vi.fn();
+    for (let i = 0; i < failures; i++)
+      mock.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    mock.mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", mock);
+    return mock;
+  }
+
+  it("a 23:58 reading whose dispatch resolves after local midnight pushes", async () => {
+    const { p, day } = feverishProfile("TrfMidnight");
+    const fetchMock = stubFetch();
+
+    at(day, "23:58");
+    const reading = logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    expect(reading.kind).toBe("logged");
+    at(shiftDateStr(day, 1), "00:03");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+  });
+
+  it("a send that failed before midnight is retried by the next day's tick", async () => {
+    const { p, day } = feverishProfile("TrfFailedSend");
+    const fetchMock = failingFetch(1);
+
+    at(day, "23:58");
+    logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    expect((await dispatchTempRedFlagForReading(p, 104.5)).failed).toBe(true);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toEqual([]);
+
+    // The next waking tick is on the profile's next day.
+    at(shiftDateStr(day, 1), "08:00");
+    const retry = await runTempRedFlag(p, today(p));
+    expect(retry.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      getProfileSettingKeysWithPrefix(p, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+  });
+
+  it("a delivered finding is not sent again by a later day's reading door", async () => {
+    const { p, day } = feverishProfile("TrfNoResend");
+    const fetchMock = stubFetch();
+    at(day, "14:00");
+    logTemperatureCore(p, 104.5, "F", day, "page", "14:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    for (const d of [1, 2, 3]) {
+      at(shiftDateStr(day, d), "08:00");
+      await runTempRedFlag(p, today(p));
+      // A Health Connect batch that still carries the 104.5 reading.
+      at(shiftDateStr(day, d), "09:30");
+      await dispatchTempRedFlagForReading(p, 104.5);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getProfileSettingKeysWithPrefix(p, MARKER)).toHaveLength(1);
+  });
+
+  it("a delivered finding is not sent again after a backfill the next morning", async () => {
+    const { p, day } = feverishProfile("TrfBackfillResend");
+    const fetchMock = stubFetch();
+    at(day, "14:00");
+    logTemperatureCore(p, 104.5, "F", day, "page", "14:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+
+    at(shiftDateStr(day, 1), "08:00");
+    await runTempRedFlag(p, today(p));
+    at(shiftDateStr(day, 1), "08:30");
+    logTemperatureCore(p, 104.2, "F", day, "page", "13:00");
+    await dispatchTempRedFlagForReading(p, 104.2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #5969's refusal holds for the reading door too: a reading entered for a past day
+  // after a backdated open, or re-carried by a Health Connect batch, sends nothing.
+  it("after a backdated open, a backfilled reading for yesterday sends nothing", async () => {
+    const { p, day } = zonedProfile("TrfBackdatedBackfill");
+    const fetchMock = stubFetch();
+    const yesterday = shiftDateStr(day, -1);
+    at(day, "07:30");
+    logTemperatureCore(p, 104.5, "F", yesterday, "page", "21:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+    openIllness(p, yesterday);
+    await dispatchTempRedFlagForEpisodeOpen(p);
+
+    logTemperatureCore(p, 104.1, "F", yesterday, "page", "19:00");
+    await dispatchTempRedFlagForReading(p, 104.1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("after a backdated open, a Health Connect re-carry of yesterday's reading sends nothing", async () => {
+    const { p, day } = zonedProfile("TrfBackdatedRecarry");
+    const fetchMock = stubFetch();
+    const yesterday = shiftDateStr(day, -1);
+    at(day, "07:30");
+    logTemperatureCore(p, 104.5, "F", yesterday, "page", "21:00");
+    openIllness(p, yesterday);
+    await dispatchTempRedFlagForEpisodeOpen(p);
+
+    await dispatchTempRedFlagForReading(p, 104.5);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a reading dated 3 days ago into an episode opened backdated 3 days sends nothing", async () => {
+    const { p, day } = zonedProfile("TrfBackdated3");
+    const fetchMock = stubFetch();
+    const threeDaysAgo = shiftDateStr(day, -3);
+    at(day, "10:00");
+    openIllness(p, threeDaysAgo);
+    await dispatchTempRedFlagForEpisodeOpen(p);
+
+    logTemperatureCore(p, 104.5, "F", threeDaysAgo, "page", "21:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a snooze on a failed finding drops its retry, so a lapsed snooze pushes nothing old", async () => {
+    const { p, day } = feverishProfile("TrfOwedSnoozed");
+    const fetchMock = failingFetch(1);
+    at(day, "23:58");
+    logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    await dispatchTempRedFlagForReading(p, 104.5);
+    const [owed] = getProfileSettingKeysWithPrefix(p, OWED);
+    snoozeFinding(p, owed.slice(OWED.length), shiftDateStr(day, 3));
+
+    for (const d of [1, 2, 3, 4]) {
+      at(shiftDateStr(day, d), "08:00");
+      await runTempRedFlag(p, today(p));
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getProfileSettingKeysWithPrefix(p, OWED)).toEqual([]);
+  });
+
+  it("only the tick retries a failed finding; an episode open at the same time does not", async () => {
+    const { p, day } = feverishProfile("TrfOwedRace");
+    const fetchMock = failingFetch(2);
+    at(day, "23:58");
+    logTemperatureCore(p, 104.5, "F", day, "page", "23:58");
+    await dispatchTempRedFlagForReading(p, 104.5);
+    at(shiftDateStr(day, 1), "08:00");
+    expect((await runTempRedFlag(p, today(p))).failed).toBe(true);
+
+    at(shiftDateStr(day, 1), "09:00");
+    await Promise.all([
+      runTempRedFlag(p, today(p)),
+      dispatchTempRedFlagForEpisodeOpen(p),
+    ]);
+    // Two failures, then exactly one delivery.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getProfileSettingKeysWithPrefix(p, OWED)).toEqual([]);
+    expect(getProfileSettingKeysWithPrefix(p, MARKER)).toHaveLength(1);
   });
 });

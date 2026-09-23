@@ -53,11 +53,14 @@ import { activeFindings } from "@/lib/findings";
 import { requireSession } from "@/lib/auth";
 import { canWrite, requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
-import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
+import { FOOD_SLOTS } from "@/lib/food-slot";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
 import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
-import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import {
+  TIME_BUCKET_LABELS,
+  TIME_BUCKET_OPENS_AT,
+} from "@/lib/intake-schedule";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
@@ -89,11 +92,12 @@ import {
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { solarDay } from "@/lib/sun";
 import { historyMemberFeed } from "@/lib/history";
+import { mergeMemberTimelines } from "@/lib/timeline-multi";
+import { getTodayFoodWindowGapRows } from "@/lib/queries/nutrition/regularity";
 import {
   HISTORY_DEFAULT_SHOW,
   historyRowPick,
   layoutHistoryDay,
-  type HistoryRow,
 } from "@/lib/history-format";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
@@ -655,31 +659,6 @@ async function renderHome(
     ? { kind: "period", lastSignalOn: openPeriodStart }
     : null;
 
-  // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
-  // of its own: the window is `currentFoodSlot`'s, so the offer is evaluated for the
-  // window it is ABOUT (#3265). Read-only access renders no control at all.
-  const routineSlot =
-    foodLoggingApplicable && writable
-      ? currentFoodSlotWindow(profile.id)
-      : null;
-  const routineOffer =
-    routineSlot != null
-      ? getUsualRoutineOffer(profile.id, routineSlot.slot, on)
-      : null;
-  const routineControl = routineOffer
-    ? {
-        window: routineOffer.window,
-        food: usualRoutineFoodMembers(routineOffer, foodGroupName),
-        proteinGrams: routineOffer.proteinGrams,
-        doses: routineOffer.doses.map((d) => ({
-          id: d.doseId,
-          name: d.name,
-          stack: d.stack ?? null,
-        })),
-        subjectName: actingSubjectName,
-      }
-    : null;
-
   // ── THE LOW-SUPPLY CUE'S TARGET (#5121, §9) ───────────────────────────────────
   //
   // "An eligible Home low-supply cue opens the shared refill action; no inventory
@@ -731,6 +710,43 @@ async function renderHome(
     },
   });
 
+  // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
+  // of its own. Asked for the food slot the DOSE clock sits in (the same opening times
+  // that seat the slots), not the food window (#6013): past the Morning/Midday food
+  // midpoint, a Morning whose doses are still current still files Morning food and takes
+  // the Morning doses. An earlier slot still owed keeps Take all, so logging the current
+  // slot collapses the control. Read-only access renders no control at all.
+  const currentSlot = FOOD_SLOTS.findLast(
+    (slot) => TIME_BUCKET_OPENS_AT[slot] <= nowMinutes
+  );
+  const routineWindow =
+    foodLoggingApplicable &&
+    writable &&
+    currentSlot != null &&
+    homeList.now?.rows.some(
+      (row) =>
+        row.content.kind === "dose-slot" && row.content.bucket === currentSlot
+    )
+      ? currentSlot
+      : null;
+  const routineOffer =
+    routineWindow != null
+      ? getUsualRoutineOffer(profile.id, routineWindow, on)
+      : null;
+  const routineControl = routineOffer
+    ? {
+        window: routineOffer.window,
+        food: usualRoutineFoodMembers(routineOffer, foodGroupName),
+        proteinGrams: routineOffer.proteinGrams,
+        doses: routineOffer.doses.map((d) => ({
+          id: d.doseId,
+          name: d.name,
+          stack: d.stack ?? null,
+        })),
+        subjectName: actingSubjectName,
+      }
+    : null;
+
   // ── THE RECORD'S OWN DAY READ (§3.2 band 3, §7.3) ─────────────────────────────
   //
   // ONE day read serves the day bar's count, the record band and the chart: the events
@@ -743,9 +759,23 @@ async function renderHome(
     day: on,
     limit: HISTORY_DEFAULT_SHOW,
   });
-  const dayRows = feed.gather.rows as HistoryRow[];
-  const rowCount = dayRows.length;
-  const layout = layoutHistoryDay(dayRows, { rollup: false });
+  // THE HISTORY DAY VIEW'S ORDER (#6010), from its own engine: newest first, untimed
+  // rows last. Today's closed-empty habitual meal windows (#6011) sort in at their close
+  // minute; they are not records, so the day bar does not count them.
+  const gapRows = foodLoggingApplicable
+    ? getTodayFoodWindowGapRows(profile.id, {
+        date: on,
+        minuteOfDay: nowMinutes,
+      })
+    : [];
+  const rowCount = feed.gather.rows.length;
+  const [day] = mergeMemberTimelines([
+    { ...feed, events: [...feed.events, ...gapRows] },
+  ]);
+  const layout = layoutHistoryDay(day?.events ?? [], { rollup: false });
+  const receiptRow = layout.visible.find(
+    (row) => !gapRows.some((gap) => gap === row)
+  );
 
   // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
   // in the day bar, its boxes on the rows below, over the same per-row correction cores.
@@ -963,7 +993,7 @@ async function renderHome(
                   boundary: the read that feeds it is the day bar's own count, so a
                   boundary here would stream markup with no gather left behind it. */}
               <div data-testid="home-record">
-                {rowCount === 0 ? (
+                {layout.visible.length === 0 ? (
                   <p
                     className="text-sm text-slate-500 dark:text-slate-400"
                     data-testid="history-empty-filtered"
@@ -974,9 +1004,7 @@ async function renderHome(
                   <>
                     <HomeReceipt
                       rowId={
-                        layout.visible[0]
-                          ? timelineEntryAnchorId(layout.visible[0].id)
-                          : null
+                        receiptRow ? timelineEntryAnchorId(receiptRow.id) : null
                       }
                     />
                     <HistoryRows
@@ -990,6 +1018,7 @@ async function renderHome(
                       maxDates={{ [profile.id]: on }}
                       defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
                       subjectNames={{}}
+                      foodGaps={gapRows}
                     />
                   </>
                 )}
@@ -1054,14 +1083,19 @@ function HomeRow({
       // `target:` is the Telegram handoff's whole mechanism (§6.2): the row's id IS
       // the fragment the nudge's open-in-app link carries, so the browser scrolls to
       // it and this marks it. No deep-link scheme, and no script.
-      className={`${LOGGED_EVENT_ROW} scroll-mt-24 transition-colors target:bg-(--accent-soft) ${
+      className={`${LOGGED_EVENT_ROW} flex-wrap scroll-mt-24 transition-colors target:bg-(--accent-soft) ${
         accent ? "bg-(--accent-soft)" : ""
       }`}
     >
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      {/* THE TITLE KEEPS 10rem; A WIDE CONTROL WRAPS BELOW IT (#6009). With a
+          zero basis the title took whatever the control left, and the practice
+          cluster left a 390px phone three letters. The basis is the wrap point, not
+          a shrink factor: a one-button row still fits beside it, a wider cluster
+          drops to its own line, right-aligned, and the detail gets the full width. */}
+      <span className="flex min-w-0 flex-[1_1_10rem] flex-col gap-0.5">
         <span className="min-w-0 truncate">{title}</span>
         {detail ? (
-          <span className="min-w-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+          <span className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400">
             {detail}
           </span>
         ) : null}
@@ -1069,7 +1103,7 @@ function HomeRow({
       {trailing ? (
         <span className={LOGGED_EVENT_TRAILING}>{trailing}</span>
       ) : null}
-      {control ? <span className="shrink-0">{control}</span> : null}
+      {control ? <span className="ml-auto min-w-0">{control}</span> : null}
     </li>
   );
 }
