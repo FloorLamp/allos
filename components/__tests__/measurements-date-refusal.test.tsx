@@ -6,7 +6,7 @@ import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 //
 // `addMeasurements` answers with NOTICES, not errors, so before this issue a refused
 // day came back as `{}` — byte-identical to a clean save that stated no time — and
-// this form toasted "Measurements saved" and reset over an empty table. The action
+// this form toasted "Measurements saved" (now "logged") and reset over an empty table. The action
 // tier pins that the refusal is now ANSWERED
 // (lib/__action_tests__/measurements.actions.test.ts); this tier is the other half,
 // because a result field nothing renders is the same false success wearing a struct.
@@ -78,6 +78,6 @@ describe("a day the cores refuse is said out loud (#4425)", () => {
     await submitAWeightOn("2026-05-20");
 
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(toasted).toEqual(["Measurements saved"]);
+    expect(toasted).toEqual(["Measurements logged"]);
   });
 });

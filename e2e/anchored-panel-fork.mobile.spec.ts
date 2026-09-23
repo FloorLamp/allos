@@ -303,6 +303,8 @@ async function exerciseWheelFormats(page: Page, wide: boolean) {
       await expect(form).toBeVisible();
       const date = form.locator('input[type="hidden"][name="date"]');
       const originalDay = await date.inputValue();
+      // Under the record's day the time is stated through the When door (#5663).
+      if (!composed) await hydratedClick(page, form.getByTestId("m-toggle"));
       const field = form.getByTestId("m-time");
       const readClock = async () =>
         composed
@@ -490,6 +492,8 @@ test.describe("below md the time picker is a bottom sheet wheel", () => {
   }) => {
     await page.goto("/?quick=log-measurements");
     const form = page.getByTestId("measurements-quick-add"); // testid-scope-ok: the quick-log sheet is a BottomSheet portalled to <body>
+    // The sheet states the time through the When door (#5663).
+    await hydratedClick(page, form.getByTestId("m-toggle"));
     const field = form.getByTestId("m-time");
     // Tapped AFTER hydration, or `onFocus` is not attached yet and "no sheet
     // opened" is true of a page that could not have opened one.

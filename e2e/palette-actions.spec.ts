@@ -72,7 +72,7 @@ test.describe("command palette — create actions open the overlay in place (#21
       page,
       overlay.getByRole("button", { name: "Save measurements" })
     );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await expect(page.getByText("Measurements logged")).toBeVisible();
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     expect(page.url()).toBe(startUrl);
   });

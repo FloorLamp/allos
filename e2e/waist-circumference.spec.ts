@@ -80,7 +80,7 @@ test.describe("the waist-circ metric detail page (#2322)", () => {
     await form
       .getByRole("button", { name: "Save waist circumference" })
       .click();
-    await expect(page.getByText("Waist Circumference saved")).toBeVisible();
+    await expect(page.getByText("Waist Circumference logged")).toBeVisible();
 
     // It lands in the SAME store the seeded readings and the import projection use —
     // one series, whether the tape was read at home or printed by a clinic.
