@@ -216,13 +216,6 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
       ? `Digest time suggestion — ${formatNotifyTime(configured)} → ${formatNotifyTime(proposed)}`
       : "Digest time suggestion";
   },
-  // A household member's setup row (#2173, retired in #5667), keyed on the FAILING
-  // CHECK SET (`household-setup:never-onboarded+undosed-items`). Kept so a stored row
-  // still names itself and clears via Restore.
-  "household-setup:": (t) => {
-    const n = t.split("+").filter(Boolean).length;
-    return n > 1 ? `Member setup — ${n} checks` : "Member setup";
-  },
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
   "condition-review:": () => "Condition suggestion",
@@ -467,6 +460,17 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     },
   },
   // ---- Suggestions (suggest-only per-surface rows) -------------------------
+  {
+    // A household member's setup row (#2173), retired with the Household page
+    // (#5667). No surface mints it; kept so a stored row still names itself and
+    // clears via Restore.
+    prefix: "household-setup:",
+    domain: "Suggestions",
+    label: (t) => {
+      const n = t.split("+").filter(Boolean).length;
+      return n > 1 ? `Member setup — ${n} checks` : "Member setup";
+    },
+  },
   {
     prefix: MED_BRIDGE_PREFIX,
     domain: "Suggestions",
