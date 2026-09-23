@@ -528,7 +528,6 @@ export default function MediaInput({
             variant={variant}
             onClick={() => void open()}
             disabled={disabled}
-            data={{ "data-drag-active": dragActive ? "" : undefined }}
             data-testid={triggerTestId}
           >
             {cameraApplies ? (
