@@ -1,5 +1,7 @@
 "use server";
 
+import type { MealProperty } from "@/lib/food-sensitivities";
+import { declaredMealProperties } from "@/lib/food-sensitivity-store";
 import { requireSession, type CurrentSession } from "@/lib/auth";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { gateSubjectProfile } from "./gate-item";
@@ -237,6 +239,9 @@ export type QuickEntryData =
       // follow-the-hour Meal default derives from (#2227 d4), the same numbers the
       // server's tallies use.
       slotBoundaries: FoodSlotBoundaries;
+      // The subject's `This meal` chips (#5865). Absent from the offline copy, which
+      // cannot carry a mark.
+      mealProperties?: MealProperty[];
     }
   | {
       form: "dose";
@@ -528,6 +533,7 @@ async function gatherQuickEntry(
       excludedGroups: food.exclusions,
       slot: food.slot,
       slotBoundaries: food.boundaries,
+      mealProperties: declaredMealProperties(profile.id),
     };
   }
 
