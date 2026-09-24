@@ -141,6 +141,7 @@ export default function ProgressPhotosView({
           <MediaInput
             triggerLabel="Add photo"
             triggerTestId="photo-capture-open"
+            variant="primary"
             inputTestId="photo-capture-file"
             multiple
             autoOpen={autoCapture}

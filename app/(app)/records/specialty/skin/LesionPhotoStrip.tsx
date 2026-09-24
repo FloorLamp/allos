@@ -132,7 +132,6 @@ export default function LesionPhotoStrip({
         triggerLabel="Add photo"
         triggerTestId={`add-lesion-photo-${lesionId}`}
         inputTestId={`lesion-photo-file-${lesionId}`}
-        className="text-xs text-link"
         multiple
         onConfirm={handleUpload}
         confirmFields={

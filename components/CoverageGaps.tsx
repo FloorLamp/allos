@@ -10,6 +10,8 @@ import {
   IconPlus,
   IconCircleCheck,
 } from "@tabler/icons-react";
+import Button from "@/components/Button";
+import { DestinationActionLink } from "@/components/DestinationLink";
 import { useToast } from "@/components/Toast";
 import DexaTotalMassLink from "@/components/DexaTotalMassLink";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
@@ -197,15 +199,9 @@ function CandidateRow({ candidate }: { candidate: CoverageGapCandidate }) {
           {candidate.label}
         </span>
       </span>
-      <button
-        type="button"
-        onClick={onTrack}
-        disabled={pending}
-        data-testid="track-gap"
-        className="btn-ghost inline-flex shrink-0 items-center gap-1 text-xs"
-      >
+      <Button onClick={onTrack} disabled={pending} data-testid="track-gap">
         <IconPlus className="h-3.5 w-3.5" /> Track
-      </button>
+      </Button>
     </li>
   );
 }
@@ -313,36 +309,28 @@ function TrackedRow({
       {!gap.covered && (
         <div className="mt-3 flex flex-wrap gap-2">
           {aiConfigured && (
-            <button
-              type="button"
+            <Button
               onClick={onEnrich}
               disabled={enriching}
               data-testid="enrich-gap"
-              className="btn-ghost inline-flex items-center gap-1 text-xs"
             >
               <IconSparkles className="h-3.5 w-3.5" />
               {gap.aiDescription ? "Regenerate context" : "Generate context"}
               {` via ${aiLabel}`}
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            onClick={onCopyRequest}
-            data-testid="request-gap"
-            className="btn-ghost inline-flex items-center gap-1 text-xs"
-          >
+          <Button onClick={onCopyRequest} data-testid="request-gap">
             <IconCopy className="h-3.5 w-3.5" /> Copy request
-          </button>
+          </Button>
           {request && (
-            <a
+            <DestinationActionLink
               href={request.issueUrl}
               target="_blank"
               rel="noreferrer"
               data-testid="request-gap-link"
-              className="btn-ghost inline-flex items-center gap-1 text-xs"
             >
               <IconExternalLink className="h-3.5 w-3.5" /> Request on GitHub
-            </a>
+            </DestinationActionLink>
           )}
         </div>
       )}

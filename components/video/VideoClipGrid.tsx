@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { IconVideo, IconMicrophone, IconMapPin } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import MediaInput from "@/components/media/MediaInput";
 import OverflowMenu, {
   MENU_ITEM,
@@ -320,21 +321,16 @@ export default function VideoClipGrid({
                         autoFocus
                       />
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          className="btn-ghost px-2 py-1 text-xs"
-                          onClick={() => setEditingId(null)}
-                        >
+                        <Button onClick={() => setEditingId(null)}>
                           Cancel
-                        </button>
-                        <button
-                          type="button"
-                          className="btn px-2 py-1 text-xs"
+                        </Button>
+                        <Button
+                          variant="primary"
                           disabled={pending}
                           onClick={() => saveCaption(c.id)}
                         >
                           {pending ? "Saving…" : "Save"}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -370,7 +366,6 @@ export default function VideoClipGrid({
             triggerLabel={pending ? "Adding…" : addLabel}
             triggerTestId="video-clip-add"
             inputTestId="video-clip-input"
-            className="btn-ghost btn-sm"
             accept="video/*,audio/*"
             multiple
             disabled={pending}

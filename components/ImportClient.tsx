@@ -10,6 +10,7 @@ import {
   type ImportResult,
 } from "@/app/(app)/data/actions";
 import { formatSeconds } from "@/lib/duration";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import RelativeTime from "@/components/RelativeTime";
 import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
@@ -186,14 +187,13 @@ export default function ImportClient({
         <p className="text-sm text-rose-500 dark:text-rose-400">{error}</p>
       )}
 
-      <button
-        type="button"
+      <Button
+        variant="primary"
         onClick={startExtract}
         disabled={!text.trim() || starting}
-        className="btn"
       >
         {starting ? "Starting…" : "Extract with AI"}
-      </button>
+      </Button>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Extraction runs in the background — you can leave this page and you’ll
         be notified when it’s ready to review.
@@ -319,23 +319,14 @@ function ImportJobCard({
 
         <div className="flex items-center gap-2">
           {job.status === "ready" && (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="btn-ghost text-sm"
-            >
+            <Button onClick={() => setOpen((v) => !v)}>
               {open ? "Hide" : "Review"}
-            </button>
+            </Button>
           )}
           {job.status !== "processing" && (
-            <button
-              type="button"
-              onClick={discard}
-              disabled={pending !== null}
-              className="btn-ghost text-sm"
-            >
+            <Button onClick={discard} disabled={pending !== null}>
               {pending === "discard" ? "Discarding…" : "Discard"}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -353,14 +344,13 @@ function ImportJobCard({
           )}
           <div className="flex items-center gap-2 pt-1">
             {job.result.type !== "workouts" || workoutImportAvailable ? (
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={save}
                 disabled={pending !== null}
-                className="btn"
               >
                 {pending === "save" ? "Saving…" : "Save to your log"}
-              </button>
+              </Button>
             ) : (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 This strength workout import can be reviewed or discarded, but
