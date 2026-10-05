@@ -11,7 +11,7 @@
 # build-time check.
 
 # ---- builder ----
-FROM node:24-bookworm-slim AS builder
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS builder
 WORKDIR /app
 
 # node-gyp's prerequisites, needed by `npm ci` below and nothing else in this image.
@@ -74,7 +74,7 @@ RUN BS3=/app/node_modules/better-sqlite3 \
   && node -e "new (require('better-sqlite3'))(':memory:').prepare('select sqlite_version()').get()"
 
 # ---- runner ----
-FROM node:24-bookworm-slim AS runner
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -85,6 +85,7 @@ ENV NODE_ENV=production
 # which is fine: the UI just shows "unknown".
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=$COMMIT_SHA
+LABEL org.opencontainers.image.revision=$COMMIT_SHA
 ARG COMMIT_MESSAGE=""
 ENV COMMIT_MESSAGE=$COMMIT_MESSAGE
 
