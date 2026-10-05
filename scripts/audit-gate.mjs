@@ -27,7 +27,13 @@ import { execSync } from "node:child_process";
 
 // Empty is the healthy state. Every entry needs a `reason` and a `tracking`
 // issue that owns its removal.
-const ALLOWLIST = {};
+const ALLOWLIST = {
+  "GHSA-vfj7-8cjw-p6xm": {
+    reason:
+      "Development-only Next lint dependency with no compatible patched release; remove when upstream fixes it.",
+    tracking: "FloorLamp/allos#6064",
+  },
+};
 
 let raw;
 try {

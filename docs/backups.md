@@ -147,7 +147,7 @@ sqlite3 -readonly data/backups/pre-migration/allos-premigrate-<stamp>.db
 ## Deployment and backup gates
 
 `deploy/liftoff.json` declares SQLite, uploads, provider payloads and logs. An
-AI-enabled host supplies `ANTHROPIC_API_KEY` through its scoped provider.
+AI-enabled host supplies `ANTHROPIC_API_KEY` through its scoped provider; missing credentials disable AI.
 The image bundles `node /app/dist/restore-check.cjs /app/data`: the existing restore
 core verifies schema/integrity; normal startup migrates a disposable DB; profile
 export readers verify records and original files. Missing uploads, corruption or
