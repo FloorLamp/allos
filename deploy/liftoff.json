@@ -1,0 +1,46 @@
+{
+  "app": "allos",
+  "services": ["allos", "allos-notify"],
+  "handoff": "pull",
+  "image": "ghcr.io/floorlamp/allos:latest",
+  "timeout": 120,
+  "keep": 2,
+  "resources": {
+    "version": 1,
+    "secrets": [
+      {
+        "name": "ai",
+        "env": "ANTHROPIC_API_KEY"
+      }
+    ],
+    "data": [
+      {
+        "name": "database",
+        "kind": "sqlite",
+        "mount": "/app/data/allos.db"
+      },
+      {
+        "name": "uploads",
+        "kind": "directory",
+        "mount": "/app/data/uploads",
+        "required": false
+      },
+      {
+        "name": "payloads",
+        "kind": "directory",
+        "mount": "/app/data/integration-payloads",
+        "required": false
+      },
+      {
+        "name": "logs",
+        "kind": "directory",
+        "mount": "/app/data/logs",
+        "required": false
+      }
+    ],
+    "restore": {
+      "argv": ["node", "/app/dist/restore-check.cjs", "/app/data"],
+      "timeoutSeconds": 120
+    }
+  }
+}

@@ -6,16 +6,16 @@ Paths below are inside the app; Docker mounts the host's `DATA_DIR` at `/app/dat
 
 ## Scheduled snapshots
 
-The notify tick takes a nightly SQLite snapshot using `VACUUM INTO`, which is
-safe against the live connection. Choose the backup hour in the instance timezone,
-retention (default **7 daily + 8 weekly** snapshots), and stale alarm (default
-**48 hours**). The card shows the last verified backup, errors, and **Back up now**.
+The notify tick snapshots SQLite nightly with `VACUUM INTO`, safe against the live
+connection. Configure the instance-local backup hour, retention (default **7 daily
 
-Snapshots are `data/backups/allos-<YYYY-MM-DD-HHmm>.db`. Each is opened read-only
-for `PRAGMA integrity_check`, with the result in `<name>.db.json`. Failed copies
-remain available for diagnosis but do not count as successful backups or retention
-keepers. Older copies are pruned only after a new snapshot passes verification;
-failed or unverified files cannot displace verified keepers.
+- 8 weekly**), and stale alarm (**48 hours**). The card shows verification, errors,
+  and **Back up now**.
+
+Snapshots are `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, verified read-only with
+`PRAGMA integrity_check`; `<name>.db.json` records the result. Failed copies stay
+for diagnosis but cannot displace verified retention keepers. Pruning follows
+successful verification.
 
 The tick also checks the live database weekly and caches its integrity verdict.
 A failed verdict makes [health](#health-endpoint) degraded and triggers another
@@ -65,9 +65,9 @@ uses the same retention at the destination, and incrementally mirrors uploads to
 errors. Replication failures do not fail the primary snapshot; an overdue replica
 can produce `offsite-stale` health status.
 
-The mirror excludes `data/integration-payloads/` (raw provider payloads) and
-`data/logs/ai.jsonl` (AI audit log). Copy these separately if needed. The destination
-holds multi-profile health data; Allos does not provision a cloud or network target.
+The mirror excludes raw provider payloads (`data/integration-payloads/`) and the AI
+audit log (`data/logs/ai.jsonl`); copy them separately if needed. The destination
+contains multi-profile health data and must be operator-provided.
 
 Uploads are append-only for ordinary row deletions. **Deleting a profile** instead
 best-effort removes that person's medical files locally and from the mounted,
@@ -90,19 +90,15 @@ npm run restore -- --from /backup allos-<stamp>.db
 npm run restore -- --from                     # use BACKUP_DEST_DIR
 ```
 
-The tool verifies the snapshot, copies the current database and its `-wal`/`-shm`
-files aside as `allos.db.pre-restore-<timestamp>`, installs the snapshot by atomic
-rename, and clears stale WAL sidecars. The backup tick retains the newest three
-restore asides.
+The tool verifies integrity/schema, preserves the old DB and WAL/SHM as
+`allos.db.pre-restore-<timestamp>`, atomically installs the snapshot, then clears
+stale WAL sidecars. The backup tick keeps three restore asides.
 
-Restoring prompts for confirmation; append `--yes` to skip that prompt. `--force`
-overrides refusals for a detected live connection, failed integrity, or a snapshot
-schema newer than the running build. It does not make a newer schema compatible
-with an older image.
+`--yes` skips confirmation. `--force` overrides detected live connections, failed
+integrity and newer-schema refusals; it cannot make an incompatible schema usable.
 
-Restore uploads as well when recovering from a mirror; database rows alone cannot
-recover medical files. The tool prints an uploads-copy command when the source has
-an uploads directory, for example:
+Restore uploads too: rows cannot recover files. When available, the tool prints
+the uploads-copy command:
 
 ```bash
 cp -a /backup/uploads/. data/uploads/
@@ -116,13 +112,10 @@ separate snapshot under `data/backups/pre-migration/`:
 boot with no pending migrations or on a fresh install. Repeated failed boots can
 reuse a verified snapshot of the same pre-migration state.
 
-These copies have independent retention: **two snapshots, at most 30 days old**.
-Each has an integrity sidecar (`<name>.db.json`) and migration metadata
-(`<name>.db.migration.json`). The boot log gives its path, size, and restore command.
-
-If the copy cannot be made, startup stops before applying pending migrations.
-Free space or select another destination, then retry. Operators with another
-backup method can opt out:
+These copies retain **two snapshots, at most 30 days old**, with integrity
+(`<name>.db.json`) and migration (`<name>.db.migration.json`) sidecars. The boot log
+gives the restore command. Copy failure stops startup before migrations; free space
+or change destinations. Operators with another backup method can opt out:
 
 ```dotenv
 ALLOS_MIGRATION_SNAPSHOT_DIR=/backup/premigrate
@@ -150,6 +143,17 @@ individual records in the snapshot read-only:
 ```bash
 sqlite3 -readonly data/backups/pre-migration/allos-premigrate-<stamp>.db
 ```
+
+## Deployment and backup gates
+
+`deploy/liftoff.json` declares SQLite, uploads, provider payloads and logs. An
+AI-enabled host supplies `ANTHROPIC_API_KEY` through its scoped provider.
+The image bundles `node /app/dist/restore-check.cjs /app/data`: the existing restore
+core verifies schema/integrity; normal startup migrates a disposable DB; profile
+export readers verify records and original files. Missing uploads, corruption or
+an incompatible schema fail the gate. Checkpoint inputs and live data stay untouched.
+The host owns encrypted off-host copies and retention; passing this gate does not
+provide that copy.
 
 ## Moving to a new server
 

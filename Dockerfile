@@ -53,6 +53,8 @@ RUN mkdir -p public \
   && NODE_OPTIONS=--max-old-space-size=4096 npm run build \
   && npx esbuild scripts/notify.ts --bundle --platform=node --target=node20 \
        --format=cjs --external:better-sqlite3 --outfile=dist/notify.cjs \
+  && npx esbuild scripts/restore-check.ts --bundle --platform=node --target=node24 \
+       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/restore-check.cjs \
   && npm prune --omit=dev
 
 # Trim better-sqlite3 to what this image actually runs: one of the eight prebuilt
