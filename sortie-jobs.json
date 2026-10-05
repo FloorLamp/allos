@@ -6,5 +6,205 @@
     "priority": "background",
     "timeout": 300,
     "label": "allos dependency audit"
+  },
+  "e2e-nightly-1": {
+    "argv": ["node", "scripts/sortie-census.mjs", "nightly", "1"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos nightly shard 1/4"
+  },
+  "e2e-nightly-2": {
+    "argv": ["node", "scripts/sortie-census.mjs", "nightly", "2"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos nightly shard 2/4"
+  },
+  "e2e-nightly-3": {
+    "argv": ["node", "scripts/sortie-census.mjs", "nightly", "3"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos nightly shard 3/4"
+  },
+  "e2e-nightly-4": {
+    "argv": ["node", "scripts/sortie-census.mjs", "nightly", "4"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos nightly shard 4/4"
+  },
+  "e2e-weekly-1": {
+    "argv": ["node", "scripts/sortie-census.mjs", "weekly", "1"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos weekly shard 1/4"
+  },
+  "e2e-weekly-2": {
+    "argv": ["node", "scripts/sortie-census.mjs", "weekly", "2"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos weekly shard 2/4"
+  },
+  "e2e-weekly-3": {
+    "argv": ["node", "scripts/sortie-census.mjs", "weekly", "3"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos weekly shard 3/4"
+  },
+  "e2e-weekly-4": {
+    "argv": ["node", "scripts/sortie-census.mjs", "weekly", "4"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos weekly shard 4/4"
+  },
+  "e2e-forward-3-1": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-3", "1"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-3 shard 1/4"
+  },
+  "e2e-forward-3-2": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-3", "2"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-3 shard 2/4"
+  },
+  "e2e-forward-3-3": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-3", "3"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-3 shard 3/4"
+  },
+  "e2e-forward-3-4": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-3", "4"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-3 shard 4/4"
+  },
+  "e2e-forward-6-1": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-6", "1"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-6 shard 1/4"
+  },
+  "e2e-forward-6-2": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-6", "2"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-6 shard 2/4"
+  },
+  "e2e-forward-6-3": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-6", "3"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-6 shard 3/4"
+  },
+  "e2e-forward-6-4": {
+    "argv": ["node", "scripts/sortie-census.mjs", "forward-6", "4"],
+    "caps": ["linux", "chrome"],
+    "weight": 2,
+    "resources": {
+      "browser": 2
+    },
+    "priority": "background",
+    "timeout": 5400,
+    "artifacts": ["test-results/e2e-results.json", "playwright-report"],
+    "label": "allos forward-6 shard 4/4"
+  },
+  "source-oracle": {
+    "argv": ["node", "scripts/sortie-census.mjs", "source-oracle"],
+    "caps": ["linux"],
+    "weight": 1,
+    "priority": "background",
+    "timeout": 1800,
+    "label": "allos source drift census"
   }
 }

@@ -60,19 +60,14 @@ and exit code. Reproduce on the failing head with that run's shard plan, worker
 settings, and clock; the [diagnosis guide](../internals/e2e-diagnosis.md) owns the
 commands and mechanism checklist.
 
-The diagnosis guide covers shared-state leakage, resource pressure, populated
-versus degraded lookup responses, time boundaries, and restoring diagnostic
-mutations. RxNorm availability is environment-dependent; verify the branch reached
-rather than declaring a provider universally unavailable locally.
+The diagnosis guide covers isolation, resource pressure, lookup responses, clocks and restoring diagnostic mutations. Verify RxNorm availability in the exercised environment.
 
 Match the serving mode (`next dev` or `next start`). Compare allegedly unrelated
 failures with the PR's base and relevant main-side browser evidence;
 `main-red-history.mjs` helps locate recurrence. Several failing PRs still need
 attribution rather than an automatic base-regression or flake verdict.
 
-When local conditions cannot reproduce the failing state, report the limitation
-and use CI artifacts or a controlled reproduction. Wait for a run to settle before
-rerunning failed jobs; inspect setup, cleanup, and annotations as well as tests.
+Report reproduction limits; use CI artifacts or controlled reproduction. Let runs settle before rerunning. Inspect setup, cleanup and annotations.
 
 ## Flake evidence
 
@@ -86,11 +81,8 @@ weekly schedule or through `forward_clock`. A future-clock failure is evidence
 about that future state; inspect fixture expiry and real time-dependent behavior
 before attributing it to a merge or changing an expectation.
 
-## Local full suite
+## Recurring and local full checks
 
-Run a full local suite only when that scope is needed, with competing work paused.
-Stop only owned development servers after checking whether another task needs
-them. Build once, then run four sequential CI-mode shards using the planner for
-that checkout. To reproduce a particular CI failure, match its actual partition
-instead; the diagnosis guide explains why native and duration-balanced shards
-can have different neighbors.
+[Sortie declarations](../../sortie-jobs.json) prepare fresh source-only shards: nightly duration-balanced buckets, weekly strict repeats, +3/+6-month clocks and source oracle. Hosted schedules remain active pending fleet/monitoring validation. Reports return through Sortie; fleet policy owns cadence.
+
+Full local runs need that scope and paused competing work. Stop only owned servers. Build once and run four sequential CI-mode planned shards; reproductions must match the failing partition.
