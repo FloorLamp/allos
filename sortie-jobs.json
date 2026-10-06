@@ -1,0 +1,10 @@
+{
+  "security": {
+    "argv": ["node", "scripts/audit-gate.mjs"],
+    "caps": ["linux"],
+    "weight": 1,
+    "priority": "background",
+    "timeout": 300,
+    "label": "allos dependency audit"
+  }
+}

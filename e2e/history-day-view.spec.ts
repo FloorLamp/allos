@@ -1777,11 +1777,8 @@ test.describe("Home is the record's day view at today", () => {
     await page.goto("/");
     const content = appContent(page);
     const yesterday = shiftDateStr(today(), -1);
-    await followLink(
-      page,
-      content.getByTestId("timeline-day-prev"),
-      new RegExp(`/history\\?day=${yesterday}`)
-    );
+    await hydratedClick(page, content.getByTestId("timeline-day-prev"));
+    await expect(page).toHaveURL(new RegExp(`/history\\?day=${yesterday}`));
     const past = appContent(page);
     // THE THREE ADDITIONS EXIST ONLY ON TODAY (§3.2, §6.6). A past day owes nothing and
     // forecasts nothing, so it carries neither the rule nor the fold.

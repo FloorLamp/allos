@@ -1,26 +1,26 @@
 # Development guide
 
-Use Node 24 (`.nvmrc`). Follow the root and applicable nested `AGENTS.md`, then
-read the [change and test policy](change-policy.md). Find the existing owner
-before editing; read only the contract matching the task.
+Use Node 24 (`.nvmrc`), applicable `AGENTS.md` and the [change policy](change-policy.md).
+Reuse the existing owner; read the matching contract.
 
 ## Find the owner
 
-| Task                            | Start in code                                                | Read when changing the contract                                                                                      |
-| ------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Authorization and profile scope | `lib/auth.ts`, `lib/cross-profile.ts`, `lib/queries/`        | `app/AGENTS.md`, `lib/AGENTS.md`, `lib/queries/AGENTS.md`                                                            |
-| Dated readings or units         | `lib/reading-model.ts`, `lib/date.ts`, `lib/row-instants.ts` | [Reading model](internals/reading-model.md), [time model](internals/time-model.md)                                   |
-| Weekly frequency or stale data  | `lib/cadence.ts`, `lib/freshness.ts`                         | [Cadence](internals/cadence-ledger.md), [freshness](internals/freshness.md)                                          |
-| Medication/supplement intake    | `lib/queries/intake/*`, `lib/intake-cadence.ts`              | [Intake](internals/supplements.md)                                                                                   |
-| Notifications or attention      | `lib/notifications/`, `lib/queries/upcoming/`                | [Notifications](internals/notifications.md), [findings](internals/findings.md)                                       |
-| Connected sources and imports   | `lib/integrations/`, `app/(app)/data/`                       | [Sync](internals/integrations-sync.md), [import actions](internals/import-actions.md)                                |
-| Action writes and refresh       | `app/`, `lib/revalidate.ts`                                  | [Refresh](internals/server-action-refresh.md); [deployment skew](internals/deploy-skew.md) for compatibility changes |
-| Deletion and undo               | `lib/trash.ts`                                               | [Undo](internals/undo-contract.md), [trash](internals/trash.md)                                                      |
-| Database schema                 | `lib/migrations/`                                            | `lib/migrations/AGENTS.md`, [migrations](versioned-migrations-spec.md)                                               |
-| Shared UI                       | `components/`, `components/quick-entry/`                     | `components/AGENTS.md` maps copy, layout, motion and overlay                                                         |
-| Browser tests                   | `e2e/helpers.ts`, `e2e/fixtures.ts`                          | [E2E writing guide](internals/e2e-hygiene.md)                                                                        |
-| CI failure                      | Failing test and its setup                                   | [E2E diagnosis](internals/e2e-diagnosis.md), [test timeouts](internals/test-tier-timeouts.md)                        |
-| Agent dispatch/review           | `scripts/orchestration/`                                     | [Orchestration](orchestration.md), only for an assigned orchestration role                                           |
+| Task                            | Start in code                                                 | Read when changing the contract                                                                                      |
+| ------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Authorization and profile scope | `lib/auth.ts`, `lib/cross-profile.ts`, `lib/queries/`         | `app/AGENTS.md`, `lib/AGENTS.md`, `lib/queries/AGENTS.md`                                                            |
+| Dated readings or units         | `lib/reading-model.ts`, `lib/date.ts`, `lib/row-instants.ts`  | [Reading model](internals/reading-model.md), [time model](internals/time-model.md)                                   |
+| Weekly frequency or stale data  | `lib/cadence.ts`, `lib/freshness.ts`                          | [Cadence](internals/cadence-ledger.md), [freshness](internals/freshness.md)                                          |
+| Medication/supplement intake    | `lib/queries/intake/*`, `lib/intake-cadence.ts`               | [Intake](internals/supplements.md)                                                                                   |
+| Notifications or attention      | `lib/notifications/`, `lib/queries/upcoming/`                 | [Notifications](internals/notifications.md), [findings](internals/findings.md)                                       |
+| Connected sources and imports   | `lib/integrations/`, `app/(app)/data/`                        | [Sync](internals/integrations-sync.md), [import actions](internals/import-actions.md)                                |
+| Action writes and refresh       | `app/`, `lib/revalidate.ts`                                   | [Refresh](internals/server-action-refresh.md); [deployment skew](internals/deploy-skew.md) for compatibility changes |
+| Deletion and undo               | `lib/trash.ts`                                                | [Undo](internals/undo-contract.md), [trash](internals/trash.md)                                                      |
+| Backups and restore             | `lib/restore.ts`, `lib/backup.ts`, `scripts/restore-check.ts` | [Backups](backups.md)                                                                                                |
+| Database schema                 | `lib/migrations/`                                             | `lib/migrations/AGENTS.md`, [migrations](versioned-migrations-spec.md)                                               |
+| Shared UI                       | `components/`, `components/quick-entry/`                      | `components/AGENTS.md` maps copy, layout, motion and overlay                                                         |
+| Browser tests                   | `e2e/helpers.ts`, `e2e/fixtures.ts`                           | [E2E writing guide](internals/e2e-hygiene.md)                                                                        |
+| CI failure                      | Failing test and its setup                                    | [E2E diagnosis](internals/e2e-diagnosis.md), [test timeouts](internals/test-tier-timeouts.md)                        |
+| Agent dispatch/review           | `scripts/orchestration/`                                      | [Orchestration](orchestration.md), only for an assigned orchestration role                                           |
 
 For product behavior, use [Features](features.md). User setup guides live directly
 under `docs/`; internal contracts live under `docs/internals/`.

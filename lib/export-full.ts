@@ -49,11 +49,39 @@ export interface ExportFile {
   size: number;
 }
 
+// Exports may omit unavailable files; a restore drill must refuse that incomplete dataset.
+function availableFileSize(
+  abs: string,
+  root: string,
+  required: boolean
+): number | null {
+  try {
+    if (!abs.startsWith(root + path.sep)) throw new Error();
+    const stat = fs.statSync(abs);
+    if (!stat.isFile()) throw new Error();
+    if (
+      required &&
+      !fs.realpathSync(abs).startsWith(fs.realpathSync(root) + path.sep)
+    )
+      throw new Error();
+    return stat.size;
+  } catch {
+    if (required)
+      throw new Error(
+        "Referenced upload is missing or outside its data directory"
+      );
+    return null;
+  }
+}
+
 // The profile's uploaded medical files, resolved from medical_documents rows (which
 // cover both the per-profile `<profileId>/` layout and legacy flat files — the path
 // is per-row). Confined to UPLOAD_ROOT: a tampered/absolute stored_path is skipped,
 // never read from outside the upload tree. Missing-on-disk rows are skipped too.
-export function listProfileMedicalFiles(profileId: number): ExportFile[] {
+export function listProfileMedicalFiles(
+  profileId: number,
+  { required = false } = {}
+): ExportFile[] {
   const rows = db
     .prepare(
       `SELECT id, filename, stored_path
@@ -71,17 +99,8 @@ export function listProfileMedicalFiles(profileId: number): ExportFile[] {
   const seenNames = new Set<string>();
   for (const r of rows) {
     const abs = path.resolve(process.cwd(), r.stored_path);
-    // Confine to the upload root, then require the file to still exist.
-    if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep))
-      continue;
-    let size = 0;
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile()) continue;
-      size = st.size;
-    } catch {
-      continue; // missing on disk
-    }
+    const size = availableFileSize(abs, UPLOAD_ROOT, required);
+    if (size === null) continue;
     // Prefix with the row id so two documents that share a filename stay distinct.
     const base = r.filename && r.filename.trim() ? r.filename.trim() : "file";
     let zipName = `medical-files/${r.id}-${sanitizeName(base)}`;
@@ -99,26 +118,24 @@ export function listProfileMedicalFiles(profileId: number): ExportFile[] {
 // The profile's avatar photo as a bundle file, when one is stored on disk (#466).
 // Confined to PHOTO_ROOT with the same path-traversal guard as the medical files and
 // the serve route; a missing/tampered path yields null (nothing bundled).
-export function getProfilePhotoFile(profileId: number): ExportFile | null {
+export function getProfilePhotoFile(
+  profileId: number,
+  { required = false } = {}
+): ExportFile | null {
   const row = db
     .prepare(`SELECT photo_path FROM profiles WHERE id = ?`)
     .get(profileId) as { photo_path: string | null } | undefined;
   const stored = row?.photo_path;
   if (!stored) return null;
   const abs = path.resolve(process.cwd(), stored);
-  if (abs !== PHOTO_ROOT && !abs.startsWith(PHOTO_ROOT + path.sep)) return null;
-  try {
-    const st = fs.statSync(abs);
-    if (!st.isFile()) return null;
-    const ext = abs.split(".").pop()?.toLowerCase();
-    return {
-      zipName: `profile-photo${ext ? `.${sanitizeName(ext)}` : ""}`,
-      absPath: abs,
-      size: st.size,
-    };
-  } catch {
-    return null;
-  }
+  const size = availableFileSize(abs, PHOTO_ROOT, required);
+  if (size === null) return null;
+  const ext = abs.split(".").pop()?.toLowerCase();
+  return {
+    zipName: `profile-photo${ext ? `.${sanitizeName(ext)}` : ""}`,
+    absPath: abs,
+    size,
+  };
 }
 
 // ── Opt-in media bundle (#1846) ────────────────────────────────────────────────
@@ -248,7 +265,10 @@ function mediaDomainRootFor(domain: MediaDomain): string {
 // Posters and thumbnails are DERIVED artifacts and are deliberately not bundled —
 // the original capture is the record, and a viewer re-derives the rest.
 //
-export function listProfileMediaFiles(profileId: number): MediaExportFile[] {
+export function listProfileMediaFiles(
+  profileId: number,
+  { required = false } = {}
+): MediaExportFile[] {
   const out: MediaExportFile[] = [];
   const seenNames = new Set<string>();
   for (const domain of MEDIA_DOMAINS) {
@@ -261,15 +281,8 @@ export function listProfileMediaFiles(profileId: number): MediaExportFile[] {
       .all(profileId) as MediaRow[];
     for (const r of rows) {
       const abs = path.resolve(process.cwd(), r.stored_path);
-      if (!abs.startsWith(profileRoot + path.sep)) continue;
-      let size = 0;
-      try {
-        const st = fs.statSync(abs);
-        if (!st.isFile()) continue;
-        size = st.size;
-      } catch {
-        continue; // vanished from disk
-      }
+      const size = availableFileSize(abs, profileRoot, required);
+      if (size === null) continue;
       const base = sanitizeName(path.basename(r.stored_path)) || "file";
       let zipName = `media/${domain}/${r.id}-${base}`;
       let n = 1;
@@ -554,7 +567,7 @@ export interface ExportSnapshot {
 export function collectExportSnapshot(
   profileId: number,
   profileName: string,
-  opts: { includeMedia?: boolean } = {}
+  opts: { includeMedia?: boolean; requiredFiles?: boolean } = {}
 ): ExportSnapshot {
   return readTx((): ExportSnapshot => ({
     // Export is a data-access surface: every profile can retrieve its own
@@ -565,9 +578,13 @@ export function collectExportSnapshot(
       rows: ds.rows(profileId),
     })),
     fhirInput: collectFhirExportInput(profileId, profileName),
-    files: listProfileMedicalFiles(profileId),
-    profilePhoto: getProfilePhotoFile(profileId),
+    files: listProfileMedicalFiles(profileId, { required: opts.requiredFiles }),
+    profilePhoto: getProfilePhotoFile(profileId, {
+      required: opts.requiredFiles,
+    }),
     // Media stays OUT unless this download explicitly opted in (#1846).
-    media: opts.includeMedia ? listProfileMediaFiles(profileId) : null,
+    media: opts.includeMedia
+      ? listProfileMediaFiles(profileId, { required: opts.requiredFiles })
+      : null,
   }));
 }

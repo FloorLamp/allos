@@ -45,3 +45,15 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies"]
+    commit-message:
+      prefix: ""
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
