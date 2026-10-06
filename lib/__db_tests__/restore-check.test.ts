@@ -42,7 +42,7 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZioAAAAASUVORK5CYII=",
   "base64"
 );
-function probe(limitFileWrites = false) {
+function probe(limitFileWrites = false, systemTemp?: string) {
   const argv = [path.join(buildRoot, "probe.cjs"), root];
   return spawnSync(
     limitFileWrites ? "/bin/sh" : process.execPath,
@@ -61,6 +61,9 @@ function probe(limitFileWrites = false) {
         NODE_ENV: "production",
         NODE_PATH: path.resolve("node_modules"),
         ALLOS_DB_PATH: path.join(root, "must-not-open.db"),
+        ...(systemTemp
+          ? { TMPDIR: systemTemp, TMP: systemTemp, TEMP: systemTemp }
+          : {}),
       },
       encoding: "utf8",
       timeout: 20000,
@@ -98,19 +101,28 @@ afterEach(() => {
 });
 
 describe("isolated application restore entrypoint", () => {
-  it("boots the restored schema and reads profile files without writing the supplied checkpoint or ambient DB", () => {
-    const before = digest(path.join(root, "allos.db")),
-      files = fs.readdirSync(root);
-    const result = probe();
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout.trim().split("\n").at(-1)!)).toMatchObject({
-      ok: true,
-      schemaVersion: MIGRATIONS.length,
-      files: 1,
-    });
-    expect(digest(path.join(root, "allos.db"))).toBe(before);
-    expect(fs.readdirSync(root)).toEqual(files);
-  });
+  it.each(["default", "unavailable"])(
+    "boots and reads profile files with %s system temp storage without changing the supplied checkpoint",
+    (storage) => {
+      const before = digest(path.join(root, "allos.db")),
+        files = fs.readdirSync(root);
+      const unavailable = path.join(root, "unavailable-temp");
+      const result = probe(
+        false,
+        storage === "unavailable" ? unavailable : undefined
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(result.stdout.trim().split("\n").at(-1)!)
+      ).toMatchObject({
+        ok: true,
+        schemaVersion: MIGRATIONS.length,
+        files: 1,
+      });
+      expect(digest(path.join(root, "allos.db"))).toBe(before);
+      expect(fs.readdirSync(root)).toEqual(files);
+    }
+  );
 
   it.each([
     "missing upload",

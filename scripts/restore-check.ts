@@ -1,6 +1,5 @@
 // Verify a supplied checkpoint through the real restore core, startup and profile readers in a disposable workspace.
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { interpretIntegrityRows } from "../lib/backup-verify";
@@ -9,7 +8,8 @@ import { MIGRATIONS } from "../lib/migrations/versions";
 
 async function main() {
   const input = path.resolve(process.argv[2] ?? "/app/data");
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "allos-restore-"));
+  // Liftoff supplies a writable restore copy; keep database scratch off the bounded /tmp filesystem.
+  const workspace = fs.mkdtempSync(path.join(input, ".allos-restore-"));
   const originalCwd = process.cwd();
   let connection: Database.Database | undefined;
   try {
@@ -42,7 +42,7 @@ async function main() {
       force: false,
     });
     const uploads = path.join(input, "uploads");
-    // Liftoff already supplies an isolated read-only tree; cloning it again exhausts probe scratch space.
+    // Read uploads from the supplied restore copy rather than duplicating them in scratch.
     if (fs.existsSync(uploads))
       fs.symlinkSync(uploads, path.join(workspace, "data", "uploads"), "dir");
 
