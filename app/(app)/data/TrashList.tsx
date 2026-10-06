@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Button from "@/components/Button";
 import NotesText from "@/components/NotesText";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -106,33 +107,28 @@ function TrashRow({ entry }: { entry: TrashEntry }) {
         )}
       </div>
       <div className="flex shrink-0 gap-2">
-        <button
-          type="button"
-          className="btn-ghost"
+        <Button
           disabled={pending}
           onClick={onRestore}
           data-testid="trash-restore"
         >
           Restore
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           // THE QUIET DESTRUCTIVE TREATMENT, not the saturated fill (#3491 item 4).
           // The design system already says a destructive verb is never a standing
           // red button beside a record and always confirms (#3374/#3408); this row
           // was the counter-example, and on a surface whose whole purpose is
           // recovery it shouted down Restore once per row. The alarm lives where
           // the irreversible step is taken — the confirm dialog's `danger: true`
-          // action — and the row wears the same ghost-plus-rose-text Delete the
-          // history rows use (CycleHistoryRow, RoutinesManager, FamilyManager,
-          // EquipmentDetailActions, ImportDetailActions, FrequencyTargets).
-          className="btn-ghost text-rose-600 dark:text-rose-400"
+          // action — and the row wears the secondary rank Restore does (#4978
+          // rulings 5 and 10: no red-tinted ghost; a per-row destructive is quiet).
           disabled={pending}
           onClick={onPurge}
           data-testid="trash-purge"
         >
           Delete permanently
-        </button>
+        </Button>
       </div>
     </li>
   );
@@ -169,15 +165,13 @@ export default function TrashList({ entries }: { entries: TrashEntry[] }) {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {entries.length} deleted {entries.length === 1 ? "row" : "rows"}
         </p>
-        <button
-          type="button"
-          className="btn-ghost"
+        <Button
           disabled={pending}
           onClick={onEmpty}
           data-testid="trash-empty-all"
         >
           Empty trash
-        </button>
+        </Button>
       </div>
       <ul className="space-y-2">
         {entries.map((e) => (

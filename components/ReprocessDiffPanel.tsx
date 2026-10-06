@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { IconRefresh } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import {
   previewReprocess,
   applyReprocessPreview,
@@ -65,16 +66,14 @@ export default function ReprocessDiffPanel({
     <div>
       {result == null && (
         <div className="space-y-2">
-          <button
-            type="button"
+          <Button
             onClick={preview}
             disabled={busy}
             data-testid="reprocess-preview"
-            className="btn-ghost inline-flex items-center gap-1.5 text-sm"
           >
             <IconRefresh className="h-4 w-4" />
             {previewing ? "Preparing preview…" : "Preview changes"}
-          </button>
+          </Button>
           {subtext && (
             <p
               data-testid="preview-subtext"
@@ -100,23 +99,17 @@ export default function ReprocessDiffPanel({
             {result.message}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => commit(result)}
               disabled={busy}
               data-testid="reprocess-anyway"
-              className="btn inline-flex items-center gap-1.5 text-sm"
             >
               {committing ? "Re-extracting…" : "Re-extract anyway"}
-            </button>
-            <button
-              type="button"
-              onClick={cancel}
-              disabled={busy}
-              className="btn-ghost text-sm"
-            >
+            </Button>
+            <Button onClick={cancel} disabled={busy}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -183,26 +176,20 @@ export default function ReprocessDiffPanel({
           )}
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => commit(result)}
               disabled={
                 busy || reprocessPreviewView(result.diff).commitDisabled
               }
               data-testid="reprocess-commit"
-              className="btn inline-flex items-center gap-1.5 text-sm"
             >
               <IconRefresh className="h-4 w-4" />
               {committing ? "Saving…" : "Save changes"}
-            </button>
-            <button
-              type="button"
-              onClick={cancel}
-              disabled={busy}
-              className="btn-ghost text-sm"
-            >
+            </Button>
+            <Button onClick={cancel} disabled={busy}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

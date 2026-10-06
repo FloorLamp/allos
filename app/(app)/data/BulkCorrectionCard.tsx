@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { IconAdjustments } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import DateField from "@/components/DateField";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
 import {
@@ -318,36 +319,31 @@ export default function BulkCorrectionCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn btn-sm"
+        <Button
           data-testid="bulk-correction-preview"
           onClick={onPreview}
           disabled={pending}
         >
           Preview changes
-        </button>
+        </Button>
         {preview?.ok && (
-          <button
-            type="button"
-            className="btn btn-sm"
+          <Button
+            variant="primary"
             data-testid="bulk-correction-apply"
             onClick={onApply}
             disabled={pending}
           >
             Apply to {preview.count} {preview.count === 1 ? "row" : "rows"}
-          </button>
+          </Button>
         )}
         {applied && (
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
+          <Button
             data-testid="bulk-correction-undo"
             onClick={onUndo}
             disabled={pending}
           >
             Undo this correction
-          </button>
+          </Button>
         )}
       </div>
 

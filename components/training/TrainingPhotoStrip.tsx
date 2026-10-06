@@ -261,7 +261,6 @@ export default function TrainingPhotoStrip({
             triggerTestId="training-photo-add"
             inputTestId="training-photo-input"
             inputId="training-photo-file-input"
-            className="btn-ghost btn-sm"
             multiple
             disabled={pending}
             onConfirm={onPick}

@@ -209,8 +209,9 @@ const KIND_NOUN: Record<CoverageGapKind, string> = {
 export interface CatalogRequest {
   title: string;
   body: string;
-  // A prefilled "new issue" URL the user reviews then submits themselves.
-  issueUrl: string;
+  // A prefilled "new issue" URL the user reviews then submits themselves. Typed
+  // as an absolute URL so it can be a link's href under typed routes.
+  issueUrl: `https://${string}`;
 }
 
 export function buildCatalogRequest(
@@ -233,11 +234,13 @@ export function buildCatalogRequest(
     `the item's public clinical name/code — no personal values, dates, or profile`,
     `data.`,
   ].join("\n");
+  const query = [
+    `title=${encodeURIComponent(title)}`,
+    `body=${encodeURIComponent(body)}`,
+    `labels=${encodeURIComponent("catalog-coverage")}`,
+  ].join("&");
   const issueUrl =
-    `https://github.com/${REPO_SLUG}/issues/new?` +
-    `title=${encodeURIComponent(title)}` +
-    `&body=${encodeURIComponent(body)}` +
-    `&labels=${encodeURIComponent("catalog-coverage")}`;
+    `https://github.com/${REPO_SLUG}/issues/new?${query}` as const;
   return { title, body, issueUrl };
 }
 

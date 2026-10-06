@@ -4,6 +4,7 @@ import { useState } from "react";
 import { lookupRxcui } from "@/app/(app)/nutrition/intake-actions";
 import { adoptImportedMedicationName } from "@/app/(app)/import/name-actions";
 import { isCleanerName } from "@/lib/imported-name";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 
 // Keep the imported name until a person confirms a candidate from the shared RxNorm
@@ -90,15 +91,13 @@ export default function ImportedNameOffer({
         {/* Offered again after an accepted rename, deliberately: a better concept
             may exist, and the action's COALESCE keeps the DOCUMENT's label as the
             preserved one however many times somebody re-picks. */}
-        <button
-          type="button"
+        <Button
           data-testid="imported-name-find"
-          className="btn-ghost px-2 py-0.5 text-xs"
           onClick={() => void find()}
           disabled={loading}
         >
           {loading ? "Looking up…" : "Find a clearer name"}
-        </button>
+        </Button>
       </div>
       {sourceName && (
         <p
@@ -147,15 +146,13 @@ export default function ImportedNameOffer({
                   · {c.rxcui}
                 </span>
               </span>
-              <button
-                type="button"
+              <Button
                 data-testid={`imported-name-use-${c.rxcui}`}
-                className="btn-ghost px-2 py-0.5 text-xs"
                 onClick={() => void use(c)}
                 disabled={busy != null}
               >
                 {busy === c.rxcui ? "Renaming…" : "Use this name"}
-              </button>
+              </Button>
             </div>
           ))}
         </div>

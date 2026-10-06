@@ -302,7 +302,6 @@ export default function SymptomPhotoStrip({
             triggerTestId="symptom-photo-add"
             inputTestId="symptom-photo-input"
             inputId="episode-symptom-photo-input"
-            className="btn-ghost btn-sm"
             multiple
             disabled={pending}
             onConfirm={onPick}

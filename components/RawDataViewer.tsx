@@ -18,6 +18,7 @@ import {
   rawDownload,
   type JsonKind,
 } from "@/lib/raw-data-tree";
+import Button from "@/components/Button";
 
 // #1318 — ONE raw-data viewer for every raw payload / raw-extraction surface,
 // replacing the bare <pre> dumps. Sniffs JSON vs XML vs plain text once
@@ -403,30 +404,15 @@ export default function RawDataViewer({
       <div className="flex flex-wrap items-center gap-2">
         {isTree && (
           <>
-            <button
-              type="button"
-              onClick={expandAll}
-              data-testid="raw-expand-all"
-              className="btn-ghost text-xs"
-            >
+            <Button onClick={expandAll} data-testid="raw-expand-all">
               Expand all
-            </button>
-            <button
-              type="button"
-              onClick={collapseAll}
-              data-testid="raw-collapse-all"
-              className="btn-ghost text-xs"
-            >
+            </Button>
+            <Button onClick={collapseAll} data-testid="raw-collapse-all">
               Collapse all
-            </button>
+            </Button>
           </>
         )}
-        <button
-          type="button"
-          onClick={onCopy}
-          data-testid="raw-copy"
-          className="btn-ghost inline-flex items-center gap-1 text-xs"
-        >
+        <Button onClick={onCopy} data-testid="raw-copy">
           {copied ? (
             <>
               <IconCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -437,21 +423,19 @@ export default function RawDataViewer({
               <IconCopy className="h-3.5 w-3.5" /> Copy
             </>
           )}
-        </button>
+        </Button>
         {/* Save-to-file. The Data → Manage exports are plain <a href download> links
             because a server route generates those files; here the payload is already
             in memory on the client (the import page hands it in as a prop, with no
             route to link to), so this builds the file locally instead. Same
             IconDownload affordance. */}
-        <button
-          type="button"
+        <Button
           onClick={() => downloadText(text, download.filename, download.mime)}
           data-testid="raw-download"
-          className="btn-ghost inline-flex max-w-full flex-wrap items-center gap-1 text-left text-xs wrap-break-word"
         >
           <IconDownload className="h-3.5 w-3.5" /> {download.label} ·{" "}
           {download.filename}
-        </button>
+        </Button>
       </div>
 
       {large && isTree && (

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { IconDownload, IconPencil, IconTrash } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import ScrollFade from "@/components/ScrollFade";
 import {
@@ -248,14 +249,13 @@ export default function DataTableManager({
                 onCancel={() => setConfirm(null)}
               />
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 disabled={busy}
                 onClick={() => setConfirm("all")}
-                className="btn-danger btn-sm"
               >
                 <IconTrash className="h-4 w-4" /> Delete all
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -359,22 +359,12 @@ function ConfirmInline({
   return (
     <span className="inline-flex items-center gap-2">
       <span className="text-slate-600 dark:text-slate-300">{label}</span>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onConfirm}
-        className="btn-danger btn-sm"
-      >
+      <Button variant="danger" disabled={busy} onClick={onConfirm}>
         {busy ? "Deleting…" : confirmLabel}
-      </button>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onCancel}
-        className="btn-ghost"
-      >
+      </Button>
+      <Button disabled={busy} onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
     </span>
   );
 }
