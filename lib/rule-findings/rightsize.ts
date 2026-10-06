@@ -12,7 +12,7 @@ import type { Finding } from "../findings";
 import {
   trainingTabHref,
   nutritionTabHref,
-  PRACTICES_HREF,
+  historyHref,
   type AppRoute,
 } from "../hrefs";
 import {
@@ -32,7 +32,11 @@ const RIGHTSIZE_ACTION: Record<
   RightSizeDomain,
   { href: AppRoute; label: string }
 > = {
-  practice: { href: PRACTICES_HREF, label: "Open practices" },
+  // The suggestion's own card renders on History's practice view (#5668).
+  practice: {
+    href: historyHref({ kind: "practice" }),
+    label: "Open practices",
+  },
   training: {
     href: trainingTabHref("plan", "goals"),
     label: "Open weekly targets",

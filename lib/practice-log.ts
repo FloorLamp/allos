@@ -104,8 +104,8 @@ export function logPracticeSession(
   practice: string,
   date: string,
   // WHICH SURFACE LOGGED THIS SESSION (#3087) — required, no default. The one-tap
-  // button is mounted on the Wellness page, the dashboard practice card and the
-  // quick-log sheet, so this is the only thing that tells the three apart afterwards.
+  // button is mounted on the protocol rows, Upcoming and the quick-log sheet, so this
+  // is the only thing that tells them apart afterwards.
   loggedVia: LoggedVia,
   opts: {
     startTime?: string | null;

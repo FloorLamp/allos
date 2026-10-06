@@ -22,10 +22,10 @@ import {
   savePractice,
   startPracticeLive,
   untrackPractice,
-} from "@/app/(app)/wellness/actions";
+} from "@/app/(app)/practice-actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { deleteProfile } from "@/app/(app)/settings/family/actions";
-import { getWellnessPractices } from "@/lib/queries/wellness";
+import { getTrackedPractices } from "@/lib/queries/wellness";
 import { practiceSignalKey } from "@/lib/practice";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { now as clockNow } from "@/lib/clock";
@@ -368,12 +368,8 @@ describe("logPractice action (#1259)", () => {
         )
         .get(profile.id, practiceSignalKey(restoredTarget.id))
     ).toEqual({ snooze_until: today(profile.id) });
-    expect(getWellnessPractices(profile.id)).toMatchObject([
-      {
-        name: "Breathwork",
-        targetId: restoredTarget.id,
-        sessionCount: 2,
-      },
+    expect(getTrackedPractices(profile.id)).toMatchObject([
+      { name: "Breathwork", targetId: restoredTarget.id },
     ]);
   });
 
@@ -388,17 +384,9 @@ describe("logPractice action (#1259)", () => {
     expect(deleted.error).toBeUndefined();
     expect(deleted.undoId).toEqual(expect.any(Number));
     expect(rows(profile.id)).toHaveLength(0);
-    expect(getWellnessPractices(profile.id)).toEqual([]);
 
     expect(await undoDelete(deleted.undoId!)).toEqual({ ok: true });
     expect(rows(profile.id)).toHaveLength(2);
-    expect(getWellnessPractices(profile.id)).toMatchObject([
-      {
-        targetId: null,
-        perWeek: null,
-        sessionCount: 2,
-      },
-    ]);
     expect(
       db
         .prepare(

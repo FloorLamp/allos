@@ -88,11 +88,6 @@ const SURFACES: Surface[] = [
     subject: '[data-testid="timeline-day-nav"]',
   },
   {
-    route: "/wellness",
-    why: "A plain index page under the default gutters: the shell with nothing overriding it.",
-    subject: '[data-testid="practice-create-trigger"]',
-  },
-  {
     route: "/nutrition?tab=supplements",
     why: "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
     subject: '[data-testid="supplement-add-toggle"]',

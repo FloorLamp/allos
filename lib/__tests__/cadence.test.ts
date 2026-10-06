@@ -25,7 +25,6 @@ import {
 } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import { substanceCapStatus } from "../substance-use";
-import { practiceWeekVerdict } from "../trends-practices";
 
 // The declared axes under the one cadence ledger (#2034): the scope registry, the
 // direction parameter that replaced a fourth module, and the anti-nudge guarantee
@@ -139,20 +138,6 @@ describe("the direction axis", () => {
     expect(cadenceVerdict({ direction: "cap", count: 1, target: 0 })).toBe(
       "over-cap"
     );
-  });
-
-  it("IS the practice lens's verdict, not a parallel vocabulary", () => {
-    for (const count of [0, 2, 3, 5, 9]) {
-      expect(practiceWeekVerdict(count, 3, 5)).toBe(
-        cadenceVerdict({
-          direction: "floor",
-          count,
-          target: 3,
-          ceiling: 5,
-          elapsedDays: 7,
-        })
-      );
-    }
   });
 });
 

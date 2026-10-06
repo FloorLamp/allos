@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { detectMilestones } from "@/lib/milestones";
 import * as streak from "@/lib/streak";
-import { summarizePracticeWeeks } from "@/lib/trends-practices";
 
 // The guard that replaces the #1398 variant-wiring scan. That issue's problem —
 // two engines feeding the one word "streak" — dissolved when the word stopped
@@ -76,7 +75,6 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
       "app/(app)/training/TrainingLogFilterBar.tsx",
       "app/(app)/training/HistorySection.tsx",
       "components/AdherenceRefill.tsx",
-      "components/practices/PracticeTrends.tsx",
       "lib/trends-practices.ts",
     ];
     for (const rel of surfaces) {
@@ -88,21 +86,6 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
         /streak/i
       );
     }
-  });
-
-  it("practice consistency is a rate with no run in it (#1966)", () => {
-    // The survivor pin for this domain, the half that matters: the weekly cadence
-    // ledger and its met-week COUNT stay — only the run derived from them went.
-    // Exercised rather than grepped, because "the streak is gone" and "the
-    // tracking is gone" are one careless diff apart.
-    const ledger = summarizePracticeWeeks([
-      { verdict: "met" },
-      { verdict: "at-ceiling" },
-      { verdict: "under" },
-      { verdict: "met" },
-    ]);
-    expect(ledger).toEqual({ weeks: 4, met: 3, rate: 0.75 });
-    expect(Object.keys(ledger).some((k) => /streak/i.test(k))).toBe(false);
   });
 
   it("the milestone engine mints no run-shaped recognition", () => {

@@ -113,9 +113,9 @@ export function practiceSpellingsFor(
 // vocabulary and the same identity can hold several stored spellings, so which one a
 // surface shows is a decision, not a lookup: the TARGET's spelling wins (the user
 // typed it when they set the cadence), else the most recent session's spelling, else
-// the folded identity itself as a last resort. Shared by the Wellness page aggregate
-// and the search fan-out (#1595) so a practice can never be named one thing on its
-// card and another in the palette.
+// the folded identity itself as a last resort. Shared by the quick surfaces' practice
+// list and the search fan-out (#1595) so a practice can never be named one thing on
+// its row and another in the palette.
 export function practiceDisplayName(input: {
   targetSpelling?: string | null;
   latestSpelling?: string | null;

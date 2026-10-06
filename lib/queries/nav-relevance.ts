@@ -5,7 +5,7 @@
 // only reads the DB state they need. Cheap by construction — focused EXISTS
 // probes plus the profile-settings attribute reads, once per layout render.
 
-import { db, hoistedStatement } from "../db";
+import { hoistedStatement } from "../db";
 import {
   getProfileAge,
   getProfileReproductiveStatus,
@@ -14,7 +14,6 @@ import {
 import {
   cycleTrackingRelevant,
   specialtyRelevanceForView,
-  wellnessTrackingRelevant,
   type NavRelevance,
   type SpecialtyRelevance,
 } from "../nav-relevance";
@@ -74,18 +73,6 @@ function hasDentalContent(profileId: number): boolean {
 // gone). Skin and Mental health carry no bit — their /records sections render
 // unconditionally because their in-page forms are the only creation path.
 export function getNavRelevance(profileId: number): NavRelevance {
-  const hasPracticeTargets =
-    db
-      .prepare(
-        `SELECT 1 FROM frequency_targets
-         WHERE profile_id = ? AND scope_kind = 'practice'
-         LIMIT 1`
-      )
-      .get(profileId) != null;
-  const hasPracticeLogs =
-    db
-      .prepare(`SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1`)
-      .get(profileId) != null;
   return {
     cycle: getCycleTrackingRelevance(profileId),
     vision: hasVisionContent(profileId),
@@ -94,11 +81,6 @@ export function getNavRelevance(profileId: number): NavRelevance {
     sleep: hasSleepData(profileId),
     // Data presence only (any progress photo) — the #1119 Progress-photos gate.
     progress: hasProgressPhotos(profileId),
-    // Either half of the practice store makes its daily home relevant (#1620).
-    wellness: wellnessTrackingRelevant({
-      hasPracticeTargets,
-      hasPracticeLogs,
-    }),
   };
 }
 

@@ -83,7 +83,7 @@ vi.mock("@/app/(app)/nutrition/actions", () => ({
     return { ok: true, undoId: 1 };
   },
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   editPracticeSession: async (fd: FormData) => {
     record("editPracticeSession")(fd);
     return { kind: "updated" };

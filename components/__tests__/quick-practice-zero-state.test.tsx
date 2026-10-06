@@ -2,16 +2,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickPracticeList from "@/components/quick-entry/QuickPracticeList";
 import { ToastProvider } from "@/components/Toast";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 
-// THE FIRST-PRACTICE DOOR (#3066). `/wellness`'s nav row is gated on practice state
-// (#1620, correct for an empty ledger) and every other route onto practices —
-// the Telegram nudges, the habits widget, the trends lens (the frequent-pages row
-// was a fourth until #4102 retired it) —
-// needs a practice to already exist. The quick-log sheet's "Log practice" row is
-// always visible, so the bootstrap lives here: nothing tracked renders the create
-// form, and it must NOT keep rendering it once a practice exists (a bootstrap, not a
-// permanent second door onto Wellness's own editor).
+// THE FIRST-PRACTICE DOOR (#3066). The quick-log sheet's "Log practice" row is always
+// visible, so the bootstrap lives here: nothing tracked renders the create form
+// inline, and once a practice exists the list renders instead, with Add practice
+// behind its own control (#5668).
 
 const SAUNA: TrackedPractice = {
   targetId: 1,
@@ -64,7 +61,9 @@ describe("the quick-log practice body", () => {
   ])("$state -> create form rendered: $create", ({ practices, create }) => {
     render(
       <ToastProvider>
-        <QuickPracticeList practices={practices} today="2026-08-27" />
+        <ConfirmProvider>
+          <QuickPracticeList practices={practices} today="2026-08-27" />
+        </ConfirmProvider>
       </ToastProvider>
     );
     expect(screen.queryByTestId("practice-create-form") != null).toBe(create);

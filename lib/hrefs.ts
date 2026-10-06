@@ -431,7 +431,7 @@ export function dayHistoryAddHref(
   date: string
 ): AppRoute {
   const param =
-    kind === "dose" ? "backfill" : kind === "practice" ? "log" : "date";
+    kind === "dose" ? "backfill" : kind === "practice" ? "day" : "date";
   const separator = String(base).includes("?") ? "&" : "?";
   return `${base}${separator}${param}=${encodeURIComponent(date)}` as AppRoute;
 }
@@ -582,11 +582,11 @@ export function equipmentHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
-// Where wellness PRACTICES live — the same address the Upcoming `practice:<id>` item
-// and the search hit already point at. The ONE encoding of that seam (#285's
-// rule-carrying link), so the practice nudge's deep link (#1718) can't drift from the
-// item it is the push twin of.
-export const PRACTICES_HREF: AppRoute = "/wellness";
+// Where wellness PRACTICES live: the quick-log sheet's practice list, which logs,
+// adds and edits them (#5668). The Upcoming `practice:<id>` item and the search hit
+// point here too. The ONE encoding of that seam (#285's rule-carrying link), so the
+// practice nudge's deep link (#1718) can't drift from the item it is the push twin of.
+export const PRACTICES_HREF: AppRoute = "/?quick=log-practice";
 
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {

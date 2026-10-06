@@ -4,7 +4,6 @@ import Database from "better-sqlite3";
 import {
   dismissToast,
   expectNoClippedContent,
-  followLink,
   hydratedClick,
   settledBoxes,
   settledClick,
@@ -23,146 +22,183 @@ import { frozenNow, workerDbPath } from "./worker-env";
 import { zonedDateParts, zonedWallTimeToUtc } from "@/lib/date";
 import { practiceIdentity } from "@/lib/practice";
 
-async function openPracticeCreate(page: Page) {
-  await page.getByTestId("practice-create-trigger").click();
-  const form = page.getByTestId("practice-create-form");
-  await expect(form).toBeVisible();
-  return form;
+// THE PRACTICE CATALOG LIVES IN THE QUICK-LOG SHEET (#5668). The Wellness page
+// retired: its practice list, create and edit moved into the sheet's practice rows,
+// and its history and backfill moved to History's practice view and day view.
+
+function openDb(): Database.Database {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  return db;
 }
 
-// Open one of these rows' ⋯ menus, then click an item in it (#2632).
-//
-// Both halves were missing, and each hid the other:
-//
-//  • The trigger is an OverflowMenu toggle whose `onClick` exists only once React
-//    has hydrated the card, so a raw `.click()` inside the #500/#830 window is
-//    SWALLOWED. That is decision-tree case 3's `hydratedClick` sub-case — the shape
-//    every other overflow-menu spec in this suite already uses. A retry loop is not
-//    available here: a second tap on a toggle closes what the first opened, which
-//    is the whole reason hydratedClick exists.
-//  • The item lives in a portal mounted only while the menu is OPEN, so waiting on
-//    the ITEM cannot distinguish "the menu never opened" from "the item is slow" —
-//    both read as one 30s `waiting for getByTestId(...)` with no actionability
-//    lines after it, which is exactly what CI reported. Waiting on the menu's open
-//    state first makes a swallowed toggle fail as a swallowed toggle.
-async function openRowMenu(page: Page, trigger: Locator) {
-  await hydratedClick(page, trigger);
-  // The panel is portaled to <body>, so it is reached from the page, not the row.
-  await expect(page.getByRole("menu")).toBeVisible();
+// The sheet's practice list, opened the way the palette and a nudge link open it.
+async function openPracticeSheet(page: Page, route = "/") {
+  await page.goto(`${route}?quick=log-practice`);
+  const list = page.getByTestId("quick-entry-practice-list");
+  await expect(list).toBeVisible();
+  return list;
 }
 
-async function choosePracticeAction(
+function practiceRow(list: Locator, name: string): Locator {
+  return list.getByRole("listitem").filter({ hasText: name });
+}
+
+// Open one row's ⋯ and choose an item (#2632). The toggle needs hydration, and the
+// panel is portaled, so it is reached from the page rather than the row.
+async function chooseRowAction(
   page: Page,
-  card: Locator,
-  actionTestId: string
+  row: Locator,
+  name: string,
+  item: string
 ) {
-  await openRowMenu(
+  await hydratedClick(
     page,
-    card.getByTestId("wellness-practice-actions").getByRole("button")
+    row.getByRole("button", { name: `Actions for ${name}` })
   );
-  await page.getByTestId(actionTestId).click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.getByRole("menuitem", { name: item }).click();
 }
 
-test("a relevant Wellness profile can reach its practice home from nav (#1620)", async ({
+test("from the quick-log sheet a person adds a practice, edits it and logs it without leaving (#5668)", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  // Profile 1's seed has both a practice target and session history. Enter through
-  // the actual sidebar rather than page.goto("/wellness"), so dropping the
-  // relevance-gated registration cannot leave the empty/create surface stranded.
-  await page.goto("/");
-  // #3079 demoted Wellness from a top-level row to a child of "Plan & review", so
-  // the sidebar path is now one disclosure longer. Walking that longer path is
-  // exactly what this case is for: it is the claim that dropping the row did not
-  // strand the practice home behind chrome nobody can open.
-  const sidebar = page.locator("aside nav");
-  await sidebar.getByRole("button", { name: "Plan & review" }).click();
-  const wellness = sidebar.getByRole("link", {
-    name: "Wellness",
-    exact: true,
-  });
-  await expect(wellness).toBeVisible();
-  await followLink(page, wellness, /\/wellness$/);
-  await expect(
-    page.getByRole("main").getByRole("heading", { name: "Wellness" })
-  ).toBeVisible();
-  const wellnessPage = page.getByTestId("wellness-page");
-  const [bounds] = await settledBoxes([wellnessPage]);
-  expect(bounds.width).toBeLessThanOrEqual(768);
-
-  // Creation stays out of the reading flow until requested. Its modal combobox
-  // must still paint above the page and modal surfaces.
-  const create = await openPracticeCreate(page);
-  await create.getByLabel("Practice").focus();
-  const listbox = page.getByRole("listbox");
-  await expect(listbox).toBeVisible();
-  const [listboxBounds] = await settledBoxes([listbox]);
-  const listboxIsTopmost = await page.evaluate(
-    ({ x, y }) =>
-      document
-        .elementFromPoint(x, y)
-        ?.closest('[role="listbox"]')
-        ?.getAttribute("role") === "listbox",
-    {
-      x: listboxBounds.x + listboxBounds.width / 2,
-      y: listboxBounds.y + listboxBounds.height - 4,
-    }
-  );
-  expect(listboxIsTopmost).toBe(true);
-  // Escape dismisses the nested picker first, preserving the parent modal and
-  // its typed state. A second Escape closes the modal itself.
-  await page.keyboard.press("Escape");
-  await expect(listbox).toBeHidden();
-  await expect(create).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(create).toHaveCount(0);
-
-  // Long histories start compact, can expand in place, and retain an accessible
-  // row action in the phone layout without a horizontal table swipe.
-  const seededCard = page
-    .getByTestId("wellness-practice-card")
-    .filter({ hasText: "Red light therapy" });
-  const practiceCards = page.getByTestId("wellness-practice-card");
-  await expect(page.getByTestId("practice-heatmap")).toHaveCount(
-    await practiceCards.count()
-  );
-  await expect(
-    seededCard
-      .getByTestId("practice-heatmap")
-      .locator('[data-count]:not([data-count="0"])')
-  ).not.toHaveCount(0);
-  const history = seededCard.getByTestId("practice-session-history");
-  await expect(history.locator("tbody tr")).toHaveCount(5);
-  const toggle = history.getByTestId("practice-session-toggle");
-  await expect(toggle).toHaveText(/View all \d+ sessions/);
-  await toggle.click();
-  expect(await history.locator("tbody tr").count()).toBeGreaterThan(5);
-  await history.getByRole("button", { name: "Show fewer sessions" }).click();
+  test.slow(); // three Server Action writes and a delete, all over one sheet
+  const name = `E2E Catalog ${frozenNow().getTime()}`;
+  const renamed = `${name} Renamed`;
   await page.setViewportSize({ width: 390, height: 844 });
-  // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the responsive shape of any visible session row, not its fixture identity
-  const rowAction = history
-    .locator("tbody tr")
-    .first()
-    .getByRole("button", { name: "Session actions" });
-  // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the responsive shape of any visible session row, not its fixture identity
-  const emptyNotes = history
-    .locator("tbody tr")
-    .first()
-    .locator("td:not([data-card])", { hasText: "—" });
-  await expect(emptyNotes).toBeHidden();
-  await expect(rowAction).toBeVisible();
-  const [actionBounds] = await settledBoxes([rowAction]);
-  expect(actionBounds.x + actionBounds.width).toBeLessThanOrEqual(390);
+  try {
+    const list = await openPracticeSheet(page);
+    const sheet = page.getByTestId("quick-entry-sheet");
+
+    // ADD opens over the sheet. Its picker must paint above both surfaces, and
+    // Escape dismisses the nested picker first, then the dialog — never the sheet.
+    await hydratedClick(
+      page,
+      sheet.getByRole("button", { name: "Add practice" })
+    );
+    const addDialog = page.getByRole("dialog", { name: "Add practice" });
+    const create = addDialog.getByTestId("practice-create-form");
+    await expect(create).toBeVisible();
+    await create.getByLabel("Practice").focus();
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    const [listboxBounds] = await settledBoxes([listbox]);
+    const listboxIsTopmost = await page.evaluate(
+      ({ x, y }) =>
+        document
+          .elementFromPoint(x, y)
+          ?.closest('[role="listbox"]')
+          ?.getAttribute("role") === "listbox",
+      {
+        x: listboxBounds.x + listboxBounds.width / 2,
+        y: listboxBounds.y + listboxBounds.height - 4,
+      }
+    );
+    expect(listboxIsTopmost).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(listbox).toBeHidden();
+    await expect(create).toBeVisible();
+
+    await settledFill(page, create.getByLabel("Practice"), name);
+    await settledFill(page, create.getByLabel("Minimum days"), "3");
+    await settledClick(page, create.getByRole("button", { name: "Save" }));
+    await dismissToast(page, "Practice added");
+    await expect(addDialog).toHaveCount(0);
+    await expect(sheet).toBeVisible();
+    const row = practiceRow(list, name);
+    await expect(row.getByTestId("practice-row-facts")).toHaveText(
+      "0 of 3 this week"
+    );
+
+    // EDIT, from the row's ⋯: the name and the weekly goal.
+    await chooseRowAction(page, row, name, "Edit");
+    const edit = page.getByTestId("practice-edit-form");
+    await expect(edit).toBeVisible();
+    await settledFill(page, edit.getByLabel("Practice"), renamed);
+    await settledFill(page, edit.getByLabel("Minimum days"), "2");
+    await settledClick(
+      page,
+      edit.getByRole("button", { name: "Save changes" })
+    );
+    await dismissToast(page, "Practice updated");
+    await expect(edit).toHaveCount(0);
+    const renamedRow = practiceRow(list, renamed);
+    await expect(renamedRow.getByTestId("practice-row-facts")).toHaveText(
+      "0 of 2 this week"
+    );
+
+    // LOG it, with a duration, from the same row.
+    await hydratedClick(
+      page,
+      renamedRow.getByTestId("practice-duration-toggle")
+    );
+    for (let i = 0; i < 4; i++)
+      await hydratedClick(page, renamedRow.getByTestId("practice-duration-up"));
+    await expect(renamedRow.getByTestId("practice-duration-toggle")).toHaveText(
+      "20 min"
+    );
+    await settledClick(page, renamedRow.getByTestId("practice-log-button"));
+    await dismissToast(page, "Logged today's session");
+    await expect(renamedRow.getByTestId("practice-row-facts")).toHaveText(
+      "1 today · 1 of 2 this week"
+    );
+    // Still on the page the sheet was opened over: nothing navigated.
+    await expect(sheet).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/");
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT duration_min FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+          )
+          .all(renamed)
+      ).toEqual([{ duration_min: 20 }]);
+    } finally {
+      db.close();
+    }
+
+    // And DELETE takes the practice and its session, from the same ⋯.
+    await chooseRowAction(page, renamedRow, renamed, "Delete practice");
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete practice" })
+    );
+    await expect(renamedRow).toHaveCount(0);
+
+    // UNDO brings it back into the open sheet — the list holds its own rows, so the
+    // restore has to re-read them just as the delete did.
+    const toast = page.getByTestId("toast"); // testid-scope-ok: the toast region portals to <body>, outside every streamed boundary
+    await settledClick(
+      page,
+      toast
+        .filter({ hasText: `${renamed} deleted.` })
+        .getByRole("button", { name: "Undo" })
+    );
+    await expect(renamedRow.getByTestId("practice-row-facts")).toHaveText(
+      "1 today · 1 of 2 this week"
+    );
+  } finally {
+    const db = openDb();
+    try {
+      db.prepare(
+        "DELETE FROM practice_logs WHERE profile_id = 1 AND practice IN (?, ?)"
+      ).run(name, renamed);
+      db.prepare(
+        `DELETE FROM frequency_targets
+          WHERE profile_id = 1 AND scope_kind = 'practice' AND scope_value IN (?, ?)`
+      ).run(name, renamed);
+    } finally {
+      db.close();
+    }
+  }
 });
 
-// THE ZERO STATE (#3066). Every other test in this file runs on a profile that
-// already tracks practices — which is exactly how the defect survived: the #1620 nav
-// gate hides /wellness until practice state exists (right, for an empty ledger), and
-// the ONE creation path was on the hidden page, so a profile in this state could
-// reach practices only by typing the URL.
-//
-// Dedicated fixture (#868) whose whole content is an absence, and the test removes
-// the practice it creates, so --repeat-each stays clean.
+// THE ZERO STATE (#3066). Dedicated fixture (#868) whose whole content is an absence,
+// and the test removes the practice it creates, so --repeat-each stays clean.
 test("with nothing tracked, the always-visible quick-log row offers the first practice (#3066)", async ({
   browser,
 }) => {
@@ -173,23 +209,9 @@ test("with nothing tracked, the always-visible quick-log row offers the first pr
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    // The gate, observed rather than assumed. EXPAND THE GROUP FIRST (#3079):
-    // Wellness is a child of "Plan & review", collapsed on "/", so this absence
-    // would read as a pass whether the gate worked or not — the ungated Trends
-    // sibling (#4965; History left this group for a top-level row) proves the
-    // expansion actually happened.
-    await page.goto("/");
-    const sidebarNav = page.locator("aside nav");
-    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
-    await expect(
-      sidebarNav.getByRole("link", { name: "Trends" })
-    ).toBeVisible();
-    await expect(
-      sidebarNav.getByRole("link", { name: "Wellness", exact: true })
-    ).toHaveCount(0);
-
     // The door, at PHONE width — the width the quick-log sheet is designed for and
     // the one a first-capture offer has to survive.
+    await page.goto("/");
     await page.setViewportSize({ width: 390, height: 844 });
     const input = await openCommandPalette(page);
     await input.fill("practice");
@@ -210,22 +232,16 @@ test("with nothing tracked, the always-visible quick-log row offers the first pr
     await expect(page.getByTestId("quick-entry-sheet")).toBeHidden();
     await dismissToast(page, "Practice added");
 
-    // The gate's own rule, unchanged, now answers the other way — and the sheet row
-    // has become the log list it always promised.
+    // The sheet row has become the log list it always promised.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
-    await expect(
-      sidebarNav.getByRole("link", { name: "Wellness", exact: true })
-    ).toBeVisible();
     const reopened = await openCommandPalette(page);
     await reopened.fill("practice");
     await page.getByTestId("palette-action-wellness-practices").click();
     await expect(page.getByTestId("quick-entry-practice-list")).toBeVisible();
     await expect(page.getByTestId("quick-entry-practice-empty")).toHaveCount(0);
   } finally {
-    const handle = new Database(workerDbPath());
-    handle.pragma("busy_timeout = 5000");
+    const handle = openDb();
     try {
       handle
         .prepare(
@@ -241,7 +257,7 @@ test("with nothing tracked, the always-visible quick-log row offers the first pr
   }
 });
 
-test("the command palette opens the practice overlay in place; the deep link keeps the first-practice path (#1620/#2184)", async ({
+test("the command palette opens the practice overlay in place (#1620/#2184)", async ({
   page,
 }) => {
   await page.goto("/");
@@ -263,15 +279,6 @@ test("the command palette opens the practice overlay in place; the deep link kee
   );
   await expect(page.getByTestId("quick-entry-practice-list")).toBeVisible();
   expect(page.url()).toBe(dashboardUrl);
-  await page.keyboard.press("Escape");
-
-  // The /wellness?new=1 deep link is untouched (#2184 removes nothing): it still
-  // lands on the page with the create form focused — the first-practice creation
-  // path for a profile with nothing tracked yet.
-  await page.goto("/wellness?new=1");
-  await expect(
-    page.getByTestId("practice-create-form").getByLabel("Practice")
-  ).toBeFocused();
 });
 
 test("practice edits reject invalid cadence and logs-only name collisions (#1618/#1619)", async ({
@@ -280,21 +287,12 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
   // This test is about EDITS. Its two subjects — a tracked practice with a min/max
   // cadence and a logs-only practice to collide with — are seeded straight into the
   // worker DB (#868 spec-owned fixtures), not built through the UI.
-  //
-  // It used to drive two full create round-trips plus a page reload plus an untrack
-  // as setup, and that setup is what kept failing: a 5s post-create ceiling became
-  // 20s, then 45s, then needed test.slow() to make the 45s reachable at all, and
-  // still exhausted it on shard 4 against diffs that cannot touch wellness (#1901).
-  // Seeding makes the setup deterministic and free. Nothing is lost: the create path
-  // is covered by the palette test above, and untrack/delete by the lifecycle test
-  // below.
   const suffix = frozenNow().getTime();
   const trackedName = `E2E Cadence ${suffix}`;
   const historyName = `E2E History ${suffix}`;
   const today = frozenNow().toISOString().slice(0, 10);
 
-  const db = new Database(workerDbPath());
-  db.pragma("busy_timeout = 5000");
+  const db = openDb();
   let trackedTargetId = 0;
   try {
     trackedTargetId = Number(
@@ -306,32 +304,21 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
         )
         .run(trackedName, practiceIdentity(trackedName)).lastInsertRowid
     );
+    // A logs-only practice is exactly sessions with no frequency_targets row — the
+    // collision check reads the union of both stores.
     const logSession = db.prepare(
       `INSERT INTO practice_logs (profile_id, practice, date) VALUES (1, ?, ?)`
     );
-    // One session today for the tracked practice ("1 day this week", "1 session");
-    // two for the logs-only one ("2 sessions"). Today is in the current week under
-    // any week mode, so neither count depends on the week boundary. A logs-only
-    // practice is exactly sessions with no frequency_targets row — the collision
-    // check reads the union of both stores.
-    logSession.run(trackedName, today);
     logSession.run(historyName, today);
     logSession.run(historyName, today);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/wellness");
-    const main = page.getByRole("main");
-    const trackedCard = main
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: trackedName });
-    const historyCard = main
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: historyName });
-    await expect(trackedCard).toBeVisible();
-    await expect(historyCard).toContainText("Session history only");
+    const list = await openPracticeSheet(page);
+    const row = practiceRow(list, trackedName);
+    await expect(row).toBeVisible();
 
-    await choosePracticeAction(page, trackedCard, "wellness-practice-edit");
-    const edit = trackedCard.getByTestId("practice-edit-form");
+    await chooseRowAction(page, row, trackedName, "Edit");
+    const edit = page.getByTestId("practice-edit-form");
     await settledFill(page, edit.getByLabel("Minimum days"), "5");
     await settledFill(page, edit.getByLabel("Maximum days (optional)"), "3");
     await settledClick(
@@ -341,13 +328,8 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
     await expect(edit.getByTestId("practice-save-error")).toHaveText(
       "The weekly maximum must be greater than the minimum."
     );
-    await expect(trackedCard).toContainText(
-      "1 day this week · Target 3–5×/week"
-    );
 
-    // The Practice field is a Combobox, and typing into it opens a listbox that now
-    // carries a measurement pass (#3271) — one more render that can revert a raw
-    // fill before React owns the value. settledFill asserts the value STUCK, so a
+    // The Practice field is a Combobox; settledFill asserts the value STUCK, so a
     // swallowed name cannot quietly re-save the old one and report no collision.
     await settledFill(page, edit.getByLabel("Practice"), historyName);
     await settledFill(page, edit.getByLabel("Minimum days"), "3");
@@ -359,16 +341,22 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
     await expect(edit.getByTestId("practice-save-error")).toHaveText(
       "A practice with that name already exists."
     );
-    await expect(
-      trackedCard.getByTestId("wellness-practice-usage")
-    ).toContainText("1 session");
-    await expect(
-      historyCard.getByTestId("wellness-practice-usage")
-    ).toContainText("2 sessions");
     // A refused edit leaves BOTH definitions alone — the rejection is not a partial
     // write that renamed one of them on the way to failing.
-    await expect(trackedCard).toContainText(trackedName);
-    await expect(historyCard).toContainText(historyName);
+    expect(
+      db
+        .prepare(
+          "SELECT scope_value, per_week, per_week_max FROM frequency_targets WHERE id = ?"
+        )
+        .get(trackedTargetId)
+    ).toEqual({ scope_value: trackedName, per_week: 3, per_week_max: 5 });
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+        )
+        .get(historyName)
+    ).toEqual({ n: 2 });
   } finally {
     db.prepare("DELETE FROM practice_logs WHERE practice IN (?, ?)").run(
       trackedName,
@@ -387,137 +375,81 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   page,
 }) => {
   test.slow();
-  const unique = `E2E Cadence ${frozenNow().getTime()}`;
-  await page.goto("/wellness");
-  const main = page.getByRole("main");
-  await expect(main.getByRole("heading", { name: "Wellness" })).toBeVisible();
+  const unique = `E2E One Tap ${frozenNow().getTime()}`;
+  const db = openDb();
+  const sessions = () =>
+    (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+        )
+        .get(unique) as { n: number }
+    ).n;
+  try {
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week)
+       VALUES (1, 'practice', ?, ?, 3)`
+    ).run(unique, practiceIdentity(unique));
 
-  const create = await openPracticeCreate(page);
-  await create.getByLabel("Practice").fill(unique);
-  await create.getByLabel("Minimum days").fill("3");
-  await settledClick(
-    page,
-    create.getByRole("button", { name: "Save", exact: true })
-  );
+    await page.setViewportSize({ width: 390, height: 844 });
+    let row = practiceRow(await openPracticeSheet(page), unique);
+    const button = row.getByTestId("practice-log-button");
+    await expect(button).toHaveAccessibleName(/^Just finished a /);
+    await expect(row.getByTestId("practice-today-count")).toHaveCount(0);
 
-  const card = main
-    .getByTestId("wellness-practice-card")
-    .filter({ hasText: unique });
-  await expect(card).toBeVisible();
-  const button = card.getByTestId("practice-log-button");
-  const todayLine = card.getByTestId("practice-today-count");
+    // Layer 1 — the fat-finger double. The second tap lands inside the post-success
+    // cooldown and is absorbed: no dialog, and no second session.
+    await button.evaluate((element: HTMLButtonElement) => {
+      element.click();
+      element.click();
+    });
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+    await expect(row.getByTestId("practice-today-count")).toHaveText("1 today");
+    // The cooldown is a rendered state, not a silent onClick return.
+    await expect(button).toBeDisabled();
+    await expect(button).toBeEnabled();
 
-  // Nothing logged yet: the first tap is offered as a first tap.
-  await expect(todayLine).toContainText("No sessions yet");
-  await expect(button).toHaveText("Just finished");
-  await expect(button).toHaveAccessibleName(/^Just finished a /);
+    // Layer 2 — the affordance now renders today's state, so the next tap is visibly
+    // a SECOND one before it is taken.
+    await expect(button).toHaveAccessibleName(/1 already logged today/);
+    expect(sessions()).toBe(1);
 
-  // #2204, owner ruling: the CARD carries the inline stepper too, alongside the
-  // expanded form rather than instead of it. "The modal is one tap away" answered
-  // where the duration field lives; it never answered what the one-tap button wrote,
-  // which was nothing. A brand-new practice has no history and no declared default,
-  // so the stepper starts blank — the app does not invent a duration.
-  const cardDuration = card.getByTestId("practice-duration-input");
-  await expect(cardDuration).toHaveValue("");
-  await expect(card.getByTestId("practice-log-details-trigger")).toBeVisible();
-  for (let i = 0; i < 4; i++)
-    await hydratedClick(page, card.getByTestId("practice-duration-up"));
-  await expect(cardDuration).toHaveValue("20");
+    // Layer 3 — a deliberate second session of the same day ASKS, naming the practice.
+    // A fresh load clears the client cooldown; hydratedClick taps exactly once after
+    // hydration, since a retry could cancel the very confirm it waits for (#2729).
+    row = practiceRow(await openPracticeSheet(page), unique);
+    await hydratedClick(page, row.getByTestId("practice-log-button"));
+    const dialog = page.getByTestId("confirm-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(`You logged ${unique} today`);
+    await hydratedClick(page, dialog.getByRole("button", { name: "Cancel" }));
+    await expect(dialog).toHaveCount(0);
+    expect(sessions()).toBe(1);
 
-  // Layer 1 — the fat-finger double. The second tap lands inside the post-success
-  // cooldown and is absorbed: no dialog, and no second session.
-  await button.evaluate((element: HTMLButtonElement) => {
-    element.click();
-    element.click();
-  });
-  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
-  await expect(todayLine).toContainText("1 session logged");
-  await expect(button).toHaveAccessibleName(/^Just finished another /);
-  // The existing cooldown is a rendered state, not a silent onClick return: a
-  // caller can await readiness without guessing the ledger's two-second window.
-  await expect(button).toBeDisabled();
-  await expect(button).toBeEnabled();
-
-  // Layer 2 — the affordance now renders today's state, so the next tap is visibly
-  // a SECOND one before it is taken.
-  await expect(button).toHaveText("Just finished");
-  await expect(button).toHaveAccessibleName(/1 already logged today/);
-
-  // The pin: exactly one session reached the store. The reload also clears the
-  // client-side cooldown, which is why the next tap below is accepted at all.
-  await page.reload();
-  const reloaded = main
-    .getByTestId("wellness-practice-card")
-    .filter({ hasText: unique });
-  await expect(
-    reloaded.getByTestId("practice-session-history").locator("tbody tr")
-  ).toHaveCount(1);
-
-  // ...carrying the duration the stepper was showing when it was tapped, and the
-  // stepper now starts from that LOGGED value, so accepting it again costs no taps.
-  await expect(reloaded.getByTestId("practice-session-history")).toContainText(
-    "20 min"
-  );
-  await expect(reloaded.getByTestId("practice-duration-input")).toHaveValue(
-    "20"
-  );
-
-  // Layer 3 — a deliberate second session of the same day ASKS, naming the practice.
-  // Cancelling writes nothing: the confirm is a question, not a gate on the write.
-  //
-  // hydratedClick, not a bare click: the `page.reload()` above put this button back
-  // inside the #500/#830 pre-hydration window, and NOTHING between the reload and
-  // here proves React has attached its `onClick`. Every assertion in between — the
-  // history row count, the "20 min" cell, the stepper's value — is satisfied by the
-  // SERVER-rendered markup, so all three pass against a page that is not yet
-  // interactive. A tap lost there is lost for good: the handler never runs, the
-  // dialog never mounts, and the 5 s expect below fails as `element(s) not found`.
-  // That is decision-tree case 3's hydratedClick sub-case, and it is the same lesson
-  // `openRowMenu` above already carries for this spec's ⋯ menus (#2632).
-  //
-  // A retry loop is the wrong repair rather than a heavier one: `useConfirm` settles
-  // the in-flight confirm as CANCELLED when a second request replaces it, so
-  // re-clicking can cancel the very dialog it is waiting for (#2729). hydratedClick
-  // polls for the hydration marker and then clicks exactly ONCE.
-  await hydratedClick(page, reloaded.getByTestId("practice-log-button"));
-  const dialog = page.getByTestId("confirm-dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText(`You logged ${unique} today`);
-  await hydratedClick(page, dialog.getByRole("button", { name: "Cancel" }));
-  await expect(dialog).toHaveCount(0);
-  await expect(
-    reloaded.getByTestId("practice-session-history").locator("tbody tr")
-  ).toHaveCount(1);
-
-  // …and confirming logs the genuine second session (#798: informational, never
-  // permissive — a second sauna is legitimate).
-  // Hydration is already proven by the tap above, but this tap opens the same
-  // non-idempotent confirm and sits one edit away from a reload being introduced
-  // between them — the two taps stay the same shape so neither has to be rediscovered.
-  await hydratedClick(page, reloaded.getByTestId("practice-log-button"));
-  await expect(page.getByTestId("confirm-dialog")).toBeVisible();
-  await settledClick(
-    page,
-    page.getByTestId("confirm-dialog").getByRole("button", {
-      name: "Log session",
-    })
-  );
-  await expect(reloaded.getByTestId("practice-today-count")).toContainText(
-    "2 sessions logged"
-  );
-
-  // Clean up this run's practice and its history.
-  await choosePracticeAction(page, reloaded, "wellness-practice-delete");
-  await settledClick(
-    page,
-    page.getByTestId("confirm-dialog").getByRole("button", {
-      name: "Delete practice",
-    })
-  );
-  await expect(reloaded).toHaveCount(0);
+    // …and confirming logs the genuine second session (#798: informational, never
+    // permissive — a second sauna is legitimate).
+    await hydratedClick(page, row.getByTestId("practice-log-button"));
+    await expect(dialog).toBeVisible();
+    await settledClick(
+      page,
+      dialog.getByRole("button", { name: "Log session" })
+    );
+    await expect(row.getByTestId("practice-today-count")).toHaveText("2 today");
+    expect(sessions()).toBe(2);
+  } finally {
+    db.prepare(
+      "DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+    ).run(unique);
+    db.prepare(
+      `DELETE FROM frequency_targets
+        WHERE profile_id = 1 AND scope_kind = 'practice' AND scope_value = ?`
+    ).run(unique);
+    db.close();
+  }
 });
 
-test("the cross-practice day-history aligns its frozen labels at first paint (#3243)", async ({
+test("History's cross-practice day-history aligns its frozen labels at first paint (#3243)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -533,8 +465,7 @@ test("the cross-practice day-history aligns its frozen labels at first paint (#3
     d.setUTCDate(d.getUTCDate() - back);
     return d.toISOString().slice(0, 10);
   };
-  const db = new Database(workerDbPath());
-  db.pragma("busy_timeout = 5000");
+  const db = openDb();
   try {
     const insert = db.prepare(
       `INSERT INTO practice_logs (profile_id, practice, date, duration_min)
@@ -553,7 +484,7 @@ test("the cross-practice day-history aligns its frozen labels at first paint (#3
     );
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      await page.goto("/wellness");
+      await page.goto("/history?kind=practice");
       await expect(rowA).toHaveCount(1);
       await expect(rowB).toHaveCount(1);
       await expect(
@@ -589,8 +520,7 @@ test("the cross-practice day-history aligns its frozen labels at first paint (#3
     await expect(history).toContainText(
       "Calendar: days you practiced. Matrix: each day by practice."
     );
-    // Same shape as trends-nutrition's row panel, and the same hazard: a client
-    // toggle whose effect is only awaited by a non-retrying `boundingBox()`.
+    // A client toggle whose effect is only awaited by a non-retrying `boundingBox()`.
     await hydratedClick(
       page,
       rowA.getByRole("button", { name: /View occurrences for/ })
@@ -609,37 +539,70 @@ test("the cross-practice day-history aligns its frozen labels at first paint (#3
   }
 });
 
-// A STATED WINDOW REACHES THE DAY'S CHART (#3142). The columns and their consumer
-// ship together (the #2204 "no column without a reader" gate), so the thing worth
-// driving end-to-end is the whole path: the expanded form's Start and End, through
-// the renamed `start_time` / new `end_time`, out onto the day view's intraday panel
-// as a BLOCK — the shape a session with no stated end cannot draw.
-//
-// Spec-owned zero-state profile (#3066), and the test removes both the practice it
-// declares and the session it logs, so --repeat-each stays clean.
+// The zero-practice profile, given one tracked practice and one old session so
+// History's add row offers its Practice chip (a chip is earned by the kind's rows).
+function seedZeroProfilePractice(name: string): void {
+  const handle = openDb();
+  try {
+    const profileId = (
+      handle
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(PRACTICE_ZERO_PROFILE) as { id: number }
+    ).id;
+    handle
+      .prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week)
+         VALUES (?, 'practice', ?, ?, 3)`
+      )
+      .run(profileId, name, practiceIdentity(name));
+    const old = frozenNow();
+    old.setUTCDate(old.getUTCDate() - 20);
+    handle
+      .prepare(
+        "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+      )
+      .run(profileId, name, old.toISOString().slice(0, 10));
+  } finally {
+    handle.close();
+  }
+}
+
+function clearZeroProfilePractices(): void {
+  const handle = openDb();
+  try {
+    const ids = `SELECT id FROM profiles WHERE name = ?`;
+    handle
+      .prepare(`DELETE FROM practice_logs WHERE profile_id IN (${ids})`)
+      .run(PRACTICE_ZERO_PROFILE);
+    handle
+      .prepare(
+        `DELETE FROM frequency_targets
+          WHERE scope_kind = 'practice' AND profile_id IN (${ids})`
+      )
+      .run(PRACTICE_ZERO_PROFILE);
+  } finally {
+    handle.close();
+  }
+}
+
+// A STATED WINDOW REACHES THE DAY'S CHART (#3142): the practice form's Start and End,
+// through `start_time` / `end_time`, out onto the day view's intraday panel as a
+// BLOCK — the shape a session with no stated end cannot draw. The form opens from
+// History's Practice chip (#5668).
 test("a practice logged with Start and End draws a block on the day chart (#3142)", async ({
   browser,
 }) => {
-  test.slow(); // a sign-in, a create, a detailed log and two page loads
+  test.slow(); // a sign-in, a detailed log and two page loads
   const practiceName = `E2E Interval Sauna ${frozenNow().getTime()}`;
+  seedZeroProfilePractice(practiceName);
   const page = await loginAs(browser, {
     username: E2E_LOGIN_PRACTICE_ZERO,
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/wellness");
-    const create = await openPracticeCreate(page);
-    await settledFill(page, create.getByLabel("Practice"), practiceName);
-    await settledClick(page, create.getByRole("button", { name: "Save" }));
-    await dismissToast(page, "Practice added");
-
-    const card = page
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: practiceName });
-    // hydratedClick, not settledClick: the trigger opens a MODAL and posts
-    // nothing, so a POST-correlated wait would time out on a control that behaved
-    // correctly. The modal it reveals is the assertion.
-    await hydratedClick(page, card.getByTestId("practice-log-details-trigger"));
+    await page.goto("/history");
+    await hydratedClick(page, page.getByTestId("history-add-open-practice"));
     const form = page.getByTestId("practice-log-details");
     await expect(form).toBeVisible();
 
@@ -649,14 +612,9 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
     const day = await form.locator('input[name="date"]').inputValue();
     expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // The pair the owner decision put here in place of one "Time". Both are
-    // PROFILE-LOCAL wall clocks, so they need no zone conversion — which is exactly
-    // why the block's minutes below can be asserted as literals.
-    //
-    // TimeField (#4976) posts "start_time"/"end_time" through a hidden input, so
-    // `input[name=...]` now resolves to that — never visible, never fillable. The
-    // visible field a person actually types into is `#practice-start-time` / the
-    // `end-time-input` testid, same as every other TimeRangeFields host.
+    // Both are PROFILE-LOCAL wall clocks, so they need no zone conversion — which is
+    // exactly why the block's minutes below can be asserted as literals. TimeField
+    // (#4976) posts through a hidden input; the visible fields are these.
     await settledFill(page, form.locator("#practice-start-time"), "19:00");
     await settledFill(page, form.getByTestId("end-time-input"), "19:25");
     await settledClick(page, page.getByTestId("practice-log-detailed-submit"));
@@ -674,61 +632,33 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
     await expect(block).toHaveAttribute("data-title", practiceName);
     // A BLOCK AND NOT A TICK is the assertion: a session with a start alone still
     // renders, as a tick, so "the session is on the chart" would pass without the
-    // end ever having been stored. The rail is empty here.
+    // end ever having been stored.
     await expect(chart.getByTestId("intraday-tick")).toHaveCount(0);
   } finally {
-    const handle = new Database(workerDbPath());
-    handle.pragma("busy_timeout = 5000");
-    try {
-      const ids = `SELECT id FROM profiles WHERE name = ?`;
-      handle
-        .prepare(`DELETE FROM practice_logs WHERE profile_id IN (${ids})`)
-        .run(PRACTICE_ZERO_PROFILE);
-      handle
-        .prepare(
-          `DELETE FROM frequency_targets
-            WHERE scope_kind = 'practice' AND profile_id IN (${ids})`
-        )
-        .run(PRACTICE_ZERO_PROFILE);
-    } finally {
-      handle.close();
-    }
+    clearZeroProfilePractices();
     await page.context().close();
   }
 });
 
 // TimeRangeFields' hidden input is a NAMED field the dirty-form registry has to see
-// (#4976), the same gap AppointmentForm's Time had and the same fix — landed inside
-// `TimeField` itself, so this pair regained it for free the moment that fix did.
-// "For free" is exactly how it would silently stop working again: the next change to
-// the marker, the dispatch, or this mount has nothing here to fail against it. START
-// ONLY, nothing else touched — the visible field a person types into carries no
-// `name` at all (it shows a formatted clock, not the "HH:MM" the hidden sibling
-// posts as `start_time`), so a fix that only reached the visible input would leave
-// this red exactly as it did for the appointment form's Time.
+// (#4976). START ONLY, nothing else touched — the visible field a person types into
+// carries no `name`, so a fix that only reached the visible input would leave this red.
 test("typing only the practice form's Start time makes it dirty (#4976)", async ({
   browser,
 }) => {
-  test.slow(); // a sign-in, a create, and a detailed log open
+  test.slow(); // a sign-in and a detailed log open
   const practiceName = `E2E Dirty Start ${frozenNow().getTime()}`;
+  seedZeroProfilePractice(practiceName);
   const page = await loginAs(browser, {
     username: E2E_LOGIN_PRACTICE_ZERO,
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/wellness");
-    const create = await openPracticeCreate(page);
-    await settledFill(page, create.getByLabel("Practice"), practiceName);
-    await settledClick(page, create.getByRole("button", { name: "Save" }));
-    await dismissToast(page, "Practice added");
-
+    await page.goto("/history");
     const registry = page.getByTestId("dirty-form-registry");
     await expect(registry).toHaveAttribute("data-dirty", "0");
 
-    const card = page
-      .getByTestId("wellness-practice-card")
-      .filter({ hasText: practiceName });
-    await hydratedClick(page, card.getByTestId("practice-log-details-trigger"));
+    await hydratedClick(page, page.getByTestId("history-add-open-practice"));
     const form = page.getByTestId("practice-log-details");
     await expect(form).toBeVisible();
     await expect(registry).toHaveAttribute("data-dirty", "0");
@@ -737,18 +667,7 @@ test("typing only the practice form's Start time makes it dirty (#4976)", async 
     await expect(registry).toHaveAttribute("data-dirty", "1");
     await expect(form.locator("#practice-start-time")).toHaveValue("19:00");
   } finally {
-    const handle = new Database(workerDbPath());
-    handle.pragma("busy_timeout = 5000");
-    try {
-      handle
-        .prepare(
-          `DELETE FROM practice_logs WHERE profile_id IN
-             (SELECT id FROM profiles WHERE name = ?)`
-        )
-        .run(PRACTICE_ZERO_PROFILE);
-    } finally {
-      handle.close();
-    }
+    clearZeroProfilePractices();
     await page.context().close();
   }
 });
@@ -756,18 +675,16 @@ test("typing only the practice form's Start time makes it dirty (#4976)", async 
 // THE END BUTTON SURVIVES LOCAL MIDNIGHT (#3143 review, defect 1's user-visible half).
 //
 // A session started at 23:xx and still running at 00:xx is the ordinary evening
-// practice, and the first cut of the lifecycle hid its End button: both gathers asked
-// for a live row whose `date` equalled the profile's today, so the row answered
-// "running" to the store and rendered nothing to the user. A session you cannot end is
-// the whole bug — the DB tier proves the query answers, only a browser proves the
+// practice, and the first cut of the lifecycle hid its End button: the gathers asked
+// for a live row whose `date` equalled the profile's today. A session you cannot end
+// is the whole bug — the DB tier proves the query answers, only a browser proves the
 // button is there and can be tapped.
 //
 // WHY THIS PROFILE HAS ITS OWN CALENDAR. The run pins local time to 13:mm at every UTC
 // start hour (e2e/pinned-timezone.ts), and at 13:00 every live row dated on another day
 // is genuinely abandoned — so the crossing is UNREACHABLE on a pin-following profile.
 // This one sits in the zone where the frozen instant reads 00:mm, declared as
-// `practice-midnight` in e2e/fixture-timezones.ts, and it asserts nothing on the
-// dashboard.
+// `practice-midnight` in e2e/fixture-timezones.ts, and it asserts only on the sheet.
 function midnightZone(frozen: Date): string {
   // The inverse of pinnedTimezone's arithmetic, aimed at 00:mm instead of 13:mm. The
   // POSIX sign is inverted in the Etc names: Etc/GMT-11 is UTC+11.
@@ -795,8 +712,7 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
   // session's day is NOT the profile's today, which is what used to hide the button.
   expect(local.date).not.toBe(localToday);
 
-  const handle = new Database(workerDbPath());
-  handle.pragma("busy_timeout = 5000");
+  const handle = openDb();
   const username = `e2e_practice_midnight_${suffix}`;
   let profileId = 0;
   let logId = 0;
@@ -822,6 +738,14 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
         )
         .run(loginId, profileId);
       setFixtureTimezone(handle, profileId, "practice-midnight", zone);
+      // Tracked, so the quick-log sheet lists it.
+      handle
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', ?, ?, 3)`
+        )
+        .run(profileId, practiceName, practiceIdentity(practiceName));
       logId = Number(
         handle
           .prepare(
@@ -844,20 +768,20 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/wellness");
-      const card = page
-        .getByTestId("wellness-practice-card")
-        .filter({ hasText: practiceName });
-      await expect(card).toBeVisible();
-      // The assertion the day comparison used to fail: the card offers END, not Start.
-      const end = card.getByTestId("practice-end-button");
+      const row = practiceRow(
+        await openPracticeSheet(page, "/history"),
+        practiceName
+      );
+      await expect(row).toBeVisible();
+      // The assertion the day comparison used to fail: the row offers END, not Start.
+      const end = row.getByTestId("practice-end-button");
       await expect(end).toBeVisible();
-      await expect(card.getByTestId("practice-start-button")).toHaveCount(0);
+      await expect(row.getByTestId("practice-start-button")).toHaveCount(0);
 
       await settledClick(page, end);
       await dismissToast(page, "Session finished");
 
-      const row = handle
+      const stored = handle
         .prepare(
           `SELECT date, start_time, end_time, duration_min, live
              FROM practice_logs WHERE id = ?`
@@ -871,14 +795,10 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
       };
       // THE ROW KEEPS THE DAY IT STARTED ON, and its window and its duration are one
       // statement: the end is earlier than the start because the session crossed
-      // midnight, which is exactly what `activityWindow` reads as the crossing.
-      // NOT `LIVE_SESSION_HOURS_AGO * 60`: the stored start is minute-grained and the
-      // frozen instant carries seconds, so the elapsed span is three hours plus those
-      // seconds and rounds to 180 or 181 depending on the run. The expectation is
-      // therefore composed from the STORED start through the same inverse the write
-      // core reads it with, which is the quantity the row is claiming.
+      // midnight. The expectation is composed from the STORED start through the same
+      // inverse the write core reads it with, which is the quantity the row claims.
       const statedStart = zonedWallTimeToUtc(zone, local.date, local.hhmm)!;
-      expect(row).toEqual({
+      expect(stored).toEqual({
         date: local.date,
         start_time: local.hhmm,
         end_time: zonedDateParts(zone, frozenNow()).hhmm,
@@ -887,7 +807,7 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
         ),
         live: 0,
       });
-      expect(row.end_time! < row.start_time).toBe(true);
+      expect(stored.end_time! < stored.start_time).toBe(true);
     } finally {
       await page.context().close();
     }
@@ -895,6 +815,11 @@ test("a live session that crossed local midnight can still be ended (#3143)", as
     try {
       handle
         .prepare("DELETE FROM practice_logs WHERE profile_id = ?")
+        .run(profileId);
+      handle
+        .prepare(
+          "DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'practice'"
+        )
         .run(profileId);
       handle
         .prepare("DELETE FROM profile_settings WHERE profile_id = ?")

@@ -7,7 +7,7 @@ import TimeRangeFields from "@/components/TimeRangeFields";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
-import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
+import { editPracticeSession, logPractice } from "@/app/(app)/practice-actions";
 import { minutesBetween } from "@/lib/activity-meta";
 import { practiceLogOutcomeText } from "@/lib/practice";
 import FormDismissAction from "@/components/FormDismissAction";

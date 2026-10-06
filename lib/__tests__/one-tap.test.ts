@@ -255,11 +255,11 @@ describe("shouldConfirmRelog (#2007 layer 3)", () => {
 });
 
 describe("the re-log confirm copy", () => {
-  it("names the practice, the count and the time when it knows it", () => {
-    expect(practiceRelogMessage("Sauna", 1, "08:12")).toBe(
-      "You logged Sauna today at 08:12. Log another session?"
+  it("names the practice and the count", () => {
+    expect(practiceRelogMessage("Sauna", 1)).toBe(
+      "You logged Sauna today. Log another session?"
     );
-    expect(practiceRelogMessage("Sauna", 2, null)).toBe(
+    expect(practiceRelogMessage("Sauna", 2)).toBe(
       "You logged Sauna 2 times today. Log another session?"
     );
   });

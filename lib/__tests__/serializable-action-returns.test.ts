@@ -139,7 +139,7 @@ import type * as M86 from "@/app/(app)/trends/source-actions";
 import type * as M87 from "@/app/(app)/undo-actions";
 import type * as M88 from "@/app/(app)/upcoming/actions";
 import type * as M89 from "@/app/(app)/visit-link-actions";
-import type * as M90 from "@/app/(app)/wellness/actions";
+import type * as M90 from "@/app/(app)/practice-actions";
 import type * as M91 from "@/app/(app)/whats-new/actions";
 import type * as M92 from "@/app/(auth)/forgot-password/actions";
 import type * as M93 from "@/app/(auth)/login/actions";
@@ -387,7 +387,7 @@ type Census = {
   "app/(app)/undo-actions.ts": Expect<ActionsAreSerializable<typeof M87>>;
   "app/(app)/upcoming/actions.ts": Expect<ActionsAreSerializable<typeof M88>>;
   "app/(app)/visit-link-actions.ts": Expect<ActionsAreSerializable<typeof M89>>;
-  "app/(app)/wellness/actions.ts": Expect<ActionsAreSerializable<typeof M90>>;
+  "app/(app)/practice-actions.ts": Expect<ActionsAreSerializable<typeof M90>>;
   "app/(app)/whats-new/actions.ts": Expect<ActionsAreSerializable<typeof M91>>;
   "app/(auth)/forgot-password/actions.ts": Expect<
     ActionsAreSerializable<typeof M92>
@@ -439,6 +439,7 @@ const CENSUSED_MODULES = [
   "app/(app)/offer-actions.ts",
   "app/(app)/onboarding/actions.ts",
   "app/(app)/palette-actions.ts",
+  "app/(app)/practice-actions.ts",
   "app/(app)/profile-context-actions.ts",
   "app/(app)/profile/actions.ts",
   "app/(app)/progress/actions.ts",
@@ -500,7 +501,6 @@ const CENSUSED_MODULES = [
   "app/(app)/undo-actions.ts",
   "app/(app)/upcoming/actions.ts",
   "app/(app)/visit-link-actions.ts",
-  "app/(app)/wellness/actions.ts",
   "app/(app)/whats-new/actions.ts",
   "app/(auth)/forgot-password/actions.ts",
   "app/(auth)/login/actions.ts",

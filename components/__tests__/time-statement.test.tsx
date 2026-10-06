@@ -67,7 +67,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({ setDoseStatus }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration,
 }));
-vi.mock("@/app/(app)/wellness/actions", () => ({
+vi.mock("@/app/(app)/practice-actions", () => ({
   logPractice,
   startPracticeLive: vi.fn(),
   endPracticeLive: vi.fn(),

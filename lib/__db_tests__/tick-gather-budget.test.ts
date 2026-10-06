@@ -153,12 +153,12 @@ describe("notification tick gather query budget (#5199)", () => {
   // unchanged at their recorded values, which is the control: one persona holds the item,
   // one persona's number moved.
   const DIGEST_BASELINE: Record<string, number> = {
-    bodybuilder: 475,
-    "marathon-runner": 481,
-    household: 424,
-    pregnant: 431,
-    "diabetic-cgm": 456,
-    biohacker: 531,
+    bodybuilder: 473,
+    "marathon-runner": 479,
+    household: 422,
+    pregnant: 429,
+    "diabetic-cgm": 454,
+    biohacker: 529,
   };
   const RECAP_BASELINE: Record<string, number> = {
     bodybuilder: 110,

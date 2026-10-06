@@ -197,9 +197,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
 
   const card = detailMain.getByTestId("protocol-practice-card");
+  // The practice's own sessions, on History (#5668).
   await expect(card.getByTestId("protocol-wellness-link")).toHaveAttribute(
     "href",
-    "/wellness"
+    `/history?${new URLSearchParams({ kind: "practice", item: practiceName })}`
   );
   await expect(card.getByTestId("protocol-wellness-link")).toHaveText(
     "View practice"

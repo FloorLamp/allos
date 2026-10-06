@@ -18,7 +18,7 @@ import { captureDelete } from "./undo-delete-db";
 import {
   findPracticeTarget,
   getPracticeSpellings,
-  getWellnessPractices,
+  getPracticeSpellingsMap,
 } from "./queries/wellness";
 
 export type SavePracticeOutcome =
@@ -99,9 +99,7 @@ export function updateWellnessPractice(
     const destinationIdentity = practiceIdentity(name);
     if (
       destinationIdentity !== currentIdentity &&
-      getWellnessPractices(profileId).some(
-        (practice) => practice.identity === destinationIdentity
-      )
+      getPracticeSpellingsMap(profileId).has(destinationIdentity)
     ) {
       return { kind: "duplicate" };
     }

@@ -16,7 +16,7 @@ import Link from "next/link";
 import { historyDayIntradayHref } from "@/lib/hrefs";
 import { normalizePracticeName } from "@/lib/practice";
 import type { PracticeLog } from "@/lib/types";
-import { removePracticeSession } from "@/app/(app)/wellness/actions";
+import { removePracticeSession } from "@/app/(app)/practice-actions";
 
 function sessionFacts(session: PracticeLog, prefs: DisplayFormatPrefs): string {
   const parts = [formatDateWithYear(session.date, prefs)];

@@ -76,6 +76,7 @@ describe("the practice kind's stale window (#5142 AC 3)", () => {
         kind: "practice",
         rowId: id,
         label: "Sauna",
+        day: "2026-09-04",
         quietMin: 90,
         // A practice has no heart-rate reader; the workout kind is the only one
         // that ever carries a detected end (#5194).

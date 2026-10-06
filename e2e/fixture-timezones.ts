@@ -137,7 +137,7 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   },
   "practice-midnight": {
     kind: "own-zone",
-    why: "A live practice session that crossed local midnight is only observable where the profile's local time is just PAST midnight, and a pin-following profile can never be: the pin puts local time at 13:mm precisely so the local and UTC days agree. This spec-owned profile sits in the zone where the frozen instant reads 00:mm, so a session started three hours earlier is on the PREVIOUS local day and still running — the row the End button used to be hidden from. It asserts on /wellness only.",
+    why: "A live practice session that crossed local midnight is only observable where the profile's local time is just PAST midnight, and a pin-following profile can never be: the pin puts local time at 13:mm precisely so the local and UTC days agree. This spec-owned profile sits in the zone where the frozen instant reads 00:mm, so a session started three hours earlier is on the PREVIOUS local day and still running — the row the End button used to be hidden from. It asserts on the quick-log sheet only.",
   },
   "trends-day-gaps": {
     kind: "run-pin",

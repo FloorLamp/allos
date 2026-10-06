@@ -26,7 +26,7 @@ import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { isLongevityRelevant } from "@/lib/life-stage";
-import { intakeHref } from "@/lib/hrefs";
+import { historyHref, intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
 import {
   protocolPracticeLabel,
@@ -223,7 +223,10 @@ export default async function ProtocolDetailPage(props: {
                 action={
                   practice?.scopeKind === "practice" ? (
                     <DestinationLink
-                      href="/wellness"
+                      href={historyHref({
+                        kind: "practice",
+                        item: practice.value,
+                      })}
                       className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
                       data-testid="protocol-wellness-link"
                     >

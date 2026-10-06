@@ -14,7 +14,6 @@ describe("wellness and frequency-target query boundaries (#1622/#1637)", () => {
 
     const wellness = read("lib/queries/wellness.ts");
     for (const name of [
-      "getWellnessPractices",
       "getAllPracticeSessions",
       "getPracticeTargets",
       "findPracticeTarget",
@@ -48,11 +47,5 @@ describe("wellness and frequency-target query boundaries (#1622/#1637)", () => {
     const outcomeGoals = read("lib/queries/training/outcome-goals.ts");
     expect(outcomeGoals).not.toContain("getFrequencyTargets");
     expect(outcomeGoals).not.toContain("getFrequencyTargetProgress");
-  });
-
-  it("renders wellness cards from the already-grouped session payload", () => {
-    const page = read("app/(app)/wellness/page.tsx");
-    expect(page).toContain("sessions={practice.sessions}");
-    expect(page).not.toContain("getAllPracticeSessions");
   });
 });

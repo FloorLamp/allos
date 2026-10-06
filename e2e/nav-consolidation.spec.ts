@@ -27,8 +27,8 @@ import {
 // The #1042 frequency order, re-applied in #3079 to MEASURED frequency instead of
 // the estimate it was first set from. Six rows the owner never opened deliberately
 // became children of one "Plan & review" group, each keeping the gate it carried as
-// a top-level row (Longevity is still adult-only, Wellness/Progress photos still
-// carry their relevance bits). Household was later retired outright (#5667). #2762
+// a top-level row (Longevity is still adult-only, Progress photos still carries its
+// relevance bit). Household and Wellness were later retired (#5667, #5668). #2762
 // removes the once-a-year retrospective from permanent nav chrome; the command
 // palette and recent-pages carry it instead, since #3958 phase 2 deleted the
 // Timeline header action that used to be its one in-app door.
@@ -48,9 +48,10 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   // would be a second door to the page the reader is already on. The route and its
   // other doors are unchanged — the case below still walks to it.
   "Sleep",
-  // Trends is a child of this group now (#4965), alongside Upcoming, Wellness,
-  // Longevity and Progress photos. Collapsed on "/" (no child route is active),
-  // which is why the group's whole text content here is its header label.
+  // Trends is a child of this group now (#4965), alongside Upcoming, Longevity and
+  // Progress photos (Household and Wellness retired, #5667/#5668). Collapsed on "/"
+  // (no child route is active), which is why the group's whole text content here is
+  // its header label.
   "Plan & review",
   "Medical",
   // The Data entry carries the import-review badge since #1801 (it is Data →
@@ -247,7 +248,7 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 // The list is the group's whole membership, so the substitution is the
 // assertion — a row added beside the swapped-in one, rather than in place of
 // it, fails this.
-const PLAN_REVIEW_CHILDREN = ["Upcoming", "Trends", "Wellness", "Longevity"];
+const PLAN_REVIEW_CHILDREN = ["Upcoming", "Trends", "Longevity"];
 
 test("the episodic group holds exactly its children, and none of them is a top-level row (#3079)", async ({
   page,
@@ -347,7 +348,6 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
   const HREFS: Record<string, string> = {
     Upcoming: "/upcoming",
     Trends: "/trends",
-    Wellness: "/wellness",
     Longevity: "/longevity",
   };
   for (const [label, href] of Object.entries(HREFS)) {

@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 //     until the tokenizer resynchronised. Two whole ⋯ menus went unseen.
 //   * JSX NESTED IN A BRACED ATTRIBUTE. `<PageHeader action={<div><OverflowMenu
 //     …>}` puts a real subtree inside an attribute value
-//     (app/(app)/protocols/ProtocolControls.tsx, app/(app)/wellness/PracticeCard.tsx).
+//     (app/(app)/protocols/ProtocolControls.tsx).
 //     Braces were skipped wholesale, so those tags were invisible — and worse,
 //     their attributes leaked into the OUTER tag's attribute text, which invents
 //     population as readily as it hides it.

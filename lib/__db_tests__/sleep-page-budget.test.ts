@@ -114,7 +114,7 @@ describe("/sleep route query budget (#3993)", () => {
     // is why the five 64s do not move. Home pays the same +1 for the same gather
     // without rendering the fact; that one is recorded in
     // dashboard-placement-manifest.test.ts.
-    biohacker: 106,
+    biohacker: 104,
   };
 
   // The dashboard's backstop, borrowed and kept in step with it (#5435 §7 lowered it

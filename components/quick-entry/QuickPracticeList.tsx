@@ -2,10 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
-import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
+import PracticeEditor from "@/components/practices/PracticeEditor";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { deletePractice, untrackPractice } from "@/app/(app)/practice-actions";
+import CreateAction, { CREATE_ACTIONS } from "@/components/CreateAction";
+import {
+  CatalogCreateControl,
+  CatalogFormDialog,
+} from "@/components/CatalogEditor";
+import { useConfirm } from "@/components/ConfirmDialog";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useOptionalDayContext } from "@/components/DayContext";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useToast } from "@/components/Toast";
 import { shiftDateStr } from "@/lib/date";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
@@ -25,11 +38,19 @@ import {
 // relevance-gated), scroll to the card, tap. The sheet already promises "log from
 // anywhere"; this is the row that makes that true for practices.
 //
-// It is a LIST, not a form. Each row mounts the SAME `LogPracticeButton` the Wellness
-// card mounts — which posts the SAME `logPractice` Server Action over the SAME
-// `logPracticeSession` write core and answers from its typed `PracticeLogOutcome`.
-// Nothing here logs a session itself, and there is no overlay copy of the control to
-// drift from the card's.
+// It is a LIST, not a form. Each row mounts the SAME `LogPracticeButton` the protocol
+// rows and Upcoming mount — which posts the SAME `logPractice` Server Action over the
+// SAME `logPracticeSession` write core and answers from its typed `PracticeLogOutcome`.
+// Nothing here logs a session itself.
+//
+// ── IT IS ALSO THE PRACTICE CATALOG (#5668) ─────────────────────────────────
+//
+// The Wellness page retired, and its practice management moved here by owner ruling
+// (2026-09-09). Each row carries the #5237 catalog row's ⋯ — Edit, Stop tracking,
+// Delete — and the list ends in the registered Add practice control. Both forms open in
+// `CatalogFormDialog`, the app's one dialog host, over this sheet, so a person adds a
+// practice, renames it or changes its weekly goal, and logs it without leaving the
+// sheet. Only for the acting profile: the practice writes are acting-profile writes.
 //
 // ── THE ROW, AND THE THREE THINGS IT CAN SAY (#5431) ────────────────────────
 //
@@ -98,6 +119,7 @@ export default function QuickPracticeList({
         ? "Yesterday"
         : formatWeekdayDate(today, prefs);
   const [rows, setRows] = useState(practices);
+  const [creating, setCreating] = useState(false);
   // Follow the gather whenever the sheet hands down a new one — the same server-wins
   // discipline the row control keeps over its own count.
   const [gathered, setGathered] = useState(practices);
@@ -140,87 +162,236 @@ export default function QuickPracticeList({
     return () => clearTimeout(timer);
   }, [rows, reread]);
 
-  // ZERO STATE: the first practice is offered here (#3066). The /wellness nav row is
-  // hidden until practice state exists (#1620, correct), and every other door onto
-  // practices — the palette sheet, the Telegram nudges, the habits widget, the trends
-  // lens (and the frequent-pages row, until #4102 retired it) — also requires an
-  // existing practice. This sheet row
-  // is always visible, so it is where the bootstrap belongs.
-  //
-  // It mounts the SAME PracticeEditor the Wellness page's Add button mounts, over the
-  // same `savePractice` action — no second create path, and nothing here to drift.
-  // Inline rather than behind the page's modal trigger: stacking a dialog over this
-  // sheet is not what a one-tap surface is for.
+  // ZERO STATE: the first practice is offered here (#3066). This sheet row is always
+  // visible, so it is where the bootstrap belongs. It mounts the SAME PracticeEditor the
+  // list's Add practice opens, over the same `savePractice` action — inline, because
+  // with nothing to log there is no list for a dialog to stand over.
   //
   // UNLIKE the logging branch, this one CLOSES on success. Declaring a practice is a
   // transaction with a real end, and the sheet's props were gathered on open — so
   // staying would show the create form again over a list that has since changed.
-  // Reopening "Log practice" now finds the practice, and the nav row has appeared.
+  // Reopening "Log practice" now finds the practice.
   if (rows.length === 0) {
     return (
       <div className="space-y-3" data-testid="quick-entry-practice-empty">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Nothing tracked yet. Start a practice and log it from here.
         </p>
-        <PracticeEditor compact onDone={onDone} />
+        <PracticeEditor
+          onSaved={() => onDone?.()}
+          onCancel={() => onDone?.()}
+        />
       </div>
     );
   }
 
+  const manages = subjectProfileId == null;
   return (
-    <QuickEntryRowList testId="quick-entry-practice-list">
-      {rows.map((practice) => {
-        const facts = practiceRowFacts(practice);
-        return (
-          <QuickEntryRow
-            key={practice.identity}
-            testId={`quick-entry-practice-${practice.identity}`}
-            identity={practice.name}
-            facts={
-              <div
-                className="mt-0.5 text-sm text-slate-500 dark:text-slate-400"
-                data-testid="practice-row-facts"
-              >
-                {practice.liveSession ? (
-                  practiceRunningFacts(
-                    practice.liveSession.startTime,
-                    practice.liveSession.expectedEnd?.hhmm ?? null
-                  )
-                ) : (
-                  <>
-                    {practice.todayCount > 0 && (
-                      <span data-testid="practice-today-count">
-                        {practice.todayCount}{" "}
-                        {dayLabel === "Today" || dayLabel === "Yesterday"
-                          ? dayLabel.toLowerCase()
-                          : `on ${dayLabel}`}
-                      </span>
-                    )}
-                    {practice.todayCount > 0 ? " · " : null}
-                    {facts.week}
-                  </>
-                )}
-              </div>
-            }
-            actions={
-              <LogPracticeButton
-                practice={practice.name}
-                todayCount={practice.todayCount}
-                today={today}
-                profileToday={profileToday}
-                dayLabel={dayLabel}
-                defaultDurationMin={practice.previousDurationMin}
-                liveSession={practice.liveSession}
-                inlineDuration
-                inlineWhen
-                chipRow
-                onServerRead={reread}
-                subjectProfileId={subjectProfileId}
-              />
-            }
-          />
-        );
-      })}
-    </QuickEntryRowList>
+    <div className="space-y-3">
+      <QuickEntryRowList testId="quick-entry-practice-list">
+        {rows.map((practice) => {
+          const facts = practiceRowFacts(practice);
+          return (
+            <QuickEntryRow
+              key={practice.identity}
+              testId={`quick-entry-practice-${practice.identity}`}
+              identity={practice.name}
+              facts={
+                <div
+                  className="mt-0.5 text-sm text-slate-500 dark:text-slate-400"
+                  data-testid="practice-row-facts"
+                >
+                  {practice.liveSession ? (
+                    practiceRunningFacts(
+                      practice.liveSession.startTime,
+                      practice.liveSession.expectedEnd?.hhmm ?? null
+                    )
+                  ) : (
+                    <>
+                      {practice.todayCount > 0 && (
+                        <span data-testid="practice-today-count">
+                          {practice.todayCount}{" "}
+                          {dayLabel === "Today" || dayLabel === "Yesterday"
+                            ? dayLabel.toLowerCase()
+                            : `on ${dayLabel}`}
+                        </span>
+                      )}
+                      {practice.todayCount > 0 ? " · " : null}
+                      {facts.week}
+                    </>
+                  )}
+                </div>
+              }
+              actions={
+                <>
+                  <LogPracticeButton
+                    practice={practice.name}
+                    todayCount={practice.todayCount}
+                    today={today}
+                    profileToday={profileToday}
+                    dayLabel={dayLabel}
+                    defaultDurationMin={practice.previousDurationMin}
+                    liveSession={practice.liveSession}
+                    inlineDuration
+                    inlineWhen
+                    chipRow
+                    onServerRead={reread}
+                    subjectProfileId={subjectProfileId}
+                  />
+                  {manages && (
+                    <PracticeRowMenu practice={practice} onChanged={reread} />
+                  )}
+                </>
+              }
+            />
+          );
+        })}
+      </QuickEntryRowList>
+      {manages && (
+        <CreateAction
+          housing="section"
+          declaration={{
+            kind: "practice",
+            control: (
+              <CatalogCreateControl onActivate={() => setCreating(true)} />
+            ),
+          }}
+        />
+      )}
+      {creating && (
+        <CatalogFormDialog
+          Form={PracticeEditor}
+          formProps={{}}
+          title={CREATE_ACTIONS.practice.label}
+          onClose={() => {
+            setCreating(false);
+            reread();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// One row's ⋯, in the #5237 catalog row's grammar. Stop tracking keeps every logged
+// session on History; Delete takes the sessions with it, under one Undo.
+function PracticeRowMenu({
+  practice,
+  onChanged,
+}: {
+  practice: TrackedPractice;
+  onChanged: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const confirm = useConfirm();
+  const toast = useToast();
+  const undoable = useUndoableDelete();
+  const fd = () => {
+    const form = new FormData();
+    form.set("target_id", String(practice.targetId));
+    form.set("practice", practice.name);
+    return form;
+  };
+
+  async function untrack() {
+    const ok = await confirm({
+      title: "Stop tracking this practice?",
+      message:
+        "The weekly goal and its reminders will be removed. Logged sessions will stay in your history. Linked protocols will stop showing weekly progress.",
+      confirmLabel: "Stop tracking",
+      danger: true,
+    });
+    if (!ok) return;
+    const result = await untrackPractice(fd()).catch(() => null);
+    if (!result?.ok) {
+      toast(result?.error ?? "Couldn't stop tracking that practice.", {
+        tone: "error",
+      });
+      return;
+    }
+    toast("Weekly goal removed");
+    onChanged();
+  }
+
+  async function remove() {
+    const ok = await confirm({
+      title: "Delete practice and session history?",
+      message:
+        "The weekly goal and its reminders will be removed, along with every logged session. Linked protocols will remain but stop showing weekly progress. You can undo this deletion.",
+      confirmLabel: "Delete practice",
+      danger: true,
+    });
+    if (!ok) return;
+    await undoable(deletePractice, fd(), {
+      deletedMessage: `${practice.name} deleted.`,
+      // The list holds its own rows, so an Undo must re-read them like the delete did.
+      onRestored: onChanged,
+    });
+    onChanged();
+  }
+
+  return (
+    <>
+      <OverflowMenu
+        itemName={practice.name}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+      >
+        {({ close }) => (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM}
+              onClick={() => {
+                close();
+                setEditing(true);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM_DANGER}
+              onClick={() => {
+                close();
+                void untrack();
+              }}
+            >
+              Stop tracking
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM_DANGER}
+              onClick={() => {
+                close();
+                void remove();
+              }}
+            >
+              Delete practice
+            </button>
+          </>
+        )}
+      </OverflowMenu>
+      {editing && (
+        <CatalogFormDialog
+          Form={PracticeEditor}
+          formProps={{
+            targetId: practice.targetId,
+            name: practice.name,
+            perWeek: practice.perWeek,
+            perWeekMax: practice.perWeekMax,
+          }}
+          title={practice.name}
+          onClose={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -9,7 +9,6 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   frequencyTargetLogWindowOpen,
-  getWellnessPractices,
   inferPracticeSchedule,
   isPredictedPracticeDay,
   logPracticeSession,
@@ -260,7 +259,7 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     ).toBe(true);
   });
 
-  it("surfaces: usuallyToday flags a predicted day and stays false with no pattern (#558)", () => {
+  it("flags a predicted day and stays unknown with no pattern (#558)", () => {
     const pid = makeProfile("rhythm-surface");
     // Move to Wednesday so the Wed/Fri habit predicts TODAY.
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
@@ -271,12 +270,8 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     practiceTarget(pid, "Breathwork", 3);
     logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1), "page");
 
-    const byName = new Map(
-      getWellnessPractices(pid).map((p) => [p.name, p.usuallyToday])
-    );
-    expect(byName.get("Red light therapy")).toBe(true);
+    expect(isPredictedPracticeDay(pid, "Red light therapy", t)).toBe(true);
     // The young practice is UNKNOWN, which renders as nothing — never "every day".
-    expect(byName.get("Breathwork")).toBe(false);
     expect(isPredictedPracticeDay(pid, "Breathwork", t)).toBeNull();
   });
 });

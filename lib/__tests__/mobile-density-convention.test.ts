@@ -241,7 +241,6 @@ const TIERS = new Map<string, string>([
 const SITES: ReadonlyArray<readonly [string, string, string]> = [
   // A. Boxed sub-panels inside cards, worst first (the issue's own order).
   ["app/(app)/settings/ai/AiTierSettings.tsx", "subpanel-inset", "p-4"],
-  ["components/practices/PracticeTrends.tsx", "subpanel-inset", "p-4 sm:p-5"],
   ["app/(app)/settings/server/BackupSettings.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/settings/server/SmtpSettings.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/settings/family/FamilyManager.tsx", "subpanel-inset-sm", "p-3"],
@@ -270,7 +269,6 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   // `components/dashboard/DashboardStandingCluster.tsx` were censused here at
   // `section-seam-lg` / `mb-8` until #5435 §4 deleted them. The census names files,
   // so a deleted file leaves the list rather than being carried as a ghost row.
-  ["app/(app)/wellness/page.tsx", "section-seam-lg", "mb-8"],
 ];
 
 describe("phone density conventions (#3466)", () => {

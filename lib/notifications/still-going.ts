@@ -29,6 +29,7 @@ import {
   getTimezone,
 } from "../settings";
 import { formatMinutes } from "../duration";
+import { historyHref } from "../hrefs";
 import { dispatch } from "./index";
 import { stillGoingCallback, type StillGoingKind } from "./callback-data";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -57,8 +58,12 @@ export function stillGoingMarkerKey(
   return `${prefix}${rowId}`;
 }
 
-// What the nudge needs to know about one open episode, whatever kind it is.
-export interface StillGoingEpisode {
+// What the nudge needs to know about one open episode, whatever kind it is. Only a
+// practice carries its profile-local `day`, which its deep link opens on History.
+export type StillGoingEpisode = StillGoingEpisodeFacts &
+  ({ kind: "workout" } | { kind: "practice"; day: string });
+
+interface StillGoingEpisodeFacts {
   kind: StillGoingKind;
   rowId: number;
   // The practice's own name. A workout draft has no name a person would recognise
@@ -123,7 +128,7 @@ export function renderStillGoingMessage(
   if (base)
     actions.push({
       label: practice ? "Open practice" : "Open workout",
-      url: `${base}${practice ? "/wellness" : "/training"}`,
+      url: `${base}${episode.kind === "practice" ? historyHref({ kind: "practice", day: episode.day }) : "/training"}`,
     });
 
   return {
@@ -176,6 +181,7 @@ export function stillGoingEpisodes(
       kind: "practice",
       rowId: session.id,
       label: session.practice,
+      day: session.date,
       quietMin: session.quietMin,
       // A practice ends by its own core and has no heart-rate reader; the nudge for it
       // is unchanged.

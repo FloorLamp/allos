@@ -51,7 +51,7 @@ import {
 import {
   editPracticeSession,
   removePracticeSession,
-} from "@/app/(app)/wellness/actions";
+} from "@/app/(app)/practice-actions";
 import {
   deleteSubstanceUseAction,
   correctSubstanceUseAction,

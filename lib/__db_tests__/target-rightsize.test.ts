@@ -16,7 +16,7 @@ import { setWeekMode } from "@/lib/settings";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargetWeeklyHistory,
-  getWellnessPractices,
+  getTrackedPractices,
   getPracticeSessions,
   dismissFinding,
   getFindingSuppressions,
@@ -192,13 +192,11 @@ describe("frequency-target right-sizing (#1670)", () => {
       collectCoachingFindings(pid, today(pid), "kg").map((f) => f.dedupeKey)
     ).toContain(finding.dedupeKey);
 
-    // Accepting "stop tracking" lands in the #1621 logs-only posture: the practice is
-    // still a card, still has its history, and simply has no weekly goal.
+    // Accepting "stop tracking" lands in the #1621 logs-only posture: the practice
+    // keeps its history and simply has no weekly goal.
     expect(stopTrackingFrequencyTarget(pid, tid)).toBe("stopped");
     expect(getPracticeSessions(pid, "Sauna")).toHaveLength(4);
-    expect(getWellnessPractices(pid)).toMatchObject([
-      { name: "Sauna", targetId: null, perWeek: null, sessionCount: 4 },
-    ]);
+    expect(getTrackedPractices(pid)).toEqual([]);
     expect(buildTargetRightSizeFindings(pid, today(pid))).toEqual([]);
   });
 

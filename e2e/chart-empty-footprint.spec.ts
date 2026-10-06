@@ -219,9 +219,9 @@ test("every phone chart square is FILLED by its child, in every chart state (#35
 // phone width, so "every ChartCard tenant either fills the phone square or the
 // square is released for it deliberately" is a reading rather than a claim in a
 // PR body. Derived 2026-08-26 from `git grep -l ChartCard app components`: the
-// eight importers are BodySection, NutritionSection, TrendMetricCharts,
-// FitnessZonesSection, TrainingZonesSection, GrowthChartsCard, PracticeTrends and
-// this file's own harness.
+// importers are BodySection, NutritionSection, TrendMetricCharts,
+// FitnessZonesSection, TrainingZonesSection, GrowthChartsCard and this file's own
+// harness (PracticeTrends retired with the Wellness page, #5668).
 //
 // `/trends` (BodySection) is NOT here and the reason is the one that matters: at
 // 390px its cards sit inside collapsed disclosures, so every plot measures 0x0 —
@@ -244,18 +244,6 @@ const TENANT_ROUTES = [
     why: "TrainingZonesSection and FitnessZonesSection, two cards on one route",
     card: "fitness-cardio-volume",
   },
-  {
-    path: "/wellness",
-    why: "PracticeTrends — the one tenant whose plotHeightClass is SHORTER than its child's default, so it is where a height rule that shrinks rather than floors would show up",
-    card: "practice-cadence-card",
-    // Its charts live behind the practice card's own disclosure, so the sweep
-    // opens it the way a reader does (e2e/trends-practices.spec.ts, same shape).
-    reveal: async (page: Page) => {
-      const trends = page.getByTestId("wellness-practice-trends").first(); // eslint-disable-line no-restricted-properties -- first-ok: any practice with a trend block serves; the sweep then reads EVERY plot on the page
-      await expect(trends).toBeVisible();
-      await trends.locator("summary").click();
-    },
-  },
 ] as const;
 
 for (const tenant of TENANT_ROUTES) {
@@ -267,7 +255,6 @@ for (const tenant of TENANT_ROUTES) {
     test.slow(); // next start compiles each route on its first hit
     await page.setViewportSize(PHONE);
     await page.goto(tenant.path);
-    if ("reveal" in tenant) await tenant.reveal(page);
     // WAIT FOR THE CHART, NOT THE CARD (#3384): a plot read before its lazy chunk
     // evaluates holds a loading box, and every assertion below is an ABSENCE.
     const card = page.getByTestId(tenant.card);

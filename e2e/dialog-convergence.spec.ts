@@ -80,12 +80,13 @@ test("a dialog's declared size decides how wide it renders", async ({
   // The assertion is on the rendered geometry, not on a class string: a
   // `toContain("max-w-4xl")` would pass just as well if the class never reached
   // an element, which is the failure mode the size prop exists to end.
-  await page.goto("/wellness");
-  await hydratedClick(page, page.getByTestId("practice-create-trigger"));
+  // The quick-log sheet's practice list declares `sm` (#5668 retired the Wellness
+  // page's Add practice dialog, the `sm` consumer this used to open).
+  await page.goto("/?quick=log-practice");
   await expect(
-    page.getByRole("dialog", { name: "Add practice" })
+    page.getByRole("dialog", { name: "Log practice" })
   ).toBeVisible();
-  const small = await panelWidth(page, "Add practice");
+  const small = await panelWidth(page, "Log practice");
 
   await page.goto("/longevity#protocols");
   await hydratedClick(

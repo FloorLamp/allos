@@ -268,11 +268,10 @@ describe("the registry itself", () => {
     // The promotion map stays deliberately short: a page whose own screen already
     // carries the form buys nothing by promoting it (the same reasoning that keeps
     // Nutrition → Supplements from claiming it). Data shows the
-    // upload form on arrival; Wellness shows a Log-now button per practice card.
+    // upload form on arrival.
     for (const path of [
       "/",
       "/data",
-      "/wellness",
       "/history",
       "/nutrition",
       "/medications",

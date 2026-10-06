@@ -22,7 +22,11 @@ import {
   digestGatherBounds,
   supplementalDigestInputs,
 } from "@/lib/trends-digest-series";
-import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
+import {
+  clinicalResultDetailHref,
+  historyHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import TrendDigestChip from "@/components/TrendDigestChip";
 import IconButton from "@/components/IconButton";
 
@@ -92,8 +96,9 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   const hrefFor = (item: TrendItem): AppRoute | null => {
     if (item.key.startsWith("result:"))
       return clinicalResultDetailHref(item.key.slice("result:".length));
-    // A practice chip taps through to the page that owns the habit (#1620).
-    if (item.key.startsWith(PRACTICE_DIGEST_PREFIX)) return "/wellness";
+    // A practice chip taps through to the practice's history (#5668).
+    if (item.key.startsWith(PRACTICE_DIGEST_PREFIX))
+      return historyHref({ kind: "practice" });
     return null;
   };
 

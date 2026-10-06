@@ -55,7 +55,7 @@ import {
 } from "@/components/intake/dose-ledger-entry";
 import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { deleteFoodLogEvent } from "@/app/(app)/nutrition/actions";
-import { removePracticeSession } from "@/app/(app)/wellness/actions";
+import { removePracticeSession } from "@/app/(app)/practice-actions";
 import { deleteSubstanceUseAction } from "@/app/(app)/medical/substance-use/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";

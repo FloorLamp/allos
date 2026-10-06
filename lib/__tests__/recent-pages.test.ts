@@ -78,7 +78,7 @@ describe("the tracked-page allowlist", () => {
     for (const page of TRACKED_PAGES) {
       expect(page.label.trim().length).toBeGreaterThan(0);
     }
-    expect(hrefs).toContain("/wellness");
+    expect(hrefs).toContain("/longevity");
   });
 });
 
