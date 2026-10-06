@@ -163,7 +163,7 @@ describe("isolated application restore entrypoint", () => {
         "profile-photos",
         `${profile}.png`
       );
-      // The DB fits below the 32 MiB write limit; copying this upload cannot.
+      // The DB fits below the per-file write limit; copying this upload cannot.
       fs.truncateSync(photo, 40 * 1024 * 1024);
       const before = digest(photo),
         database = digest(path.join(root, "allos.db"));

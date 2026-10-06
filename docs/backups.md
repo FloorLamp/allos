@@ -7,10 +7,8 @@ Paths below are inside the app; Docker mounts the host's `DATA_DIR` at `/app/dat
 ## Scheduled snapshots
 
 The notify tick snapshots SQLite nightly with `VACUUM INTO`, safe against the live
-connection. Configure the instance-local backup hour, retention (default **7 daily
-
-- 8 weekly**), and stale alarm (**48 hours**). The card shows verification, errors,
-  and **Back up now**.
+connection. Configure the instance-local backup hour, retention (default **7 daily + 8 weekly**), and stale alarm (**48 hours**). The card
+shows verification, errors, and **Back up now**.
 
 Snapshots are `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, verified read-only with
 `PRAGMA integrity_check`; `<name>.db.json` records the result. Failed copies stay
