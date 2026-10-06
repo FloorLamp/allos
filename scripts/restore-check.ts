@@ -42,10 +42,9 @@ async function main() {
       force: false,
     });
     const uploads = path.join(input, "uploads");
+    // Liftoff already supplies an isolated read-only tree; cloning it again exhausts probe scratch space.
     if (fs.existsSync(uploads))
-      fs.cpSync(uploads, path.join(workspace, "data", "uploads"), {
-        recursive: true,
-      });
+      fs.symlinkSync(uploads, path.join(workspace, "data", "uploads"), "dir");
 
     // Imports capture paths and open the singleton, so isolate them before loading application code.
     process.chdir(workspace);

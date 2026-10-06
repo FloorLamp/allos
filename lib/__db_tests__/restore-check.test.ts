@@ -42,10 +42,19 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZioAAAAASUVORK5CYII=",
   "base64"
 );
-function probe() {
+function probe(limitFileWrites = false) {
+  const argv = [path.join(buildRoot, "probe.cjs"), root];
   return spawnSync(
-    process.execPath,
-    [path.join(buildRoot, "probe.cjs"), root],
+    limitFileWrites ? "/bin/sh" : process.execPath,
+    limitFileWrites
+      ? [
+          "-c",
+          'ulimit -f 32768; exec "$@"',
+          "restore-probe",
+          process.execPath,
+          ...argv,
+        ]
+      : argv,
     {
       env: {
         ...process.env,
@@ -132,4 +141,27 @@ describe("isolated application restore entrypoint", () => {
     expect(digest(file)).toBe(before);
     expect(fs.existsSync(path.join(root, "must-not-open.db"))).toBe(false);
   });
+
+  it.skipIf(process.platform !== "linux")(
+    "reads a referenced upload larger than its scratch write limit without copying or changing it",
+    () => {
+      const photo = path.join(
+        root,
+        "uploads",
+        "profile-photos",
+        `${profile}.png`
+      );
+      // The DB fits below the 32 MiB write limit; copying this upload cannot.
+      fs.truncateSync(photo, 40 * 1024 * 1024);
+      const before = digest(photo),
+        database = digest(path.join(root, "allos.db"));
+      const result = probe(true);
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(result.stdout.trim().split("\n").at(-1)!)
+      ).toMatchObject({ ok: true, files: 1 });
+      expect(digest(photo)).toBe(before);
+      expect(digest(path.join(root, "allos.db"))).toBe(database);
+    }
+  );
 });
