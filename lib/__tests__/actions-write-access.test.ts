@@ -427,6 +427,12 @@ const ALLOW: AllowEntry[] = [
     gate: "gateItemProfile",
   },
   {
+    file: "app/(app)/medical/document-actions.ts",
+    fn: "checkMedicalDocuments",
+    why: "read-only dry run of uploadMedicalDocument for the same form, so it takes the same gateItemProfile() gate and answers only for the profile an upload could write",
+    gate: "gateItemProfile",
+  },
+  {
     file: "app/(app)/nutrition/actions.ts",
     fn: "logFoodServing",
     why: "one spelling for the subject (#4730): the bar and the record's add door post `profile_id`, so the ADD takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) reader as the correction below. It hand-rolled that gate around a `profileId` key nothing posts, so a subject-carrying add fell back to the ACTING profile and wrote a caregiver's serving onto themselves",

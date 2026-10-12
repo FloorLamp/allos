@@ -8,11 +8,16 @@
 //
 //   ALLOS_TOKEN=<token> node scripts/upload-docs.ts --url https://allos.example --list
 //
+//   ALLOS_TOKEN=<token> node scripts/upload-docs.ts --url https://allos.example \
+//       --profile alice --dry-run export.zip
+//
 // Options
 //   --url <base>        the instance's base URL (required; ALLOS_URL is the fallback)
 //   --profile <who>     a profile NAME or id; repeat it to send every file to several
 //                       people (required unless --list)
 //   --list              print the profiles this token may upload to, and exit
+//   --dry-run           report what each upload would do (duplicate, covered visits,
+//                       would extract) and store nothing
 //   --help              this text
 //
 // The token comes from the ALLOS_TOKEN environment variable and never from argv:
@@ -22,7 +27,8 @@
 // Exit codes (the scripts/notify.ts convention)
 //   0  every file was stored or was already there (a duplicate is not a failure —
 //      re-running the same upload is meant to be safe)
-//   1  at least one file failed, or the instance could not be reached
+//   1  at least one file failed (with --dry-run: could not be checked), or the
+//      instance could not be reached
 //   2  bad arguments
 //
 // DEPENDENCY-FREE, on purpose. Node 24 stdlib only — `fetch`/`FormData`/`Blob` are
@@ -50,6 +56,7 @@ export interface CliArgs {
   profiles: string[];
   files: string[];
   list: boolean;
+  dryRun: boolean;
   help: boolean;
 }
 
@@ -71,6 +78,7 @@ export function parseArgs(
     profiles: [],
     files: [],
     list: false,
+    dryRun: false,
     help: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -79,6 +87,8 @@ export function parseArgs(
       args.help = true;
     } else if (a === "--list") {
       args.list = true;
+    } else if (a === "--dry-run") {
+      args.dryRun = true;
     } else if (a === "--url" || a.startsWith("--url=")) {
       const v = a.startsWith("--url=") ? a.slice("--url=".length) : argv[++i];
       if (!v) return { ok: false, error: "--url needs a value" };
@@ -147,6 +157,53 @@ export function formatResultTable(results: readonly UploadResult[]): string {
       .join("  ")
       .trimEnd();
   return [line(head), ...rows.map(line)].join("\n");
+}
+
+// What the server's dry run answered for one file (api/documents?dryRun=1). Typed
+// structurally here so this file keeps importing nothing from the repo.
+interface DryRunAnswer {
+  verdict: string;
+  note: string | null;
+  duplicates: {
+    id: number;
+    filename: string;
+    profile: { id: number; name: string };
+  }[];
+  records: {
+    member: string;
+    patient: string | null;
+    visits: { date: string; type: string | null; status: string }[];
+  }[];
+}
+
+interface DryRunResult {
+  profile: string;
+  file: string;
+  // NULL when the check itself failed; `error` says why.
+  answer: DryRunAnswer | null;
+  error: string | null;
+}
+
+// One block per file: the verdict, then why, then each clinical document's visits.
+function formatDryRunReport(results: readonly DryRunResult[]): string {
+  if (results.length === 0) return "nothing checked";
+  const blocks = results.map((r) => {
+    const a = r.answer;
+    if (!a) return `${r.profile}  ${r.file}  failed\n  ${r.error ?? ""}`;
+    const lines = [`${r.profile}  ${r.file}  ${a.verdict}`];
+    if (a.note) lines.push(`  ${a.note}`);
+    for (const d of a.duplicates) {
+      lines.push(`  held: #${d.id} "${d.filename}" (${d.profile.name})`);
+    }
+    for (const rec of a.records) {
+      lines.push(`  ${rec.member}${rec.patient ? `  ${rec.patient}` : ""}`);
+      for (const v of rec.visits) {
+        lines.push(`    ${v.date}  ${v.status}${v.type ? `  ${v.type}` : ""}`);
+      }
+    }
+    return lines.join("\n");
+  });
+  return blocks.join("\n\n");
 }
 
 // A best-effort content type from the extension. The server derives the trustworthy MIME
@@ -245,21 +302,21 @@ export function resolveProfiles(
   return { ok: true, profiles: out };
 }
 
-async function uploadOne(
+// POST one file; the parsed JSON body, or why there is none.
+async function postOne(
   base: string,
   token: string,
   profile: RemoteProfile,
-  file: string
-): Promise<UploadResult> {
+  file: string,
+  dryRun: boolean
+): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
   let bytes: Buffer;
   try {
     bytes = await readFile(file);
   } catch (err) {
     return {
-      profile: profile.name,
-      file,
-      outcome: "failed",
-      reason: `could not read file: ${(err as Error).message}`,
+      ok: false,
+      error: `could not read file: ${(err as Error).message}`,
     };
   }
   const form = new FormData();
@@ -273,35 +330,49 @@ async function uploadOne(
     basename(file)
   );
 
+  const query = `profile=${profile.id}${dryRun ? "&dryRun=1" : ""}`;
   let res: Response;
   try {
-    res = await fetch(apiUrl(base, `api/documents?profile=${profile.id}`), {
+    res = await fetch(apiUrl(base, `api/documents?${query}`), {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: form,
     });
   } catch (err) {
-    return {
-      profile: profile.name,
-      file,
-      outcome: "failed",
-      reason: `request failed: ${(err as Error).message}`,
-    };
+    return { ok: false, error: `request failed: ${(err as Error).message}` };
   }
 
   const body = (await res.json().catch(() => null)) as {
     ok?: boolean;
     error?: string;
-    documents?: { name: string; outcome: Outcome; reason: string | null }[];
   } | null;
   if (!res.ok || !body?.ok) {
+    return {
+      ok: false,
+      error: `HTTP ${res.status}: ${body?.error ?? "no response body"}`,
+    };
+  }
+  return { ok: true, body };
+}
+
+async function uploadOne(
+  base: string,
+  token: string,
+  profile: RemoteProfile,
+  file: string
+): Promise<UploadResult> {
+  const res = await postOne(base, token, profile, file, false);
+  if (!res.ok) {
     return {
       profile: profile.name,
       file,
       outcome: "failed",
-      reason: `HTTP ${res.status}: ${body?.error ?? "no response body"}`,
+      reason: res.error,
     };
   }
+  const body = res.body as {
+    documents?: { name: string; outcome: Outcome; reason: string | null }[];
+  };
   // One file per request, so the engine's per-file verdict is the first (and only) row.
   const doc = body.documents?.[0];
   return {
@@ -310,6 +381,22 @@ async function uploadOne(
     outcome: doc?.outcome ?? "failed",
     reason: doc?.reason ?? null,
   };
+}
+
+async function checkOne(
+  base: string,
+  token: string,
+  profile: RemoteProfile,
+  file: string
+): Promise<DryRunResult> {
+  const res = await postOne(base, token, profile, file, true);
+  if (!res.ok) {
+    return { profile: profile.name, file, answer: null, error: res.error };
+  }
+  const answer = (res.body as { documents?: DryRunAnswer[] }).documents?.[0];
+  return answer
+    ? { profile: profile.name, file, answer, error: null }
+    : { profile: profile.name, file, answer: null, error: "no report" };
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -321,10 +408,11 @@ const HELP = `upload-docs — send medical documents to an Allos instance
   --url <base>      instance base URL (or set ALLOS_URL)
   --profile <who>   profile name or id; repeat to target several people
   --list            list the profiles this token may upload to
+  --dry-run         report what each upload would do; store nothing
   --help            show this
 
 The token is read from ALLOS_TOKEN, never from the command line.
-Exit codes: 0 all stored/duplicate, 1 any failure, 2 bad arguments.`;
+Exit codes: 0 all stored/duplicate (or checked), 1 any failure, 2 bad arguments.`;
 
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2), process.env);
@@ -365,6 +453,17 @@ async function main(): Promise<number> {
   if (!resolved.ok) {
     console.error(`upload-docs: ${resolved.error}`);
     return 2;
+  }
+
+  if (args.dryRun) {
+    const checks: DryRunResult[] = [];
+    for (const profile of resolved.profiles) {
+      for (const file of args.files) {
+        checks.push(await checkOne(args.url, token, profile, file));
+      }
+    }
+    console.log(formatDryRunReport(checks));
+    return checks.some((c) => c.answer === null) ? 1 : 0;
   }
 
   // Sequential, and one request per (profile, file) pair. Uploading one file to two

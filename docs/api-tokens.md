@@ -12,12 +12,10 @@ Under **Settings → Account & security → API tokens**, name the client, choos
 capability, and create a token. Copy it immediately; the secret is shown once.
 Use separate tokens for devices you may revoke independently.
 
-A login can have 20 live tokens. The format is `<id>.<secret>`: the ID is public,
-and only a scrypt hash of the secret is stored. Tokens do not expire automatically.
-Revoke unused credentials using their last-used times. Revocation takes effect on
-subsequent authentication without a cache or grace period. The revoked row remains
-to prevent ID reuse but disappears from management lists; login deletion removes
-its tokens.
+A login can have 20 live tokens, formatted `<id>.<secret>`; the ID is public and
+only a scrypt hash of the secret is stored. Tokens never expire; revoke unused ones
+by last-used time. Revocation applies to the next request. A revoked row stays,
+hidden, to block ID reuse; deleting a login removes its tokens.
 
 Members manage their own tokens. Admins can also list and revoke other logins'
 tokens. Lists expose names, capabilities, and usage times, never secrets.
@@ -45,17 +43,15 @@ Upload targets may be query parameters or multipart fields; query values win.
 Missing, malformed, or conflicting targets return 400. The login must reach and
 write the resolved profile, and demo restrictions apply.
 
-Unknown, unmapped, ignored, or ambiguous portal identities receive the same 404
-with `error: "unmapped-identity"`. Authenticated upload refusals can record a
-bounded pending identity for a person to map; repeated sightings update it.
-An unmapped inventory read creates no pending identity.
+Unknown, unmapped, ignored, or ambiguous portal identities all get 404
+`error: "unmapped-identity"`. An upload refusal, but not an inventory read or dry
+run, records a bounded pending identity for a person to map; repeats update it.
 
 ## Upload documents
 
-`POST /api/documents` accepts multipart `file` parts. It uses the in-app ingest
-engine's size, type, content, batch, and deduplication rules. Processing is
-sequential; batch overflow appears in `skipped`. Inspect every file result:
-`ok: true` means the request was handled, not that every file was stored.
+`POST /api/documents` takes multipart `file` parts under the in-app ingest rules
+(size, type, content, batch, dedup), sequentially; overflow appears in `skipped`.
+`ok: true` means the request was handled; check each file's result.
 
 ```json
 {
@@ -74,10 +70,18 @@ sequential; batch overflow appears in `skipped`. Inspect every file result:
 | `blocked`   | Count as `suppressed`, not failed; a person deleted these bytes.  |
 | `failed`    | Inspect `reason` for the refusal.                                 |
 
-Duplicate and blocked offers create no row and return `id: null`. Clinical-entry
-coverage can recognize differently packaged exports; partly new exports are stored.
-A person can reverse a block through Review's **blocked from re-acquisition**
-controls or a direct upload.
+Duplicate and blocked offers create no row (`id: null`). Clinical entries match
+across repackaged exports; a partly new export is stored. Review's **blocked from
+re-acquisition** controls or a direct upload reverse a block.
+
+### Check a file first
+
+`dryRun=1` (query or form field) stores nothing: no file, row, model call, or
+notification. Each `documents` entry has `profile` (`id`, `name`, `decidedBy`),
+`verdict` (`rejected`, `duplicate`, `covered`, `would-import`, `would-extract`),
+`note`, `duplicates` (same bytes, any readable profile), and `records`: per CCDA,
+zip members included, the `patient` and `visits` (`covered` or `new`).
+`covered`: every visit is already held. Upload form: **Check first**.
 
 ## Report an acquisition run
 
@@ -139,18 +143,15 @@ All these endpoints require `upload:documents`:
 | `/api/documents/portals`  | `ok`, `portals: [{slug, name, software, accounts: [{slug, name, implicit}]}]`.                                                 |
 | `/api/documents/requests` | `ok`, `requests: [{portal, account, reason, expires}]` for open, unexpired requests on writable profiles. `expires` is a date. |
 
-Inventory arrays contain SHA-256 file hashes: `held` is stored content, `deleted`
-is deliberately blocked content, and `covered` is offered content whose clinical
-entries are already held. Send hashes in none of these lists. Query fresh inventory:
-deletion, reassignment, or reprocessing can remove coverage. Upload independently
-enforces these refusals. Inventory exposes no filenames or document contents.
+Inventory arrays hold SHA-256 file hashes: `held` (stored), `deleted` (blocked by
+a person), `covered` (clinical entries already held). Send only hashes in none of
+them, from a fresh read: deletion, reassignment, or reprocessing can remove
+coverage. Upload enforces the same refusals. No filenames or contents are exposed.
 
-Portal listings require write access to at least one profile or return 403.
-Accounts are filtered by reachability; unclaimed accounts remain visible for setup,
-and portals without visible accounts are omitted. `software` may be null and
-`implicit` marks the default account. Use returned slugs, choosing an account
-explicitly when several exist. Configure portal URLs and credentials locally;
-the response exposes neither URLs nor patient bindings.
+Portal listings need write access to some profile (else 403). They show reachable
+and unclaimed accounts, omit portals with none, and expose no URLs or patient
+bindings; configure URLs and credentials locally. `software` may be null;
+`implicit` marks the default account. Name an account when a portal has several.
 
 Requests expose no patient labels or portal URLs and do not claim or acknowledge
 work; the ordinary run report answers them. Demo-restricted tokens receive 403.
@@ -168,11 +169,11 @@ packages or database access, reading `ALLOS_TOKEN`:
 node scripts/upload-docs.ts --url https://allos.example --profile 2 labs.pdf
 ```
 
-From a checkout, `npm run upload-docs -- --url … --profile … files…` also works.
-`--profile` accepts names or IDs and can repeat; names ignore case and normalize
-repeated or surrounding whitespace, and ambiguity is an error. Each destination uploads and deduplicates
-independently. `--list` prints writable profiles. Exit codes are 0 for non-failed
-outcomes, including duplicates/blocks; 1 for a failed file/request; 2 for bad arguments.
+From a checkout: `npm run upload-docs -- …`. `--profile` takes a name or ID and can
+repeat; names ignore case and extra whitespace, and an ambiguous name is an error.
+Each destination dedups independently. `--list` prints writable profiles;
+`--dry-run` checks without storing. Exit 0: no failures, duplicates and blocks
+included; 1: a failed file or request; 2: bad arguments.
 
 ## Developer owners
 
