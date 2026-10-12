@@ -7,6 +7,10 @@ import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
 import {
+  dryRunMedicalUpload,
+  type DryRunTarget,
+} from "@/lib/medical-pipeline/dry-run";
+import {
   BLOCKED_REASON,
   RECORDS_DUPLICATE_REASON,
   classifyUploadOutcome,
@@ -84,6 +88,10 @@ import { createLogger } from "@/lib/log";
 // a one-tap binding, not land on whichever profile seemed closest. A share sheet cannot
 // choose at all, which is why /share-target alone falls back to the session's active
 // profile; a caller that CAN choose must.
+//
+// DRY RUN. `dryRun=1` (query or form field) answers what the upload would do per file —
+// lib/medical-pipeline/dry-run.ts — through the same auth and target resolution, and
+// writes nothing: not even the pending identity an unmapped patient otherwise records.
 //
 // ERROR SHAPE (#478). `{ ok: false, error }` with an appropriate status; the 500 message
 // stays generic and the real cause goes to the server error log. Nothing here ever logs
@@ -167,6 +175,9 @@ export async function POST(req: Request): Promise<Response> {
   // 3. Resolve the destination. Query parameters first (the documented curl shape), then
   //    the matching multipart fields. parseUploadTarget enforces exactly-one-of.
   const params = new URL(req.url).searchParams;
+  const dryRun = ["1", "true"].includes(
+    String(params.get("dryRun") ?? form.get("dryRun") ?? "")
+  );
   const target = parseUploadTarget({
     profile: params.get("profile") ?? form.get("profile"),
     portal: params.get("portal") ?? form.get("portal"),
@@ -194,6 +205,9 @@ export async function POST(req: Request): Promise<Response> {
       target.target.accountSlug,
       target.target.patientLabel
     );
+    if (!resolved.ok && dryRun) {
+      return jsonError("unmapped-identity", 404);
+    }
     if (!resolved.ok) {
       // REMEMBER what we refused (#1739), so the card can offer the one-tap binding the
       // refusal is supposed to become. Reachable only after authenticateApiToken
@@ -233,9 +247,8 @@ export async function POST(req: Request): Promise<Response> {
   //    endpoint is not a probe for which profiles exist. A RESOLVED identity goes through
   //    exactly this gate too: the binding says where the records belong, never that this
   //    token may put them there.
-  const reachable = accessibleProfilesForLogin(login.id).some(
-    (p) => p.id === profileId
-  );
+  const accessible = accessibleProfilesForLogin(login.id);
+  const reachable = accessible.some((p) => p.id === profileId);
   if (
     isDemoRestricted(isDemoMode(), login.role) ||
     !reachable ||
@@ -258,6 +271,46 @@ export async function POST(req: Request): Promise<Response> {
   // overflow is reported rather than silently dropped.
   const toIngest = files.slice(0, MEDICAL_UPLOAD_BATCH_CAP);
   const skipped = files.length - toIngest.length;
+  const skippedNote =
+    skipped > 0
+      ? {
+          skipped,
+          note: `only the first ${MEDICAL_UPLOAD_BATCH_CAP} files were ${dryRun ? "checked" : "ingested"}; send the rest in another request`,
+        }
+      : {};
+
+  if (dryRun) {
+    const readable = accessible.map((p) => ({ id: p.id, name: p.name }));
+    const destination: DryRunTarget = {
+      id: profileId,
+      name: readable.find((p) => p.id === profileId)!.name,
+      decidedBy:
+        target.target.kind === "profile"
+          ? "profile id in the request"
+          : `portal patient "${target.target.patientLabel}" is mapped here`,
+    };
+    const reports = [];
+    try {
+      for (const file of toIngest) {
+        reports.push(await dryRunMedicalUpload(destination, file, readable));
+      }
+    } catch (err) {
+      log.error("remote document dry run failed", {
+        token: tokenId,
+        login: login.id,
+        profile: profileId,
+        err: err instanceof Error ? err : String(err),
+      });
+      return jsonError("internal error", 500);
+    }
+    return Response.json({
+      ok: true,
+      dryRun: true,
+      profile: profileId,
+      documents: reports,
+      ...skippedNote,
+    });
+  }
 
   const documents: {
     // NULL for the two no-row outcomes (#1776/#1777): there is no document to point at
@@ -346,11 +399,6 @@ export async function POST(req: Request): Promise<Response> {
     ok: true,
     profile: profileId,
     documents,
-    ...(skipped > 0
-      ? {
-          skipped,
-          note: `only the first ${MEDICAL_UPLOAD_BATCH_CAP} files were ingested; send the rest in another request`,
-        }
-      : {}),
+    ...skippedNote,
   });
 }

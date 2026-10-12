@@ -53,6 +53,10 @@ import {
   type ReprocessApplyOutcome,
 } from "@/lib/medical-pipeline";
 import type { ReprocessCost } from "@/lib/reprocess-cost";
+import {
+  dryRunMedicalUpload,
+  type DryRunReport,
+} from "@/lib/medical-pipeline/dry-run";
 
 // NOTE: no type re-exports from this module. Next 16's "use server" transform
 // registers EVERY export name as a server reference before type erasure, so even
@@ -125,6 +129,35 @@ export async function uploadMedicalDocument(
   // whole batch keeps the Review feed fresh once everything has landed.
   revalidateRoute("/data");
   return { ingested: toIngest.length, overflow, restored };
+}
+
+// "Check first": what uploading these files would do, per file, writing nothing
+// (lib/medical-pipeline/dry-run.ts). Same gate and batch cap as the upload above.
+export async function checkMedicalDocuments(
+  formData: FormData
+): Promise<DryRunReport[]> {
+  const profileId = await gateItemProfile(formData);
+  const readable = (await getAccessibleProfiles()).map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
+  const target = {
+    id: profileId,
+    name: readable.find((p) => p.id === profileId)?.name ?? "",
+    decidedBy:
+      Number(formData.get("profile_id")) > 0
+        ? "the person picked in the form"
+        : "the profile you're viewing",
+  };
+  const files = formData
+    .getAll("file")
+    .filter((f): f is File => f instanceof File && f.size > 0)
+    .slice(0, MEDICAL_UPLOAD_BATCH_CAP);
+  const reports: DryRunReport[] = [];
+  for (const file of files) {
+    reports.push(await dryRunMedicalUpload(target, file, readable));
+  }
+  return reports;
 }
 
 // Preview the cost of "Re-extract all documents" BEFORE running it (issue #208).

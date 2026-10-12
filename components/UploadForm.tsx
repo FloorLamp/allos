@@ -4,7 +4,13 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconUpload } from "@tabler/icons-react";
-import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
+import {
+  checkMedicalDocuments,
+  uploadMedicalDocument,
+} from "@/app/(app)/medical/document-actions";
+import type { DryRunReport } from "@/lib/medical-pipeline/dry-run";
+import Button from "@/components/Button";
+import UploadCheckReport from "@/components/UploadCheckReport";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
 import InlineError from "@/components/InlineError";
@@ -79,12 +85,32 @@ export default function UploadForm({
 }) {
   const [selected, setSelected] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // "Check first" (the dry run): what uploading the selection would do, nothing saved.
+  const [report, setReport] = useState<DryRunReport[] | null>(null);
+  const [checking, setChecking] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const toast = useToast();
   const router = useRouter();
 
+  async function handleCheck() {
+    if (!formRef.current) return;
+    setError(null);
+    const formData = new FormData(formRef.current);
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
+    setChecking(true);
+    try {
+      setReport(await checkMedicalDocuments(formData));
+    } catch {
+      setError("Couldn’t check the files. Try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
   async function handleUpload(formData: FormData) {
     setError(null);
+    setReport(null);
     if (subjectProfileId != null)
       formData.set("profile_id", String(subjectProfileId));
     let result;
@@ -207,6 +233,7 @@ export default function UploadForm({
           // MediaInput has already written these into the real input, so the
           // submit carries them; this list is what the user reads back.
           setSelected(files);
+          setReport(null);
           return null;
         }}
       />
@@ -233,6 +260,7 @@ export default function UploadForm({
           File upload is disabled in demo — this is a read-only demo instance.
         </p>
       )}
+      {report && <UploadCheckReport reports={report} />}
       <InlineError data-testid="medical-upload-error">{error}</InlineError>
       {/* THE SUBMIT ROW APPEARS WITH THE FIRST FILE (#3488). It used to render
           always: a permanently disabled "Upload" under a button also called
@@ -255,6 +283,15 @@ export default function UploadForm({
           >
             Upload
           </SubmitButton>
+          <Button
+            type="button"
+            busy={checking}
+            disabled={demo}
+            onClick={handleCheck}
+            data-testid="medical-upload-check-first"
+          >
+            Check first
+          </Button>
           <span className="text-sm text-slate-500 dark:text-slate-400">
             We’ll read {selected.length > 1 ? "them" : "it"} in the background —
             follow progress and results in the{" "}
