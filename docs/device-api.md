@@ -39,12 +39,9 @@ first. Every answer carries `profile`. Days are profile-local; `at` an instant.
 
 ## Web twins and the Health place
 
-The web host calls each route except `needs` as `/api/<route>`: same handler, session
-cookie instead of a credential (none: 401 `token`); the login's grants decide profiles
-and writes; default profile the session's active one. A write must be same-origin JSON:
-`Origin` this host, `Sec-Fetch-Site` same-origin if sent, else 403 `origin`; not
-`application/json`, 415 `type`. `ask` is a write there: `POST /api/ask` `{q}` (a GET
-is 405), so a cross-site image or navigation spends no model call.
+Web: each route but `needs` as `/api/<route>`, same handler, the session cookie (none:
+401 `token`); grants decide profiles and writes. Writes are same-origin JSON (else 403
+`origin`, 415 `type`); `ask` is `POST /api/ask` `{q}` there (GET 405).
 
 `/deck/health`: deck-ui's Health views, vendored by `node scripts/deck-ui.mjs <version>`
 into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under the bundle's CSP. Admin only;
