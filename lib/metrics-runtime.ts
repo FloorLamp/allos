@@ -101,13 +101,23 @@ export function startMetrics() {
   shared.allosMetricsStarted = true;
   const dist = process.env.NEXT_DIST_DIR || ".next";
   // Production's manifest includes every page and API route, without route groups.
-  const manifest = JSON.parse(
-    readFileSync(
-      path.join(process.cwd(), dist, "server/app-paths-manifest.json"),
-      "utf8"
-    )
-  );
-  observeRequests(metrics, routeMatcher(Object.keys(manifest)));
+  // Read from the cwd, which `next start <dir>` need not be (the e2e workers run in
+  // their own dirs): unreadable, every route is "unmatched", never a server that
+  // cannot start (the instrumentation hook's throw 500s every page).
+  let appPaths: string[] = [];
+  try {
+    appPaths = Object.keys(
+      JSON.parse(
+        readFileSync(
+          path.join(process.cwd(), dist, "server/app-paths-manifest.json"),
+          "utf8"
+        )
+      )
+    );
+  } catch (error) {
+    console.error("metrics: no route manifest", (error as Error).message);
+  }
+  observeRequests(metrics, routeMatcher(appPaths));
   const lag = monitorEventLoopDelay({ resolution: 20 });
   lag.enable();
   const server = metricsServer(metrics, () => {
