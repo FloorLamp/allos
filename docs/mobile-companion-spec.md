@@ -7,10 +7,9 @@ Status: **draft** · Owner: TBD · Tracking issue:
 
 There is no native mobile presence. The PWA is mature (service worker,
 standalone manifest, offline write queue with exactly-once replay, web push) and
-covers most day-to-day use, but it has a hard ceiling: **a PWA cannot read
-HealthKit**, so iOS health data depends on a third-party exporter app (#141),
-and there's no biometric app lock, native share-in, or app-store
-discoverability.
+covers most day-to-day use, but **a PWA cannot read HealthKit**, so iOS health
+data depends on a third-party exporter app (#141); there's also no biometric
+lock or native share-in.
 
 ## Decision (recorded with its rejected alternative)
 
@@ -22,35 +21,25 @@ The argument against native is structural: writes are Server Actions and reads
 are Server Components, and the only JSON surface is the narrow
 [device API](device-api.md) Deck consumes. A native client over every domain
 means permanently versioning a REST layer — a second product. The shell renders
-the server's own UI instead: no version skew, one maintainer. The PWA remains
-fully supported; the shell is additive.
+the server's own UI instead: no version skew. The PWA stays supported.
 
 ## Goals (v1)
 
 1. **HealthKit exporter** — the headline feature. The shell reads HealthKit and
    POSTs to the Apple Health ingest endpoint (#141), replacing the third-party
    exporter dependency and completing the iOS ingestion story.
-2. **Biometric app lock** — Face ID / fingerprint gate in front of the WebView
-   (real value: on-device PHI).
+2. **Biometric app lock** — Face ID / fingerprint gate in front of the WebView.
 3. **Share-in** — receive a PDF/image from the iOS/Android share sheet and hand
    it to the document-import upload flow.
-4. **Server-URL onboarding** — first launch asks for the instance URL (standard
-   for self-hosted companions), validates via `/api/health`, then loads the
-   normal login page.
+4. **Server-URL onboarding** — first launch asks for the instance URL,
+   validates via `/api/health`, then loads the login page.
 
 ### Non-goals (v1)
 
-- **No native push.** APNs/FCM require the _publisher's_ keys, which a
-  self-hosted server doesn't hold; every self-hosted companion solves this with
-  a hosted encrypted relay (Home Assistant runs one) — infrastructure plus a
-  privacy tension this project doesn't need yet. Telegram + web push already
-  cover reminders. Revisit only on demand, as a separate spec.
-- **No native UI screens** beyond onboarding/lock — everything else is the
-  server's pages. No offline-first native cache beyond what the existing service
-  worker provides.
-- **No Android Health Connect bridge in v1** — Android already has a working
-  exporter path (the HC push integration); fold it into the shell later only if
-  the third-party exporter becomes a liability.
+- **No native push.** APNs/FCM need the _publisher's_ keys, which a
+  self-hosted server lacks; Telegram + web push already cover reminders.
+- **No native UI screens** beyond onboarding/lock; no native offline cache.
+- **No Android Health Connect bridge in v1** — HC push already works.
 - **No tablet/desktop targets.**
 
 ## Architecture

@@ -19,6 +19,7 @@ const DATASETS_DOC = path.join(REPO, "docs/internals/datasets.md");
 
 const ROOT_JSON_FILES = [
   "canonical-result-definitions.json",
+  "deck-ui-pin.json",
   "exercise-guides.json",
   "release-notes.json",
   "symptoms.json",

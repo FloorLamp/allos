@@ -37,6 +37,18 @@ first. Every answer carries `profile`. Days are profile-local; `at` an instant.
 | `POST /v1/readings`        | `log`  | `{day?, at?, weight?, weightUnit?: kg\|lb, bodyFat?, restingHr?, systolic?, diastolic?, glucose?, glucoseUnit?, spo2?, temperature?, tempUnit?}` → `{day, wrote: [body\|vitals], statedTimeRefused?}`; a day's weigh-in reposted replaces it |
 | `GET /v1/labs?limit=10`    | `read` | `{day, labs: [{name, value, unit, flag, date, href, freshness}]}`: latest per marker, notable first; `limit` 1–50                                                                                                                            |
 
+## Web twins and the Health place
+
+The web host calls each route except `needs` as `/api/<route>`: same handler, session
+cookie instead of a credential (none: 401 `token`); the login's grants decide profiles
+and writes; default profile the session's active one. A write must be same-origin JSON:
+`Origin` this host, `Sec-Fetch-Site` same-origin if sent, else 403 `origin`; not
+`application/json`, 415 `type`.
+
+`/deck/health`: deck-ui's Health views, vendored by `node scripts/deck-ui.mjs <version>`
+into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under the bundle's CSP. Admin only;
+others 404.
+
 Made-up find, `vitamin d`:
 
 ```json

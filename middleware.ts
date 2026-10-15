@@ -8,7 +8,12 @@ import {
   sessionCookieOptions,
   shouldSlideSessionCookie,
 } from "./lib/session-cookie";
-import { buildCsp, generateNonce, isSelfFramedPath } from "./lib/csp";
+import {
+  buildCsp,
+  generateNonce,
+  isDeckPlacePath,
+  isSelfFramedPath,
+} from "./lib/csp";
 import { isPublicPath } from "./lib/public-paths";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
@@ -156,7 +161,8 @@ export function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next(passNonce);
-  return withCsp(slides ? withSlidingCookie(res, token) : res);
+  const out = slides ? withSlidingCookie(res, token) : res;
+  return isDeckPlacePath(pathname) ? out : withCsp(out);
 }
 
 export const config = {

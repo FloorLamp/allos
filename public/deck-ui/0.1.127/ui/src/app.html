@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="view/viewer/viewer.css">
+<link rel="stylesheet" href="view/palette.css">
+<link rel="stylesheet" href="view/chart.css">
+<style>html, body, #app, .app, .app-viewer { margin: 0; height: 100%; } body { background: transparent; overflow: hidden; }
+  /* the panel draws itself (its radius, outline and backdrop) at its own height: the shell's window fits it (window.resize); outside
+     its corners the page stays transparent */
+  /* Deck's own window: the palette fills it edge to edge; wide, the viewer beside the rows */
+  body:has(.app.window) { background: var(--panel); }
+  .app.window .app-rows { height: 100%; }
+  .app.window .dp.panel.chrome { width: 100%; height: 100%; border: 0; border-radius: 0; }
+  .app.window .dp.panel .dp-rows { max-height: none; }
+  .app.window.side { display: grid; grid-template-columns: minmax(360px, 36%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .app.window.side .app-viewer { min-width: 0; border-left: 1px solid var(--line); }</style>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>

@@ -1,0 +1,72 @@
+/* The chart (view/chart.js): tokens only, so both themes and forced colours follow tokens.css. Bars the accent, the cost line ink,
+   the first extra series (grid import) violet and solid, the second (grid export) ok and dashed: identity by mark and dash as well
+   as colour; gaps hatched. A topic's accounts (parts): accent, warn, muted, bad. The stats: tiles over the chart (two a row on a
+   phone), a year table under it (scrolling sideways inside itself, never the page). */
+.dc { margin: 0 0 var(--gap-m); padding: var(--gap-s) var(--gap-m) var(--gap-xs); border: 1px solid var(--hair); border-radius: var(--radius);
+  background: var(--panel); font: var(--font-sub); color: var(--muted); }
+.dc-box { position: relative; width: 100%; min-height: 120px; touch-action: pan-y; }
+.dc-svg { display: block; overflow: visible; }
+.dc-legend { display: flex; flex-wrap: wrap; gap: var(--gap-xs) var(--gap-m); margin-bottom: var(--gap-xs); color: var(--soft); }
+.dc-legend > span { display: inline-flex; align-items: center; gap: var(--gap-xs); }
+.dc-key { display: inline-block; width: 12px; height: 10px; border-radius: 2px; flex: none; }
+.dc-k-bar { background: var(--accent); }
+.dc-k-cost { height: 2px; background: var(--text); }
+.dc-k-x0 { height: 2px; background: var(--sent); }
+.dc-k-x1 { height: 0; border-top: 2px dashed var(--ok); }
+.dc-k-gap { background: repeating-linear-gradient(45deg, var(--faint) 0 1px, transparent 1px 4px); border: 1px solid var(--line); }
+.dc-bar { fill: var(--accent); opacity: 0.85; }
+.dc-bar.on { opacity: 1; }
+.dc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dc-cost { stroke: var(--text); fill: var(--text); }
+.dc-line.dc-cost { fill: none; }
+.dc-x0 { stroke: var(--sent); fill: var(--sent); }
+.dc-line.dc-x0 { fill: none; stroke-width: 1.5; }
+.dc-x1 { stroke: var(--ok); fill: var(--ok); }
+.dc-line.dc-x1 { fill: none; stroke-width: 1.5; stroke-dasharray: 5 3; }
+.dc-dot { stroke: var(--panel); stroke-width: 1; }
+.dc-grid { stroke: var(--hair); stroke-width: 1; }
+.dc-zero { stroke: var(--edge); stroke-width: 1; }
+.dc-cross { stroke: var(--edge); stroke-width: 1; stroke-dasharray: 2 2; }
+.dc-gap { fill: url(#dc-hatch); }
+.dc-hatchline { stroke: var(--faint); stroke-width: 1; }
+.dc-tick { fill: var(--muted); font: var(--font-sub); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dc-year { fill: var(--soft); font-weight: 600; }
+.dc-unit { fill: var(--muted); font: var(--font-label); letter-spacing: 0.4px; }
+.dc-hit { fill: transparent; }
+.dc-tip { position: absolute; top: 0; z-index: 2; width: 220px; box-sizing: border-box; padding: var(--gap-s); border: 1px solid var(--line);
+  border-radius: var(--row-radius); background: var(--panel); color: var(--soft); box-shadow: 0 4px 16px color-mix(in srgb, var(--text) 14%, transparent);
+  pointer-events: none; }
+.dc-tip.pinned { pointer-events: auto; } /* a tap's: its Open takes the next tap */
+.dc-tiphead { font: var(--font-title); color: var(--text); margin-bottom: var(--gap-xs); display: flex; flex-direction: column; }
+.dc-dates { font: var(--font-sub); color: var(--muted); }
+.dc-tiprow { display: flex; align-items: center; gap: var(--gap-xs); }
+.dc-tiprow b { margin-left: auto; padding-left: var(--gap-s); white-space: nowrap; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.dc-open { margin-top: var(--gap-xs); width: 100%; justify-content: center; min-height: 32px; overflow: hidden; white-space: nowrap; }
+.dc-openlabel { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+@media (pointer: coarse) { .dc-open { min-height: var(--touch); } }
+.dc-bar.dc-p1, .dc-k-bar.dc-p1 { fill: var(--warn); background: var(--warn); }
+.dc-bar.dc-p2, .dc-k-bar.dc-p2 { fill: var(--muted); background: var(--muted); }
+.dc-bar.dc-p3, .dc-k-bar.dc-p3 { fill: var(--bad); background: var(--bad); }
+.dc-legpart { min-width: 0; max-width: 100%; }
+.dc-legname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-tippart + .dc-tippart { margin-top: var(--gap-xs); padding-top: var(--gap-xs); border-top: 1px solid var(--hair); }
+.dc-tipname { color: var(--text); font-weight: 600; overflow: hidden; }
+.dc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); gap: var(--gap-xs); margin-bottom: var(--gap-s); }
+.dc-tile { display: flex; flex-direction: column; min-width: 0; padding: var(--gap-xs) var(--gap-s); border-radius: var(--row-radius); background: var(--raised); }
+.dc-tlabel { font: var(--font-label); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-tvalue { font: var(--font-title); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+button.dc-tvalue { all: unset; font: var(--font-title); font-weight: 600; color: var(--accent); cursor: pointer; overflow-wrap: anywhere; }
+button.dc-tvalue:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dc-tsub { color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dc-years { margin-top: var(--gap-s); overflow-x: auto; }
+.dc-years table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.dc-years th, .dc-years td { padding: 2px var(--gap-s); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--hair); }
+.dc-years thead th { font: var(--font-label); color: var(--muted); }
+.dc-years th:first-child { text-align: left; padding-left: 0; }
+.dc-years tbody th { color: var(--text); font-weight: 600; }
+.dc-years td { color: var(--soft); }
+.dc-part { font-weight: 400; color: var(--muted); }
+@media (max-width: 480px) { .dc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dc-years th, .dc-years td { padding: 2px var(--gap-xs); font-size: 12px; } }
+@media (forced-colors: active) {
+  .dc-bar, .dc-bar.dc-p1, .dc-bar.dc-p2, .dc-bar.dc-p3 { fill: CanvasText; } .dc-tile { border: 1px solid CanvasText; } button.dc-tvalue { color: LinkText; } .dc-cost, .dc-x0, .dc-x1 { stroke: CanvasText; fill: CanvasText; } .dc-line.dc-cost, .dc-line.dc-x0, .dc-line.dc-x1 { fill: none; }
+}

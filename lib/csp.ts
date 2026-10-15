@@ -33,6 +33,15 @@ export function isSelfFramedPath(pathname: string): boolean {
   return pathname.startsWith(SELF_FRAMED_PREFIX);
 }
 
+// Deck's Health place (lib/deck-ui.ts) runs under the CSP its pinned bundle declares,
+// which its route sets itself: two Content-Security-Policy headers are intersected, so
+// middleware must not add its own to this one path.
+export const DECK_HEALTH_PATH = "/deck/health";
+
+export function isDeckPlacePath(pathname: string): boolean {
+  return pathname === DECK_HEALTH_PATH;
+}
+
 /**
  * Build the full Content-Security-Policy header value.
  *

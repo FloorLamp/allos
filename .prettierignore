@@ -18,3 +18,6 @@ lib/zip-centroids.json
 # table to its widest cell, and the widest cell here is a 700-character note — which
 # both inflates the file tenfold and makes it permanently disagree with its generator.
 docs/internals/time-columns.md
+
+# Deck web UI, vendored byte for byte (scripts/deck-ui.mjs); its sha256s are the contract.
+public/deck-ui/
