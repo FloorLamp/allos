@@ -20,6 +20,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
+import { metrics } from "@/lib/metrics";
 import {
   serializeCyclingStreamSummary,
   summarizeCyclingStreams,
@@ -205,7 +206,22 @@ describe("runWithingsSync orchestrator", () => {
     });
     stubWithings({ measure: withingsMeasurePage, sleep: withingsSleepPage });
 
+    const beforeMetrics = metrics.render();
+    const beforeRuns = Number(
+      beforeMetrics.match(
+        /allos_task_runs_total\{task="withings",outcome="ok"\} (\d+)/
+      )?.[1] ?? 0
+    );
     const res = await runWithingsSync(p);
+    expect(metrics.render()).toContain(
+      `allos_task_runs_total{task="withings",outcome="ok"} ${beforeRuns + 1}`
+    );
+    expect(metrics.render()).toMatch(
+      /allos_task_duration_seconds_count\{task="withings"\} [1-9]/
+    );
+    expect(metrics.render()).toMatch(
+      /allos_task_last_success_timestamp_seconds\{task="withings"\} [1-9]/
+    );
     expect(res).not.toHaveProperty("error");
     // Cursor advanced to the echoed updatetime.
     expect(getWithingsCursor(p)).toBe(W_UPDATETIME);

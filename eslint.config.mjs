@@ -146,12 +146,8 @@ const TEST_TREES = [
   "**/*.test.ts",
   "**/*.test.tsx",
 ];
-// The last two entries are Next's repo-root modules: middleware.ts runs on every
-// request and instrumentation-client.ts in every browser session, and no `**/` tree
-// reached either, so both sat outside every ban composed onto this list — the #5348
-// write-brand cast included (#5856). EXPORTED because
-// lib/__tests__/write-brand-ban-coverage.ts enumerates the production surface from
-// this list rather than restating it.
+// Include Next's root request, server startup, and browser modules in every ban.
+// Exported so write-brand-ban-coverage.ts enumerates this same production surface.
 export const PRODUCTION_TREES = [
   "lib/**/*.{ts,tsx}",
   "app/**/*.{ts,tsx}",
@@ -159,6 +155,7 @@ export const PRODUCTION_TREES = [
   "scripts/**/*.{ts,tsx}",
   "middleware.ts",
   "instrumentation-client.ts",
+  "instrumentation.ts",
 ];
 // The one module allowed to expose the raw `revalidatePath`, so it is in `ignores`
 // on every block below that carries REVALIDATE_PATH_BAN — and an `ignores` entry
