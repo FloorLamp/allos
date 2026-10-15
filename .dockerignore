@@ -11,3 +11,8 @@ npm-debug.log*
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+.cache
+.agent-task
+test-results
+playwright-report

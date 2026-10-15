@@ -37,6 +37,23 @@ const SHARE_HEADERS = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
+  // Tesseract starts a worker by filename; tracing does not follow its imports.
+  outputFileTracingIncludes: {
+    "/*": [
+      "./node_modules/tesseract.js/src/**/*",
+      "./node_modules/tesseract.js-core/**/*",
+      "./node_modules/wasm-feature-detect/**/*",
+      "./node_modules/bmp-js/**/*",
+      "./node_modules/is-url/**/*",
+      "./node_modules/regenerator-runtime/**/*",
+      "./node_modules/zlibjs/**/*",
+      "./node_modules/node-fetch/**/*",
+      "./node_modules/whatwg-url/**/*",
+      "./node_modules/tr46/**/*",
+      "./node_modules/webidl-conversions/**/*",
+    ],
+  },
   // Next 16's dev server takes a per-project single-instance lock (.next/dev/lock),
   // so the e2e demo instance (#181) can no longer `next dev` from the same dir as
   // the main instance. An env-driven distDir gives the demo dev server its own
