@@ -145,9 +145,8 @@ Estimated effort: **1.5–2 months** focused, dominated by platform plumbing
 
 1. **OAuth in WebView vs system browser** (see Shell behavior) — decide in PR 1
    on hardware.
-2. **Monorepo CI scope** — lint/typecheck `mobile/` in the existing `check` job
-   vs a separate workflow; proposal: separate light workflow, so mobile churn
-   never blocks server CI.
-3. **Minimum OS versions** — proposal: iOS 16+ (web push parity), Android 10+.
-4. **QR pairing** — the server could render a QR (server URL + ingest token) on
-   the integration page for one-scan setup; cheap, decide in PR 2.
+2. **Monorepo CI scope** — proposal: a separate light workflow for `mobile/`, so
+   its churn never blocks server CI.
+3. **Minimum OS versions** — proposal: iOS 16+, Android 10+.
+4. **QR pairing** — a QR (server URL + ingest token) on the integration page;
+   PR 2.

@@ -17,6 +17,7 @@ import { seedProfile } from "./fixtures";
 import { linkDevice } from "@/lib/device-logins";
 import { GET as healthz } from "@/app/healthz/route";
 import { GET as needs } from "@/app/v1/needs/route";
+import { GET as me } from "@/app/v1/me/route";
 import { GET as profiles } from "@/app/v1/profiles/route";
 import { GET as find } from "@/app/v1/find/route";
 import { GET as record } from "@/app/v1/record/route";
@@ -108,6 +109,8 @@ let reader: string;
 let stranger: string;
 // Linked, but holding `allos:read` alone.
 let readOnlyScopes: string;
+// Linked to the owner's account (allos's `admin` role).
+let ownerDesk: string;
 
 beforeAll(() => {
   mine = seedProfile("DevMine");
@@ -134,9 +137,11 @@ beforeAll(() => {
   reader = credential({ name: "kiosk", scopes: ALL });
   stranger = credential({ name: "loaner", scopes: ALL });
   readOnlyScopes = credential({ name: "macmini", scopes: ["allos:read"] });
+  ownerDesk = credential({ name: "win11", scopes: ALL });
   linkDevice("pixel", writer);
   linkDevice("kiosk", viewer);
   linkDevice("macmini", writer);
+  linkDevice("win11", makeLogin("device-owner", "admin"));
 });
 
 // ── The credential ───────────────────────────────────────────────────────────────
@@ -171,7 +176,7 @@ describe("/v1 — the device credential, verified with boarding", () => {
   });
 
   it("503s when boarding is unreachable, and again when it answers nonsense — never a device", async () => {
-    const token = credential({ name: "win11", scopes: ALL });
+    const token = credential({ name: "m1x", scopes: ALL });
     down = true;
     try {
       const res = await needs(req("/v1/needs", token));
@@ -204,6 +209,28 @@ describe("/v1 — the device credential, verified with boarding", () => {
 
 // ── Profile scoping ──────────────────────────────────────────────────────────────
 describe("/v1 — a device sees only its login's profiles", () => {
+  it("/v1/me names the linked login; owner is allos's admin role, never a name", async () => {
+    const owner = await json(await me(req("/v1/me", ownerDesk)));
+    expect(owner.owner).toBe(true);
+    expect(owner.login).toEqual({
+      id: expect.any(Number),
+      label: "device-owner",
+    });
+    // An admin reaches every profile, so both seeded ones are listed.
+    expect(owner.profiles).toEqual(
+      expect.arrayContaining([
+        { id: mine.profileId, label: "DevMine" },
+        { id: theirs.profileId, label: "DevTheirs" },
+      ])
+    );
+    const member = await json(await me(req("/v1/me", phone)));
+    expect(member.owner).toBe(false);
+    expect(member.profiles).toEqual([{ id: mine.profileId, label: "DevMine" }]);
+    const unlinked = await me(req("/v1/me", stranger));
+    expect(unlinked.status).toBe(403);
+    expect(await json(unlinked)).toEqual({ error: "device" });
+  });
+
   it("lists the granted profile with its access, and refuses an ungranted one", async () => {
     const res = await profiles(req("/v1/profiles", phone));
     expect(res.status).toBe(200);
