@@ -77,6 +77,7 @@ function payloadWindow(parsed: ParsedPayload): {
 }
 
 export async function POST(req: Request) {
+  const metricsStart = performance.now();
   const token = bearer(req);
 
   // Rate-limit FIRST, before the token-resolution read — keyed on the presented
@@ -125,6 +126,7 @@ export async function POST(req: Request) {
   const contentLength = Number(req.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > maxIngestBytes) {
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       error: overSizeReviewMessage(contentLength, maxIngestBytes),
     });
@@ -145,6 +147,7 @@ export async function POST(req: Request) {
     // the bad-JSON and over-record-count rejections below do. The stream aborted at
     // the cap so the exact size is unknown; report the cap as the lower bound.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       error: overSizeReviewMessage(maxIngestBytes, maxIngestBytes),
     });
@@ -171,6 +174,7 @@ export async function POST(req: Request) {
     // The profile IS known (token already resolved), so this failure is
     // attributable — record it best-effort for the debug panel, then reject.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       raw_ref: rawRef,
       error: "Invalid JSON body.",
@@ -191,6 +195,7 @@ export async function POST(req: Request) {
     // The Review-feed line names the remedy (#1064); the response body stays generic
     // (#478) — a bearer-token holder never sees the internal counts/thresholds.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       raw_ref: rawRef,
       error: overRecordReviewMessage(recordCount, MAX_INGEST_RECORDS),
@@ -246,6 +251,7 @@ export async function POST(req: Request) {
     );
     const win = payloadWindow(parsed);
     const eventId = emitSyncEvent({
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       profileId: INGEST_PROFILE_ID,
       sourceId: HEALTH_CONNECT_ID,
       window: win,
@@ -318,6 +324,7 @@ export async function POST(req: Request) {
   // Best-effort event: one row per POST; it can never affect ingest.
   const win = payloadWindow(parsed);
   const eventId = emitSyncEvent({
+    durationSeconds: (performance.now() - metricsStart) / 1000,
     profileId: INGEST_PROFILE_ID,
     sourceId: HEALTH_CONNECT_ID,
     window: win,

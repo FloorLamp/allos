@@ -115,7 +115,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-notify.sh
 # the entrypoint re-chowns it at startup before dropping to the node user.
 RUN mkdir -p /app/data && chown -R node:node /app
 
-EXPOSE 3000
+COPY deploy/steps /liftoff/deploy/steps
+COPY deploy/allos.alloy /liftoff/deploy/allos.alloy
+
+EXPOSE 3000 9830
 # Runs as root only long enough to chown the data dir, then execs as node.
 # next start honors PORT; default 3000.
 ENTRYPOINT ["docker-entrypoint.sh"]

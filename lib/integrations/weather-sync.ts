@@ -107,6 +107,7 @@ export async function runWeatherSync(
   profileId: number,
   source: WeatherSource = openMeteoSource
 ): Promise<WeatherSyncResult | { error: string }> {
+  const metricsStart = performance.now();
   const home = getHomeLocation(profileId);
   // No home location → the feature is simply off for this profile (degrade gracefully).
   if (!home) return { error: "no home location" };
@@ -143,6 +144,7 @@ export async function runWeatherSync(
       res.error ??
       syncFailureCopy(SOURCE_NAME, syncFailureKind(res.status ?? 0));
     recordSyncEvent(profileId, WEATHER_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       windowStart: startDate,
       windowEnd: dailyEnd,
@@ -164,6 +166,7 @@ export async function runWeatherSync(
     });
     const message = userErrorCopy(err, { doing: "save the UV forecast" });
     recordSyncEvent(profileId, WEATHER_ID, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       windowStart: startDate,
       windowEnd: dailyEnd,
@@ -232,6 +235,7 @@ export async function runWeatherSync(
   };
   recordSync(profileId, WEATHER_ID, { hours: total, days: dayTotal });
   emitSyncEvent({
+    durationSeconds: (performance.now() - metricsStart) / 1000,
     profileId,
     sourceId: WEATHER_ID,
     window: { start: startDate, end: dailyEnd },
