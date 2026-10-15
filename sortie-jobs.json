@@ -11,7 +11,7 @@
     "argv": [
       "sh",
       "-c",
-      "npm ci --no-audit --no-fund && DOC_BREVITY_BASE=main VITEST_MAX_WORKERS=4 npm run -s check"
+      "sh scripts/ci-install.sh && DOC_BREVITY_BASE=main VITEST_MAX_WORKERS=4 npm run -s check"
     ],
     "caps": ["linux"],
     "weight": 2,
@@ -23,7 +23,7 @@
     "argv": [
       "sh",
       "-c",
-      "npm ci --no-audit --no-fund && npx playwright install --only-shell chromium && PW_WORKERS=2 npm run -s test:smoke"
+      "sh scripts/ci-install.sh && npx playwright install --only-shell chromium && PW_WORKERS=2 npm run -s test:smoke"
     ],
     "caps": ["linux", "chrome"],
     "weight": 2,
