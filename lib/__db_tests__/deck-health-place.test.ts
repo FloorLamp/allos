@@ -181,13 +181,17 @@ describe("/api twins — the session, not a device credential", () => {
 
   // /api/ask is a write-shaped POST (#6088): a cookie-authenticated GET would let a
   // cross-site <img>, no-cors fetch or navigation spend a model call.
-  const ask = (headers: Record<string, string>, body = { q: "glucose" }) =>
+  const ask = (
+    headers: Record<string, string>,
+    body: Record<string, unknown> = { q: "glucose" },
+    token = writer
+  ) =>
     askRoute.POST(
       new Request("http://allos.test/api/ask", {
         method: "POST",
         headers: {
           host: "allos.test",
-          cookie: `${SESSION_COOKIE}=${writer}`,
+          cookie: `${SESSION_COOKIE}=${token}`,
           ...headers,
         },
         body: JSON.stringify(body),
@@ -212,8 +216,11 @@ describe("/api twins — the session, not a device credential", () => {
   });
 
   it("answers a same-origin JSON POST from the session's own profile", async () => {
+    const calls = vi.mocked(answerRecordQuestion).mock.calls.length;
     const res = await ask({ ...json, origin: "http://allos.test" });
     expect(res.status).toBe(200);
+    // The spy sees an answered call, so the refusal test's unchanged count means something.
+    expect(vi.mocked(answerRecordQuestion).mock.calls.length).toBe(calls + 1);
     const body = (await res.json()) as {
       profile: number;
       offline: boolean;
@@ -231,6 +238,37 @@ describe("/api twins — the session, not a device credential", () => {
     );
     expect(empty.status).toBe(400);
     expect(await empty.json()).toEqual({ error: "q" });
+  });
+
+  // Deck's web host sends the chosen profile in the body (deck-ui host/backends.js
+  // webPost): it must decide the profile, under the same grants as `?profile=`.
+  it("asks the body's profile when the login reaches it, else 403s before any model call", async () => {
+    const same = { ...json, origin: "http://allos.test" };
+    const other = await ask(
+      same,
+      { q: "glucose", profile: theirs.profileId },
+      owner
+    );
+    expect(other.status).toBe(200);
+    const answered = (await other.json()) as {
+      profile: number;
+      citations: { title: string }[];
+    };
+    expect(answered.profile).toBe(theirs.profileId);
+    expect(answered.citations.every((c) => !c.title.includes("WebMine"))).toBe(
+      true
+    );
+
+    const logBefore = aiLogSize();
+    const calls = vi.mocked(answerRecordQuestion).mock.calls.length;
+    const refused = await ask(same, {
+      q: "glucose",
+      profile: theirs.profileId,
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ error: "profile" });
+    expect(vi.mocked(answerRecordQuestion).mock.calls.length).toBe(calls);
+    expect(aiLogSize()).toBe(logBefore);
   });
 });
 
