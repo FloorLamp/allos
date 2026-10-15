@@ -29,6 +29,7 @@ Root-level JSON assets under `lib/` have explicit exceptions:
 
 - `canonical-result-definitions.json` is the registered external source described
   below. Its framework wrapper and boot seed share the same committed rows.
+- `deck-ui-pin.json` pins the vendored Deck web UI; not reference data.
 - `exercise-guides.json` and `symptoms.json` are framework non-candidates: they have
   no honest external provenance to promote into a reference-data citation.
 - `release-notes.json` holds product changelog data.

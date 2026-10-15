@@ -47,3 +47,10 @@ paths = ['''lib/migrations/manifest\.json$''']
 [[allowlists]]
 description = "#5463 — stranded fixture literal on a branch this environment cannot delete"
 commits = ["aeb489b938a19bb71d12f255c2550ac04c5b4365"]
+
+# Deck's web UI, vendored byte for byte (scripts/deck-ui.mjs): each version's
+# manifest maps file paths to SHA-256 digests, which generic-api-key reads as keys.
+# No secrets; path-scoped to those manifests alone.
+[[allowlists]]
+description = "vendored deck-ui manifest — path->SHA-256 of vendored files, no secrets"
+paths = ['''public/deck-ui/[^/]+/manifest\.json$''']

@@ -98,13 +98,20 @@ export type DeviceAuth =
       profile: SessionProfile;
       profiles: SessionProfile[];
     }
-  | { ok: false; status: 401 | 403 | 503; error: DeviceRefusal };
+  | { ok: false; status: 401 | 403 | 415 | 503; error: DeviceRefusal };
 
 // BACKEND.md's words (`token`, `scope`, `boarding`) plus allos's own two: `device`
 // (verified, but the owner linked it to no login) and `profile` (the login reaches no
 // profile, or not the one asked for).
 export type DeviceRefusal =
-  "token" | "scope" | "boarding" | "device" | "profile";
+  | "token"
+  | "scope"
+  | "boarding"
+  | "device"
+  | "profile"
+  // The session twins' (`/api`) own: a write not from this origin, or not JSON.
+  | "origin"
+  | "type";
 
 export function refuse(auth: { status: number; error: string }): Response {
   return Response.json({ error: auth.error }, { status: auth.status });
@@ -152,7 +159,34 @@ function reach(
 // handler on allos's own origin for a person signed in with the session cookie, never
 // a device credential in a browser. The session's login and grants decide the profiles
 // exactly as for a linked device; a scope is a device's, so it does not apply.
+//
+// A cookie is ambient, and SameSite=Lax does not stop a sibling *.wang.team site (same
+// site, other origin), so a write must come from allos's own origin: `Origin` equal to
+// the host the request was made to (as Next checks a Server Action; a missing one is
+// refused), `Sec-Fetch-Site` same-origin when the browser sends it, and a JSON body (a
+// cross-origin form cannot send one without a preflight). Before anything else runs.
+function crossOriginWrite(req: Request): DeviceAuth | null {
+  if (req.method === "GET" || req.method === "HEAD") return null;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  let origin: string | null = null;
+  try {
+    origin = new URL(req.headers.get("origin") ?? "").host;
+  } catch {
+    // no or unparseable Origin
+  }
+  const site = req.headers.get("sec-fetch-site");
+  if (!host || origin !== host || (site && site !== "same-origin"))
+    return { ok: false, status: 403, error: "origin" };
+  if (
+    !/^application\/json\s*(;|$)/i.test(req.headers.get("content-type") ?? "")
+  )
+    return { ok: false, status: 415, error: "type" };
+  return null;
+}
+
 function authenticateSession(req: Request): DeviceAuth {
+  const blocked = crossOriginWrite(req);
+  if (blocked) return blocked;
   const token = (req.headers.get("cookie") ?? "")
     .split(/;\s*/)
     .find((c) => c.startsWith(`${SESSION_COOKIE}=`))

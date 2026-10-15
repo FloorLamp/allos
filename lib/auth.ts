@@ -36,8 +36,11 @@ export { SESSION_COOKIE, sessionCookieOptions };
 // CSRF: no separate token is needed. State-changing requests go through Server
 // Actions (Next enforces an Origin/Host match on POST) or through
 // token-authenticated API handlers (Health Connect ingest, Telegram webhook);
-// the only cookie-authenticated handlers are GET-only downloads/streams, which a
-// cross-site form can't meaningfully forge. The cookie is httpOnly + SameSite=Lax.
+// the other cookie-authenticated handlers are GET-only downloads/streams, which a
+// cross-site form can't meaningfully forge, and the `/api` session twins of the
+// device API, whose writes check Origin, Sec-Fetch-Site and a JSON body themselves
+// (lib/device-logins.ts). The cookie is httpOnly + SameSite=Lax, which does not
+// separate sibling subdomains: same-site is not same-origin.
 
 // Absolute session ceiling (issue #23). The 30-day expiry is SLIDING — every use
 // re-extends expires_at — so an active session otherwise never dies. This is the

@@ -41,7 +41,9 @@ first. Every answer carries `profile`. Days are profile-local; `at` an instant.
 
 The web host calls each route except `needs` as `/api/<route>`: same handler, session
 cookie instead of a credential (none: 401 `token`); the login's grants decide profiles
-and writes; default profile the session's active one.
+and writes; default profile the session's active one. A write must be same-origin JSON:
+`Origin` this host, `Sec-Fetch-Site` same-origin if sent, else 403 `origin`; not
+`application/json`, 415 `type`.
 
 `/deck/health`: deck-ui's Health views, vendored by `node scripts/deck-ui.mjs <version>`
 into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under the bundle's CSP. Admin only;

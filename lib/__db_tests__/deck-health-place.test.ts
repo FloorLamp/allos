@@ -105,20 +105,64 @@ describe("/api twins — the session, not a device credential", () => {
     expect(await res.json()).toEqual({ error: "profile" });
   });
 
+  const take = (
+    token: string,
+    headers: Record<string, string> = {
+      origin: "http://allos.test",
+      "content-type": "application/json",
+    }
+  ) =>
+    boardDose(
+      new Request(`http://allos.test/api/board/${myDoseId}`, {
+        method: "POST",
+        headers: {
+          host: "allos.test",
+          cookie: `${SESSION_COOKIE}=${token}`,
+          ...headers,
+        },
+        body: JSON.stringify({ action: "take" }),
+      }),
+      { params: Promise.resolve({ doseId: String(myDoseId) }) }
+    );
+  const taken = async () => {
+    const { meds } = (await (
+      await board(get("/api/board", writer))
+    ).json()) as {
+      meds: { doses: { id: number; status: string | null }[] }[];
+    };
+    return meds.flatMap((m) => m.doses).find((d) => d.id === myDoseId)?.status;
+  };
+  const json = { "content-type": "application/json" };
+
+  it("refuses a write from another origin, even a sibling site's, and writes nothing", async () => {
+    for (const headers of [
+      { ...json, origin: "https://evil.wang.team" },
+      { ...json, origin: "https://evil.example" },
+      { ...json, origin: "http://allos.test", "sec-fetch-site": "same-site" },
+      json,
+    ]) {
+      const res = await take(writer, headers);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "origin" });
+    }
+    expect(await taken()).toBeNull();
+  });
+
+  it("415s a body that is not JSON, from the right origin", async () => {
+    const res = await take(writer, {
+      origin: "http://allos.test",
+      "content-type": "text/plain",
+    });
+    expect(res.status).toBe(415);
+    expect(await taken()).toBeNull();
+  });
+
   it("writes through a write grant and refuses a read-only one", async () => {
-    const take = (token: string) =>
-      boardDose(
-        new Request(`http://allos.test/api/board/${myDoseId}`, {
-          method: "POST",
-          headers: { cookie: `${SESSION_COOKIE}=${token}` },
-          body: JSON.stringify({ action: "take" }),
-        }),
-        { params: Promise.resolve({ doseId: String(myDoseId) }) }
-      );
     const refused = await take(viewer);
     expect(refused.status).toBe(403);
     expect(await refused.json()).toEqual({ error: "access" });
     expect((await take(writer)).status).toBe(200);
+    expect(await taken()).toBe("taken");
   });
 });
 
