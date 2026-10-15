@@ -1,3 +1,4 @@
+import { recordSyncMetric } from "@/lib/metrics";
 // Integration ids use the same source vocabulary in TypeScript and SQLite.
 import { db, writeTx } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
@@ -262,7 +263,13 @@ export async function runIntegrationBackfillJob(
         )
     );
   }
-  return getIntegrationBackfillJob(profileId, sourceId, kind);
+  const finished = getIntegrationBackfillJob(profileId, sourceId, kind);
+  recordSyncMetric(
+    `${runner.sourceId}:${runner.kind}`,
+    finished?.status === "completed",
+    (Date.now() - batchStarted) / 1000
+  );
+  return finished;
 }
 
 export async function resumeDueIntegrationBackfills(

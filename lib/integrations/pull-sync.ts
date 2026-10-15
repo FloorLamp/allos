@@ -212,6 +212,7 @@ export async function runPullSync<
   profileId: number,
   spec: PullSpec<TToken, TCursor, TCounts>
 ): Promise<(TCounts & { truncated?: true }) | { error: string }> {
+  const metricsStart = performance.now();
   // The source's display name, so the house sentence names what a person recognises
   // ("Couldn't reach Strava.") rather than the registry id.
   const name = getIntegration(spec.id)?.name ?? spec.id;
@@ -240,7 +241,11 @@ export async function runPullSync<
       name,
       userErrorCopy(err, { doing: `connect to ${name}`, service: name })
     );
-    recordSyncEvent(profileId, spec.id, { ok: false, error: message });
+    recordSyncEvent(profileId, spec.id, {
+      ok: false,
+      error: message,
+      durationSeconds: (performance.now() - metricsStart) / 1000,
+    });
     return { error: message };
   }
   // Not a sync attempt (no credentials / not connected yet) — nothing to log.
@@ -256,7 +261,11 @@ export async function runPullSync<
       markConnectionNeedsReauth(profileId, spec.id);
     }
     const message = failureSentence(profileId, spec.id, name, outcome.error);
-    recordSyncEvent(profileId, spec.id, { ok: false, error: message });
+    recordSyncEvent(profileId, spec.id, {
+      ok: false,
+      error: message,
+      durationSeconds: (performance.now() - metricsStart) / 1000,
+    });
     return { error: message };
   }
 
@@ -350,6 +359,7 @@ export async function runPullSync<
     const message = userErrorCopy(err, { doing: `save your ${name} data` });
     const w = win();
     recordSyncEvent(profileId, spec.id, {
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       ok: false,
       windowStart: w.start,
       windowEnd: w.end,
@@ -410,6 +420,7 @@ export async function runPullSync<
     // Best-effort raw capture (never throws): the JSON we fetched this run.
     const rawRef = writeRawPayload(profileId, spec.id, JSON.stringify(raw));
     const eventId = emitSyncEvent({
+      durationSeconds: (performance.now() - metricsStart) / 1000,
       profileId,
       sourceId: spec.id,
       window: w,

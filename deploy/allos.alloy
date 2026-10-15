@@ -1,0 +1,6 @@
+prometheus.scrape "allos" {
+  targets = [{"__address__" = "127.0.0.1:9830", "instance" = "prod"}]
+  job_name = "allos"
+  scrape_interval = "60s"
+  forward_to = [prometheus.remote_write.default.receiver]
+}
