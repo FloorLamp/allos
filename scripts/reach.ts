@@ -7,8 +7,7 @@
 //
 // The symbol may be file-local. A reviewer diffs the terminal list against a PR's
 // consumer table; lib/__tests__/reach.test.ts pins the sets that feed notifications;
-// the merge gate (scripts/orchestration/merge-gate.mjs) reads the `--json` shape
-// as a child process, because a `.mjs` cannot import this TypeScript directly.
+// `--json` is for a script that reads the result as a child process.
 // Edges, terminals and blind spots are documented in scripts/reach-graph.ts.
 import { formatReach, hops, reach, terminalSet } from "./reach-graph";
 

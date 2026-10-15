@@ -1,6 +1,6 @@
 ---
 name: file-issue
-description: Investigate and draft or file a GitHub issue on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief. Use reconcile-tracker for existing issues.
+description: Investigate and draft or file a GitHub issue on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief.
 allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git fetch:*)
 ---
 

@@ -34,7 +34,7 @@
 // (lib/integrations/open-meteo.ts). A real no-match logs nothing, so the presence
 // of a line IS the distinction, and grepping for one is how a local run tells which
 // branch it took: rxnav.nlm.nih.gov is unreachable from an agent container and
-// reachable from CI. See docs/orchestration/e2e-ci.md, "Diagnosing a red".
+// reachable from CI. See docs/internals/e2e-diagnosis.md.
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("rxnorm");

@@ -1,6 +1,6 @@
 ---
 name: file-issue
-description: Investigate and draft or file a GitHub issue on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief. Use reconcile-tracker for existing issues.
+description: Investigate and draft or file a GitHub issue on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief.
 ---
 
 # File an actionable issue
@@ -9,9 +9,8 @@ Use this skill when issue preparation or filing is requested. A bug report or
 feature discussion alone does not authorize creating tracker work.
 
 Follow the [change and test policy](../../../docs/change-policy.md) for scope and
-acceptance coverage, and [GitHub access](../../../docs/orchestration/environment.md#github-access)
-for transport, credentials, and write verification. Missing write credentials
-block filing, not investigation or a complete draft.
+acceptance coverage. Missing write credentials block filing, not investigation or
+a complete draft.
 
 ## Investigate
 
@@ -43,10 +42,9 @@ long, recheck before filing so a new ruling is not missed.
 ## Resolve decisions
 
 Batch only questions that current code and session instructions cannot settle.
-Use [decision classes](../../../docs/orchestration/decision-classes.md) to check
-ambiguity, placement, numbers, wrong-result cost, conflicting rulings, coupled
-work, and exceptions to universal rules. These are prompts for investigation,
-not seven mandatory questions.
+Check ambiguity, placement, numbers, wrong-result cost, conflicting rulings,
+coupled work, and exceptions to universal rules. These are prompts for
+investigation, not seven mandatory questions.
 
 Explain options in terms of what a person sees or can do, with a recommendation
 and the impact of each choice. Use existing constants or measurements for limits.
@@ -80,23 +78,18 @@ existing owner can enforce the contract. If found during other work, note that
 provenance briefly without appending an incident narrative.
 
 Use truthful attribution for the actual agent/session when the host requires it.
-Never copy another provider's name or fabricate a session URL. Existing historical
-footers do not establish ownership of a new lane; follow the
-[claim rules](../../../docs/orchestration/claims.md).
+Never copy another provider's name or fabricate a session URL.
 
 ## Labels and priority
 
-Follow [queue labels](../../../docs/orchestration/labels.md): at least one domain
-and exactly one priority slot, `P0`–`P3` or `parked`. Validate against
-`KNOWN_LABELS` in [reconcile-tracker-core](../../../scripts/orchestration/reconcile-tracker-core.ts),
-not the live label list. Do not duplicate that taxonomy here or invent a label.
+Use at least one domain label and exactly one priority slot, `P0`–`P3` or
+`parked`, chosen from the repository's existing labels. Never invent a label:
+GitHub's add-labels call silently creates an unknown one.
 
-Use the [dispatch priority rules](../../../docs/orchestration/dispatch.md#dispatch).
 An active infrastructure bottleneck can warrant P1; a latent isolated flake is
 normally P3; ordinary scoped features and cleanup are generally P2–P3.
-Agent-discovered work defaults to P3, subject to the documented demonstrated
-regression and owner-authorized audit exceptions. Explain priority in the draft;
-ask only when the evidence cannot settle it.
+Agent-discovered work defaults to P3 unless it is a demonstrated regression.
+Explain priority in the draft; ask only when the evidence cannot settle it.
 
 ## File and verify
 

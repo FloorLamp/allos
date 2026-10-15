@@ -4,16 +4,11 @@
 // ask "is `.next` older than any source the build compiled"; since #5772 it asks
 // "was `.next` compiled from the sources this tree holds", because the older,
 // timestamp-shaped question cannot see an edit made while the build itself was
-// running. The seeding step in scripts/orchestration/seed-next-build.mjs asks that
+// running. The seeding step in ./build-seed.mjs asks that
 // same question of ANOTHER tree's build — "would a build of THIS tree produce the
 // bytes already sitting in THAT tree" — so the declaration moved here rather than
 // being copied. Two copies of an invalidation rule is the one shape that fails
 // silently: the copy that is wrong does not throw, it serves a stale bundle.
-//
-// It lives under `e2e/` and not under `scripts/orchestration/` on purpose. The CI
-// no-runtime-surface skip set claims nothing in the app or the e2e harness imports
-// `scripts/orchestration/`; global-setup importing from there would falsify that
-// claim and silently drop the browser matrix for a change that needs it.
 //
 // A `.mjs` because both consumers must load it: TypeScript under Playwright's
 // transform (tsconfig has `allowJs`), and plain `node` with no loader at all.

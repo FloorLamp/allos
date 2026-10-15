@@ -149,15 +149,10 @@ include route, state, reproducible evidence, and mechanism. For a proposed
 structural redesign, make a compact clickable prototype for owner review and keep
 the diagnosis self-contained when artifact links are private.
 
-## Scope a post-merge check or extend coverage
+## Scope a check or extend coverage
 
-```bash
-UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run
-```
-
-Without `--run`, the helper prints a plan. App territories map to route prefixes;
-shared components and chrome require the full route set. Ambiguous changes require
-a manual plan. This chooses coverage; it does not establish a completed review.
+To check a merged change, scope `UX_ROUTES` to the route prefixes of the app
+territories it touched; shared components and chrome need the full route set.
 
 Extend the existing route/variant/disclosure/hover registries for a missing state.
 Prefer following a real index link for dynamic routes; reserve literals for enum

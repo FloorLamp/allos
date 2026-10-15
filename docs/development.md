@@ -20,7 +20,6 @@ Reuse the existing owner; read the matching contract.
 | Shared UI                       | `components/`, `components/quick-entry/`                      | `components/AGENTS.md` maps copy, layout, motion and overlay                                                         |
 | Browser tests                   | `e2e/helpers.ts`, `e2e/fixtures.ts`                           | [E2E writing guide](internals/e2e-hygiene.md)                                                                        |
 | CI failure                      | Failing test and its setup                                    | [E2E diagnosis](internals/e2e-diagnosis.md), [test timeouts](internals/test-tier-timeouts.md)                        |
-| Agent dispatch/review           | `scripts/orchestration/`                                      | [Orchestration](orchestration.md), only for an assigned orchestration role                                           |
 
 For product behavior, use [Features](features.md). User setup guides live directly
 under `docs/`; internal contracts live under `docs/internals/`.
@@ -40,9 +39,7 @@ under `docs/`; internal contracts live under `docs/internals/`.
 
 Run the narrow checks while developing. Expand when the changed surface, a
 failure, or required CI checks justify it. Passing checks do not require another
-round of invented tests. An assigned orchestration lane runs its final gates
-through `scripts/orchestration/run-gates-recorded.sh`; CI owns the full browser
-matrix. See [E2E/CI ownership](orchestration/e2e-ci.md).
+round of invented tests. CI owns the full browser matrix.
 
 ## Keep documentation usable
 
@@ -51,9 +48,9 @@ Remove war stories, superseded instructions, issue-by-issue histories, and stale
 measurements. Git and PRs retain the history. Update an existing rule instead of
 appending another version. Link to code for implementation detail.
 
-`npm run docs:check` checks all Git-visible Markdown (including agent/skill docs)
-and dispatch/brief source files. New and short files have a 1,500-word limit;
-existing oversized files cannot exceed their word count at the comparison base.
+`npm run docs:check` checks all Git-visible Markdown (including agent/skill docs).
+New and short files have a 1,500-word limit; existing oversized files cannot
+exceed their word count at the comparison base.
 This applies to generated Markdown too: keep generated reference data separate
 from growing prose. The total across all checked files must not exceed the total
 at the base, so new text displaces old; the summary line prints both totals and

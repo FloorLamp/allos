@@ -58,9 +58,7 @@ proportion to the change.
 
 ## Skills
 
-Shared workflows live in [.agents/skills](.agents/skills): `pm`, `orchestrate`,
-`needs-human`, `file-issue`, `reconcile-tracker`, and `ux-walkthrough`. Read the
-matching `SKILL.md` when assigned that role, even if the host does not discover
-skills automatically. `.claude/skills` contains thin Claude Code entrypoints to
-the same procedures. [Agent tools](docs/orchestration/environment.md#agent-tools)
-explains how to use the current host's capabilities without changing the workflow.
+Shared workflows live in [.agents/skills](.agents/skills): `file-issue` and
+`ux-walkthrough`. Read the matching `SKILL.md` when the task calls for it, even if
+the host does not discover skills automatically. `.claude/skills` contains thin
+Claude Code entrypoints to the same procedures.
