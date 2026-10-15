@@ -39,7 +39,9 @@ import {
 // Seeding is the expensive step (~20 s); copying is milliseconds.
 
 const REPO_ROOT = process.cwd();
-const BUILD_HEAP_MB = process.env.NEXT_SKIP_TYPECHECK === "1" ? 1536 : 4096;
+// The build below never type-checks (see ensureBuild); Next's compile alone fits
+// this heap. Turbopack's own memory is native and not bounded by it.
+const BUILD_HEAP_MB = 1536;
 
 // What invalidates the production build — the declaration AND the comparison over
 // it both live in ./build-inputs.mjs, because the worktree seeding step (#2605)
@@ -158,15 +160,16 @@ export async function ensureBuild(root: string = REPO_ROOT): Promise<void> {
   // from — a wrong answer that outlives this run, since every later run would
   // compare against that record and agree.
   const beforeBuild = buildInputFingerprint(root);
-  // Leave room for compiler/native memory and the page-data worker under Sortie's
-  // job cap when smoke's separate checks job owns type checking. Builds that also
-  // check types keep the same allowance as `npm run build`.
+  // NEXT_SKIP_TYPECHECK, always: this build only serves the e2e suite, and
+  // `npm run check` (`npm run typecheck`) owns the type gate. Set here, not by the
+  // caller, so no smoke command has to know: Next's `tsc` pass runs in a worker
+  // with V8's default ~2 GB heap and ran it out on Sortie's builder.
   await run(
     process.execPath,
     [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next", root), "build"],
     {
       cwd: root,
-      env: process.env,
+      env: { ...process.env, NEXT_SKIP_TYPECHECK: "1" },
       label: "next build",
     }
   );

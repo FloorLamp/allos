@@ -110,8 +110,8 @@ const nextConfig = {
   // to lower next. Measured locally at 12.9 s of a 31.6 s warm build.
   //
   // So the type GATE stays exactly where it is and the build stops re-running it,
-  // opt-in per environment: `.github/actions/e2e-setup` and Sortie's smoke job
-  // set this (both have a separate required `check` job), so a local
+  // opt-in per environment: `.github/actions/e2e-setup` and the e2e suite's own
+  // build (`ensureBuild`, e2e/global-setup.ts) set this, so a local
   // `npm run build` and the deploy image build both still type-check as before. A
   // build that skips the check never becomes the only thing standing between a
   // type error and main — `check` fails the PR either way.
@@ -123,8 +123,9 @@ const nextConfig = {
     ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === "1",
   },
   experimental: {
-    // Page-data workers each load the server bundle. Host CPU count can exceed
-    // Sortie's job allocation; keep the shared smoke build within its memory cap.
+    // Page-data and static-generation workers each load the server bundle, and
+    // the default is one per core: 15 on a 16-core host peaked the build at
+    // 5.7 GB against 4.2 GB at 1, at the same speed (8 static pages).
     cpus: 1,
     // Tree-shake barrel imports: only the icon/chart pieces actually used are
     // pulled into each route's bundle (Next rewrites `import { X } from "pkg"`
