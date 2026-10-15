@@ -23,24 +23,15 @@ this proposal does not authorize another schedule, adherence, or findings engine
 ## Authentication and request handling
 
 The proposed capability boundary is one token per profile, with revocation and
-an explicit `allow_actions` permission defaulting off. A valid token permits the
-proposed ingest, event, and board operations; `/dose` additionally requires action
-permission. This separates adherence writes from board access, but does not make
-the other capabilities read-only: ingest writes readings and events can send
-reminders. A household board composes one token per profile.
+an explicit `allow_actions` permission defaulting off; `/dose` requires it. A
+household board composes one token per profile.
 
-Use the existing [Health Connect route](../app/api/integrations/health-connect/ingest/route.ts)
-as the request-boundary reference: rate-limit before token verification, resolve
-the authorized profile, cap streamed request bodies, and validate input before
-calling domain code. The endpoints need no browser session or public app URL;
-bearer credentials require an appropriate transport, including TLS when public.
-Middleware's cookie-free route registration is not authorization.
-
-The repository also has [login-owned API tokens](api-tokens.md), currently scoped
-to document acquisition. They do not grant these proposed HA capabilities. Before
-implementation, reconcile the profile/capability requirements with the existing
-token owners rather than assuming another credential table is necessary. Preserve
-the profile boundary and default-off action permission whichever storage is used.
+Request-boundary references: the [Health Connect route](../app/api/integrations/health-connect/ingest/route.ts)
+(rate-limit before verification, cap bodies, validate before domain code) and
+the [device API](device-api.md) (credential, scope, then allos's grants).
+Middleware's cookie-free route registration is not authorization. Reconcile the
+capability with the existing credential owners ([API tokens](api-tokens.md),
+device links) before adding another table.
 
 Writes may record integration sync outcomes. Board polls must not append
 `integration_sync_events`; update a throttled last-seen timestamp instead, roughly
@@ -77,28 +68,12 @@ selection supplies the broader board. Reuse the
 [Upcoming model](../lib/queries/upcoming.ts) for overdue/today/week/later findings,
 including the same dismissal and snooze decisions as the app.
 
-The dose board also needs resolved entries, with dose identity, label, slot,
-food timing, and `due | taken | skipped` status. Upcoming deliberately removes
-resolved doses, so it alone cannot provide that board. Reuse shared intake
-schedule and adherence readers, as digest/dashboard consumers do, and preserve
-their local-day semantics; do not infer taken/skipped from an absent finding.
-
-Document an additive JSON response contract and a 30–60-second polling example.
-The board intentionally exposes the authorized profile's medication and appointment
-names on the display. Explain that visibility and revocation during setup.
-
-### `POST /dose`
-
-Accept `{ doseId, date, action: "taken" | "skipped" }` and require action
-permission. Call `markDoseTaken` or `markDoseSkipped` in
-[shared dose-status writes](../lib/queries/intake/dose-status.ts), passing the token's
-profile and the required write provenance.
-
-Return the shared typed outcome and render it honestly: a stale, inactive, or
-already-resolved dose must not be reported as newly logged. Supply changes,
-per-dose/day deduplication, and refusal to overwrite a deliberate resolution stay
-in the existing core. Both take and skip already exist; no take-only fallback is
-needed for that old dependency.
+The dose board needs resolved entries too, which Upcoming removes. The
+[device API](device-api.md) `GET /v1/board` and `POST /v1/board/<doseId>` already
+answer that board and its take/skip for a device credential, through the shared
+dose-status core with its honest typed outcomes; an HA board reuses that shape.
+The board exposes the profile's medication names; explain that and revocation
+during setup.
 
 ## Connect wizard and HA package
 
