@@ -42,10 +42,7 @@ test:smoke` for frontend changes). Passing checks need no extra invented tests.
 
 ## Keep documentation usable
 
-State the current contract, its owner, and the few tradeoffs needed to change it.
-Remove war stories, superseded instructions, issue-by-issue histories, and stale
-measurements. Git and PRs retain the history. Update an existing rule instead of
-appending another version. Link to code for implementation detail.
+State contracts and owners; update rules.
 
 `npm run docs:check` checks all Git-visible Markdown (including agent/skill docs).
 New and short files have a 1,500-word limit; existing oversized files cannot
@@ -61,3 +58,10 @@ The guard measures length, not usefulness. Do not compress code, split a single
 rule across arbitrary files, or remove important contracts just to pass it.
 Split by independently useful topics when needed. Review still checks that
 rewrites preserve behavior and remove duplication.
+
+## Deploy
+
+Sortie's `coordinator.json` must set `keep: ["node_modules"]` for allos.
+Jobs use `scripts/ci-install.sh`: reuse kept dependencies when the lockfile
+SHA-256 matches their stamp; otherwise run `npm ci` and stamp success.
+The builder needs `build-essential` (`make`) for native dependencies.
