@@ -1,0 +1,12 @@
+.dhealth { max-width: 960px; margin: auto; padding: 24px; color: var(--text); }
+.dhealth header, .dh-dose { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.dhealth h1 { margin-right: auto; }
+.dhealth section, .dh-reading { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.dhealth h2 { font-size: 18px; }
+.dhealth h3 { font-size: 15px; }
+.dhealth small { display: block; opacity: .7; margin-top: 4px; }
+.dh-columns, .dh-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.dhealth label { display: block; }
+.dhealth input { display: block; margin: 6px 0 12px; width: 100%; box-sizing: border-box; }
+.dh-result { display: block; margin-top: 12px; text-align: left; }
+@media (max-width: 600px) { .dh-columns, .dh-fields { grid-template-columns: 1fr; } .dhealth { padding: 16px; } }

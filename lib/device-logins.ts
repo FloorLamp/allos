@@ -3,6 +3,8 @@ import { readBodyCapped } from "./request-body";
 import {
   accessibleProfilesForLogin,
   ownProfileForLogin,
+  resolveSessionToken,
+  SESSION_COOKIE,
   writableProfileIdsForLogin,
   type Role,
   type SessionLogin,
@@ -127,13 +129,51 @@ export async function deviceJsonBody(
   }
 }
 
+// The profile a call acts on and the ones its login reaches: `?profile=<id>` when the
+// caller named one, else `own` (the login's own profile, or the session's active one),
+// else the first reachable.
+function reach(
+  req: Request,
+  login: SessionLogin,
+  own: number | null
+): { profile: SessionProfile; profiles: SessionProfile[] } | null {
+  const profiles = accessibleProfilesForLogin(login.id);
+  const asked = new URL(req.url).searchParams.get("profile");
+  const wanted = asked === null ? own : Number(asked);
+  const profile =
+    wanted === null
+      ? profiles[0]
+      : (profiles.find((p) => p.id === wanted) ??
+        (asked === null ? profiles[0] : undefined));
+  return profile ? { profile, profiles } : null;
+}
+
+// The `/api` twin of a `/v1` route (Deck's web host, deck-ui host/web.js): the same
+// handler on allos's own origin for a person signed in with the session cookie, never
+// a device credential in a browser. The session's login and grants decide the profiles
+// exactly as for a linked device; a scope is a device's, so it does not apply.
+function authenticateSession(req: Request): DeviceAuth {
+  const token = (req.headers.get("cookie") ?? "")
+    .split(/;\s*/)
+    .find((c) => c.startsWith(`${SESSION_COOKIE}=`))
+    ?.slice(SESSION_COOKIE.length + 1);
+  const session = token ? resolveSessionToken(token) : null;
+  if (!session) return { ok: false, status: 401, error: "token" };
+  const here = reach(req, session.login, session.profile.id);
+  if (!here) return { ok: false, status: 403, error: "profile" };
+  return { ok: true, device: "session", login: session.login, ...here };
+}
+
 // Authenticate a `/v1` request and resolve the profile it acts on. Order matters and
 // is the contract's: the credential before anything (401 / 503), then the route's
 // scope (403 `scope`), then allos's own link (403 `device`) and grants (403 `profile`).
+// A request on `/api/…` is the session twin of the route instead.
 export async function authenticateDevice(
   req: Request,
   scope: DeviceScope
 ): Promise<DeviceAuth> {
+  if (new URL(req.url).pathname.startsWith("/api/"))
+    return authenticateSession(req);
   let who;
   try {
     who = await verifier.check(bearer(req));
@@ -156,16 +196,9 @@ export async function authenticateDevice(
     role: link.role,
   };
 
-  const profiles = accessibleProfilesForLogin(login.id);
-  const asked = new URL(req.url).searchParams.get("profile");
-  const wanted = asked === null ? ownProfileForLogin(login.id) : Number(asked);
-  const profile =
-    wanted === null
-      ? profiles[0]
-      : (profiles.find((p) => p.id === wanted) ??
-        (asked === null ? profiles[0] : undefined));
-  if (!profile) return { ok: false, status: 403, error: "profile" };
-  return { ok: true, device: who.device, login, profile, profiles };
+  const here = reach(req, login, ownProfileForLogin(login.id));
+  if (!here) return { ok: false, status: 403, error: "profile" };
+  return { ok: true, device: who.device, login, ...here };
 }
 
 // The write gate for `allos:log` routes: the same answer requireProfileWriteAccess

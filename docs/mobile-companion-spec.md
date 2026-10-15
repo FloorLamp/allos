@@ -40,17 +40,12 @@ fully supported; the shell is additive.
 
 ### Non-goals (v1)
 
-- **No native push.** APNs/FCM require the _publisher's_ keys, which a
-  self-hosted server doesn't hold; every self-hosted companion solves this with
-  a hosted encrypted relay (Home Assistant runs one) — infrastructure plus a
-  privacy tension this project doesn't need yet. Telegram + web push already
-  cover reminders. Revisit only on demand, as a separate spec.
-- **No native UI screens** beyond onboarding/lock — everything else is the
-  server's pages. No offline-first native cache beyond what the existing service
-  worker provides.
-- **No Android Health Connect bridge in v1** — Android already has a working
-  exporter path (the HC push integration); fold it into the shell later only if
-  the third-party exporter becomes a liability.
+- **No native push.** APNs/FCM need the _publisher's_ keys, which a
+  self-hosted server lacks; Telegram + web push already cover reminders.
+- **No native UI screens** beyond onboarding/lock, and no offline-first native
+  cache beyond the service worker.
+- **No Android Health Connect bridge in v1** — the HC push integration already
+  works.
 - **No tablet/desktop targets.**
 
 ## Architecture
