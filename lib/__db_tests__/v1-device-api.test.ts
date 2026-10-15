@@ -380,6 +380,14 @@ describe("/v1 — each route's shape", () => {
       { params: Promise.resolve({ doseId: String(myDoseId) }) }
     );
     expect((await json(cleared)).outcome).toBe("cleared");
+    // A non-string `at` on an untaken dose is refused, not logged as a take with no time.
+    const numeric = await boardDose(
+      post(`/v1/board/${myDoseId}`, phone, { action: "take", at: 730 }),
+      { params: Promise.resolve({ doseId: String(myDoseId) }) }
+    );
+    expect(numeric.status).toBe(400);
+    expect(await json(numeric)).toEqual({ error: "at" });
+    expect(row()).toEqual([]);
 
     const bad = await boardDose(
       post(`/v1/board/${myDoseId}`, phone, { action: "eat" }),

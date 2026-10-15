@@ -46,12 +46,14 @@ export async function POST(
   const target = ACTIONS[action as Action];
   const at = typeof body?.at === "string" ? body.at : "";
   // As setDoseStatus resolves it: a stated wall time on the day, else the tap
-  // instant for today and no instant for a past day.
+  // instant for today and no instant for a past day. A stated `at` that is not a
+  // "HH:MM" string is refused, never read as no time.
   const stated =
     target === "taken" && at
       ? statedInstantOnDate(day, at, getTimezone(profile.id))
       : null;
-  if (target === "taken" && at && stated == null)
+  const unreadable = body?.at != null && typeof body.at !== "string";
+  if (target === "taken" && (unreadable || (at && stated == null)))
     return Response.json({ error: "at" }, { status: 400 });
   const takenAt =
     target === "taken"
