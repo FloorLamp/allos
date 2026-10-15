@@ -33,16 +33,14 @@ under `docs/`; internal contracts live under `docs/internals/`.
 | Pure logic                                 | `npm test -- lib/__tests__/name.test.ts`                                                               |
 | DOM or hook behavior                       | `npm test -- components/__tests__/name.test.tsx`; [component guide](internals/component-tests.md)      |
 | SQL, request authorization, Server Actions | `npm run test:db -- path/to/existing.test.ts`; [DB fixtures](../lib/__db_tests__/AGENTS.md)            |
-| UI behavior that needs a browser           | `npm run test:e2e -- e2e/name.spec.ts --retries=0`                                                     |
+| UI behavior that needs a browser           | `npm run test:e2e -- e2e/name.spec.ts --retries=0` (pages are in maintenance)                          |
 | CSS or copy                                | Inspect affected states/viewports; run relevant existing tests; do not automatically change assertions |
 | TypeScript                                 | Focused ESLint and `npm run typecheck` (includes Next type generation)                                 |
 | Build/runtime wiring                       | `npm run build` plus the affected test tier                                                            |
 
-Run the narrow checks while developing. Expand when the changed surface, a
-failure, or required CI checks justify it. Passing checks do not require another
-round of invented tests. An assigned orchestration lane runs its final gates
-through `scripts/orchestration/run-gates-recorded.sh`; CI owns the full browser
-matrix. See [E2E/CI ownership](orchestration/e2e-ci.md).
+Run the narrow checks while developing, then `npm run check`; a frontend change
+also runs `npm run test:smoke`. Passing checks do not require another round of
+invented tests. The full browser suite runs after merge and nightly.
 
 ## Keep documentation usable
 

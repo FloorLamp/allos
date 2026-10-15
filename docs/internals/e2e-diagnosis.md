@@ -21,12 +21,12 @@ available log transports.
 
 ## Shared state and shard composition
 
-CI uses `scripts/e2e-shard-plan.ts` and recorded durations. Playwright's native
+CI's full suite (`e2e-main.yml`) uses `scripts/e2e-shard-plan.ts` and recorded durations. Playwright's native
 `--shard` chooses a different partition when the duration manifest exists. To
 reproduce, check out the failing head and use that head's plan and job log:
 
 ```bash
-mapfile -t shard_args < <(npx tsx scripts/e2e-shard-plan.ts 1 12)
+mapfile -t shard_args < <(npx tsx scripts/e2e-shard-plan.ts 1 4)
 npx playwright test "${shard_args[@]}" --retries=0
 ```
 

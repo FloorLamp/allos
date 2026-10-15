@@ -233,35 +233,20 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ## Development
 
-Common checks:
+Checks:
 
 ```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run test:db
-npm run test:e2e
+npm run check       # format, lint, types, unit and DB tests: every change
+npm run test:smoke  # a handful of browser specs: changes to the pages
+npm run test:e2e    # the full browser suite: CI runs it after merge and nightly
 npm run build
 ```
 
-The browser suite needs Chromium downloaded once, and nothing else does:
+The browser suites need Chromium downloaded once, and nothing else does:
 
 ```bash
 npx playwright install --only-shell chromium
 ```
-
-Chromium is the only browser the suite runs, and `--only-shell` fetches just the
-headless binary it launches — the headed one is 389 MB that nothing here starts.
-Without this, `npm run test:e2e` fails at browser launch; Playwright's own message
-suggests the unflagged `npx playwright install`, which works but downloads every
-browser.
-
-The test suites are intentionally separate:
-
-- `npm test` runs pure unit tests.
-- `npm run test:db` runs SQLite integration and Server Action tests.
-- `npm run test:e2e` runs Playwright against isolated seeded databases.
 
 Contributors should read [AGENTS.md](AGENTS.md) for the architecture, data
 scoping rules, migration process, and testing conventions. Deeper engineering

@@ -11,11 +11,8 @@ Run authored or edited files once locally with `--retries=0`. For tests sharing
 mutable profile or worker state, run the whole file with `--workers=1`. Repeats
 need a specific timing question; new coverage needs a meaningful missing failure.
 
-The PR's sharded CI matrix supplies full-suite evidence when it actually runs.
-Only the orchestrator owns a full local run; [dispatch](dispatch.md) owns capacity
-and its two-agent E2E cap. Banked branches run assigned local checks; the sole
-landing candidate opens or refreshes its ready PR and consumes final CI. A blocked
-local browser run is a reported limitation, not a reason to open a second PR.
+PRs run the smoke set when they reach the pages; the full suite runs after merge
+and nightly (`e2e-main.yml`).
 
 ## The first round in a new worktree
 

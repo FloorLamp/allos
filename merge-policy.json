@@ -1,0 +1,66 @@
+{
+  "labels": {
+    "queue": "queue",
+    "jobs": {
+      "ci": {
+        "argv": [
+          "sh",
+          "-c",
+          "npm ci --no-audit --no-fund && DOC_BREVITY_BASE=\"$0\" VITEST_MAX_WORKERS=4 npm run -s check",
+          "{base}"
+        ],
+        "caps": ["linux"],
+        "weight": 2,
+        "priority": "agent",
+        "timeout": 1800,
+        "label": "allos checks",
+        "comment": true
+      }
+    }
+  },
+  "mainBranch": "main",
+  "fastChecks": {
+    "argv": ["sh", "-c", "npm run -s phi-scan && node scripts/audit-gate.mjs"],
+    "caps": ["linux"],
+    "weight": 1
+  },
+  "select": {
+    "argv": ["node", "scripts/select-checks.mjs", "{base}", "{head}"],
+    "caps": ["linux"]
+  },
+  "verify": [
+    {
+      "name": "checks",
+      "kind": "sortie",
+      "confirmRed": "sortie",
+      "spec": {
+        "argv": [
+          "sh",
+          "-c",
+          "npm ci --no-audit --no-fund && DOC_BREVITY_BASE=\"$0\" VITEST_MAX_WORKERS=4 npm run -s check",
+          "{base}"
+        ],
+        "caps": ["linux"],
+        "weight": 2,
+        "priority": "merge",
+        "timeout": 1800
+      }
+    },
+    {
+      "name": "smoke",
+      "kind": "sortie",
+      "confirmRed": "sortie",
+      "spec": {
+        "argv": [
+          "sh",
+          "-c",
+          "npm ci --no-audit --no-fund && npx playwright install --only-shell chromium && PW_WORKERS=2 npm run -s test:smoke"
+        ],
+        "caps": ["linux", "chrome"],
+        "weight": 2,
+        "priority": "merge",
+        "timeout": 1800
+      }
+    }
+  ]
+}
