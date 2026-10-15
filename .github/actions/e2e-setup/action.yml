@@ -109,8 +109,8 @@ runs:
     # runs `npm run typecheck` over the same tsconfig and more files, on every pull
     # request. Without this, every Playwright job — the PR shard matrix, the
     # main detector, the on-demand full suite — re-ran that identical check on
-    # the critical path, inside the per-shard floor ci.yml wants to lower. Only
-    # this action sets it, so a local build and the deploy image build are
+    # the critical path, inside the per-shard floor ci.yml wants to lower. This
+    # action and Sortie's smoke job set it; local and deploy image builds are
     # unchanged.
     - name: Build
       run: npm run build

@@ -39,7 +39,7 @@ import {
 // Seeding is the expensive step (~20 s); copying is milliseconds.
 
 const REPO_ROOT = process.cwd();
-const BUILD_HEAP_MB = 4096;
+const BUILD_HEAP_MB = process.env.NEXT_SKIP_TYPECHECK === "1" ? 1536 : 4096;
 
 // What invalidates the production build — the declaration AND the comparison over
 // it both live in ./build-inputs.mjs, because the worktree seeding step (#2605)
@@ -158,11 +158,9 @@ export async function ensureBuild(root: string = REPO_ROOT): Promise<void> {
   // from — a wrong answer that outlives this run, since every later run would
   // compare against that record and agree.
   const beforeBuild = buildInputFingerprint(root);
-  // Next's compile plus TypeScript phase crosses V8's automatic ~2 GiB old-space
-  // limit on the full app. Keep this direct bootstrap path aligned with the
-  // repository's `npm run build` script: local Playwright runs deliberately build
-  // without going through npm, so raising only package.json would leave this path
-  // able to OOM before a single browser assertion runs.
+  // Leave room for compiler/native memory and the page-data worker under Sortie's
+  // job cap when smoke's separate checks job owns type checking. Builds that also
+  // check types keep the same allowance as `npm run build`.
   await run(
     process.execPath,
     [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next", root), "build"],
