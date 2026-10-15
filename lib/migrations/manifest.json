@@ -247,5 +247,6 @@
   "20260916-shared-supply-last-fill.ts": "c9d47f9708d29dfbfce60fc62c1a3d299b37842bb5eb529a6e54c28b0593eabb",
   "20260911-breathing-rate-sleep-samples.ts": "9f13d14e48b89d084623594e5b7ff9e927267ca566e6bddf36beffef8e406b18",
   "20260916-care-plan-metric-sample-links.ts": "1d52322946ca2befcdb6079fec1a8beca18f6ece07dc648e7e065442c23da1c3",
-  "20260922-food-log-event-properties.ts": "09e03c159ef03760bf8576e43024d2d23eb32bd7692c59054553b568f8b5954b"
+  "20260922-food-log-event-properties.ts": "09e03c159ef03760bf8576e43024d2d23eb32bd7692c59054553b568f8b5954b",
+  "20261015-device-logins.ts": "91f57605145f7e5626e672b58713d731779985bbd66d6693b6c038cc2b976eb2"
 }

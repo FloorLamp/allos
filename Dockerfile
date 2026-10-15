@@ -55,6 +55,8 @@ RUN mkdir -p public \
        --format=cjs --external:better-sqlite3 --outfile=dist/notify.cjs \
   && npx esbuild scripts/restore-check.ts --bundle --platform=node --target=node24 \
        --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/restore-check.cjs \
+  && npx esbuild scripts/device-links.ts --bundle --platform=node --target=node24 \
+       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/device-links.cjs \
   && npm prune --omit=dev
 
 # Trim better-sqlite3 to what this image actually runs: one of the eight prebuilt

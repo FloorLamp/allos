@@ -18,22 +18,12 @@ discoverability.
 the Home Assistant / Nextcloud companion model — and **do not build a true
 native / React Native client.**
 
-The argument against native is structural, not aesthetic: this app has **no
-API**. Writes are Server Actions, reads are Server Components; there is no JSON
-surface a native client can consume. A native app therefore means designing,
-securing (token auth beside cookie sessions), and _permanently versioning_ a
-REST/RPC layer across every domain — then living with the
-store-app-vs-any-server-version compatibility matrix that plagues self-hosted
-companions with real APIs. That is a second product. The shell model instead
-renders the server's own UI, so:
-
-- **No API layer** is needed — Server Actions work as-is inside the WebView.
-- **No version skew** — upgrading the Docker image upgrades the app's UI; the
-  shell version only matters for its small native-bridge surface.
-- One maintainer can sustain it.
-
-The PWA remains fully supported; the shell is additive. Anything that lands as a
-web feature is automatically in the app.
+The argument against native is structural: writes are Server Actions and reads
+are Server Components, and the only JSON surface is the narrow
+[device API](device-api.md) Deck consumes. A native client over every domain
+means permanently versioning a REST layer — a second product. The shell renders
+the server's own UI instead: no version skew, one maintainer. The PWA remains
+fully supported; the shell is additive.
 
 ## Goals (v1)
 
@@ -96,11 +86,8 @@ builds stay manual (signing).
 - **External links** (docs, Strava/SMART OAuth pages) open in the system browser
   / `ASWebAuthenticationSession`, not the WebView — OAuth callbacks then
   deep-link back via a registered URL scheme. **Caveat:** the Strava and SMART
-  callbacks are session-gated; opening them in the system browser breaks the
-  cookie continuity, so OAuth connect flows in the shell either (a) stay inside
-  the WebView (acceptable: it's a real browser context), or (b) are documented
-  as desktop tasks in v1. Decide during PR 1 with a real device; (a) is the
-  expected answer.
+  callbacks are session-gated, so OAuth connect flows stay inside the WebView (a
+  real browser context) or are desktop tasks in v1; decide in PR 1 on a device.
 
 ### HealthKit exporter bridge
 
@@ -122,42 +109,21 @@ same guards, nothing server-side is shell-specific:
   foreground. Set expectations in UI copy ("syncs when opened; background sync
   when iOS allows").
 
-**Sequencing: this bridge depends on #141 (the ingest endpoint + parser) landing
-first.** The shell's v1 can ship before #141 with the bridge dark, but there's
-little point — schedule #141 → shell.
+**Sequencing:** #141 (the ingest endpoint + parser) lands first.
 
-## Distribution
+## Distribution, security, testing
 
-- **iOS:** App Store (a self-hosted companion is well-precedented — Immich, Home
-  Assistant, Nextcloud all pass review). Health-data review needs a privacy
-  policy stating data goes only to the user's own server; the HealthKit
-  entitlement usage strings must say the same. TestFlight for betas.
-- **Android:** Play Store + the APK attached to GitHub releases (the self-hosted
-  crowd expects a store-free option).
-- Store metadata/screenshots live in `mobile/fastlane/` when automated; manual
-  at first.
-
-## Security notes
-
-- PHI at rest on device = WebView cache + service-worker storage, same as the
-  PWA in mobile Safari/Chrome today; biometric lock is the added mitigation. No
-  shell-side PHI database.
-- The ingest token in Keychain is the only credential the shell itself holds;
-  revocable server-side (existing token management).
-- Certificate handling: system trust store only — no pinning (self-hosters use
-  their own certs), no insecure-TLS override.
-
-## Testing
-
-- **Pure (existing tiers):** none of the server code changes; #141's tests cover
-  the contract the shell consumes.
-- **Shell unit:** onboarding URL validation, chunking/backoff logic for the
-  exporter bridge (TypeScript, plain vitest inside `mobile/`).
-- **Device matrix (manual, documented checklist):** iPhone (FaceID + TouchID),
-  one Android; HealthKit permission flows, background delivery, share-in,
-  OAuth-in-WebView, biometric re-lock.
-- The web app's own e2e suite is untouched — the shell renders the same pages
-  those tests already cover.
+- **iOS:** App Store (self-hosted companions pass review); the privacy policy and
+  HealthKit usage strings say data goes only to the user's own server. TestFlight
+  for betas. **Android:** Play Store plus the APK on GitHub releases.
+- PHI at rest on device is the WebView cache and service-worker storage, as in
+  the PWA; biometric lock is the added mitigation. The Keychain ingest token is
+  the shell's only credential, revocable server-side. System trust store only: no
+  pinning, no insecure-TLS override.
+- Tests: no server code changes (#141's tests cover the contract); shell unit
+  tests for URL validation and chunking/backoff inside `mobile/`; a manual device
+  matrix (iPhone, one Android) for permissions, background delivery, share-in,
+  OAuth-in-WebView and re-lock. The web e2e suite is untouched.
 
 ## Rollout
 
@@ -179,9 +145,8 @@ Estimated effort: **1.5–2 months** focused, dominated by platform plumbing
 
 1. **OAuth in WebView vs system browser** (see Shell behavior) — decide in PR 1
    on hardware.
-2. **Monorepo CI scope** — lint/typecheck `mobile/` in the existing `check` job
-   vs a separate workflow; proposal: separate light workflow, so mobile churn
-   never blocks server CI.
-3. **Minimum OS versions** — proposal: iOS 16+ (web push parity), Android 10+.
-4. **QR pairing** — the server could render a QR (server URL + ingest token) on
-   the integration page for one-scan setup; cheap, decide in PR 2.
+2. **Monorepo CI scope** — proposal: a separate light workflow for `mobile/`, so
+   its churn never blocks server CI.
+3. **Minimum OS versions** — proposal: iOS 16+, Android 10+.
+4. **QR pairing** — a QR (server URL + ingest token) on the integration page;
+   PR 2.

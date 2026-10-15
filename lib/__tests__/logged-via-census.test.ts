@@ -179,6 +179,7 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   api_tokens: "an authentication identity",
   audit_events: "the audit log itself",
   deleted_rows: "the undo holding store",
+  device_logins: "auth machinery (a device's login, #6076)",
   login_attempts: "auth machinery",
   login_auth_tokens: "auth machinery",
   login_profiles: "auth machinery",

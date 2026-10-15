@@ -67,6 +67,9 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // scope, same reason for being listed as its siblings: a bearer GET from a tool on the
   // user's own machine, which carries no cookie.
   "/api/documents/requests",
+  // The Deck backend contract's healthcheck (spaceport shared/BACKEND.md *Health*):
+  // unauthenticated and coarse, like /api/health.
+  "/healthz",
 ]);
 
 export function isPublicPath(pathname: string): boolean {
@@ -82,5 +85,9 @@ export function isPublicPath(pathname: string): boolean {
   // [token]) hashes it, resolves the owning profile, and 404s on any miss/
   // disabled feed — no session needed (a calendar client has none).
   if (pathname.startsWith("/api/calendar/")) return true;
+  // The device API (docs/device-api.md): every handler verifies the device
+  // credential with boarding itself (lib/device-logins.ts authenticateDevice) before
+  // anything else, so the coarse cookie gate must not answer for it.
+  if (pathname.startsWith("/v1/")) return true;
   return false;
 }

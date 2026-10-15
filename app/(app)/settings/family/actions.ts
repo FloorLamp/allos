@@ -43,6 +43,7 @@ import {
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
 import { deleteApiTokensForLogin } from "@/lib/api-tokens";
+import { deleteDeviceLinksForLogin } from "@/lib/device-logins";
 import { deleteProfileData } from "@/lib/profile-delete";
 import {
   capturedFilesOf,
@@ -746,6 +747,8 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     // same posture: the FK is ON DELETE CASCADE, but this runs explicitly so the
     // teardown holds even if foreign_keys is off, like the siblings above.
     deleteApiTokensForLogin(id);
+    // Device links (#6076): the same posture.
+    deleteDeviceLinksForLogin(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
     return {
       kind: "deleted",

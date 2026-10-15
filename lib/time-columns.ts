@@ -366,6 +366,14 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  device_logins: [
+    {
+      column: "created_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+  ],
   document_coverage_markers: [
     {
       column: "refused_at",
