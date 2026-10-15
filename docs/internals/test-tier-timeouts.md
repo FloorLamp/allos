@@ -20,9 +20,9 @@ configurations:
 | Truthy `CI` environment variable  | Ignores that override and keeps the default.                      |
 | `perTestCeiling(multiple, basis)` | Rounds the resolved test timeout times the multiple.              |
 
-The orchestration gate script defaults the local override to 60,000 ms for a
-shared development machine. This does not change CI's default. A literal timeout
-on an individual test or hook does not scale with the override.
+Set the local override (for example 60,000 ms) on a shared development machine.
+This does not change CI's default. A literal timeout on an individual test or
+hook does not scale with the override.
 
 `perTestCeiling` requires a measurement basis: `"worst"` for the slowest observed
 run, or `"green"` when only a passing-run reading is available. The basis documents

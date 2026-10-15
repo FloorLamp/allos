@@ -157,7 +157,7 @@ function processExists(pid: number): boolean {
 // thing `ALLOS_VITEST_TIMEOUT_MS` could not reach, so the lever the harness offers
 // for exactly this situation stopped at the file that needed it most. As a
 // multiple it scales with whichever half of the design is in force: 45 000 ms on
-// CI, four times that under `agent-gates.sh`.
+// CI, four times that under a 60,000 ms `ALLOS_VITEST_TIMEOUT_MS`.
 //
 // THE READING IS THE FILE'S, not each test's — the default reporter prints per
 // file, so the shared ceiling covers every remaining child-process case rather

@@ -94,10 +94,9 @@ For shared UI changes, search for affected testids, roles, routes, locator helpe
 calls, and geometry assertions. A spec can be affected without naming the changed
 component. This identifies coverage; it does not authorize rewriting expectations.
 
-[Orchestration E2E/CI](../orchestration/e2e-ci.md) owns who runs local/full suites,
-build reuse, and the merge bar. [Diagnosis](e2e-diagnosis.md) covers failure
-mechanisms and reproduction. The `e2e/**` blocks in `eslint.config.mjs` refuse the
-settle, clock, harness and family shapes above (a reviewed exception is an
+[Diagnosis](e2e-diagnosis.md) covers failure mechanisms and reproduction. The
+`e2e/**` blocks in `eslint.config.mjs` refuse the settle, clock, harness and
+family shapes above (a reviewed exception is an
 `eslint-disable-line` with its reason); `lib/__tests__/e2e-hygiene.test.ts` keeps
 the offline-navigation rule and the count ratchets. Do not grow either's
 exceptions to make a spec pass.

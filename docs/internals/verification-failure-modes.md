@@ -2,8 +2,7 @@
 
 Use this reference when a change's construction suggests a specific coverage gap.
 It is not a checklist to run for every PR. The [change and test policy](../change-policy.md)
-owns scope and test value; [review and merge](../orchestration/review-merge.md)
-owns review requirements and landing. Keep incident narratives in PRs and git history.
+owns scope and test value. Keep incident narratives in PRs and git history.
 
 ## What a lens looks for
 
@@ -120,15 +119,13 @@ does not establish which source tree is present.
 
 The Vitest tiers transpile TypeScript; passing unit, component, DB, or action tests
 does not prove their files typecheck. Run `npm run typecheck`, which runs Next's
-type generation and the project TypeScript check. CI's `check` job and
-[agent gates](../../scripts/orchestration/agent-gates.sh) run it separately.
+type generation and the project TypeScript check. CI runs it separately.
 Do not duplicate it in each test tier or limit it to changed files: a shared type
 can break an unchanged consumer or fixture.
 
 Two branches can each typecheck and fail when combined. Evidence must identify
 the tree checked. When base movement affects the candidate, verify the combined
-tree using the [merge procedure](../orchestration/review-merge.md#merge); a passing
-check on either old branch alone does not establish compatibility.
+tree; a passing check on either old branch alone does not establish compatibility.
 
 ## Merge-time failure modes
 
@@ -136,12 +133,6 @@ Keep the PR body aligned with the final implementation so review targets code
 that still exists. Record commands, outcomes, and the candidate SHA accurately.
 A changed head invalidates evidence about the prior head.
 
-Check unintended issue closures with
-[closing-keywords.mjs](../../scripts/orchestration/closing-keywords.mjs), which
-reads the PR body and commit messages. Also inspect the proposed squash message.
-Use references for partial work rather than closing an unfinished umbrella issue.
-
-Review receipts, base movement, and merge authorization belong to the
-[merge runbook](../orchestration/review-merge.md#merge). Do not maintain a second
-copy of the receipt grammar here; a syntactically accepted receipt is evidence of
-what was reported, not proof that the commands cover the change.
+Check the PR body, commit messages and squash message for closing keywords
+that would close an issue unintentionally. Use references for partial work rather
+than closing an unfinished umbrella issue.

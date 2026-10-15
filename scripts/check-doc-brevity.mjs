@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Check all Markdown and dispatch/brief sources against a word budget.
+// Check all Markdown against a word budget.
 // Usage: node scripts/check-doc-brevity.mjs [--base <git-ref>]
 //
 // GENERATED BLOCKS COUNT ON NEITHER SIDE OF THE COMPARISON (#4769). Text fenced by
@@ -77,9 +77,7 @@ export function withoutGeneratedBlocks(text) {
 export const words = (text) =>
   withoutGeneratedBlocks(text).match(/\S+/g)?.length ?? 0;
 
-const covered = (name) =>
-  /\.md$/i.test(name) ||
-  /^scripts\/.*(?:dispatch|brief)[^/]*\.(?:[cm]?js|tsx?)$/i.test(name);
+const covered = (name) => /\.md$/i.test(name);
 
 function main(args) {
   if (args.includes("--help") || args.includes("-h")) {
@@ -156,7 +154,7 @@ function main(args) {
 // RUN ONLY AS A PROGRAM. The body above chdir's and shells out to git, so an
 // `import` of this file used to execute a whole repository scan — which is why the
 // counter had no test. This is the repository's existing entrypoint idiom
-// (scripts/orchestration/session-metrics.mjs, scripts/flake-census.mjs and four
+// (scripts/flake-census.mjs, scripts/scheduled-run-freshness.mjs and
 // others) rather than Node 24's `import.meta.main`: `.nvmrc` pins 24 and would
 // carry it, but the value is `undefined` on Node 22, where the guard would turn a
 // version skew into a check that exits 0 having checked nothing.

@@ -312,7 +312,7 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    *
    * #4001 still owns making the scan itself faster. Note the consequence of the
    * multiple below until that lands:
-   * 32x is 480 000 ms on CI and 1 920 000 ms under `agent-gates.sh`, which is a very
+   * 32x is 480 000 ms on CI and 1 920 000 ms under a 60 s local override, which is a very
    * weak hang detector on the dispatch box. Capping the multiple is the wrong fix —
    * it would make the gate stricter than the tier ceiling it derives from, which is
    * the split's whole design. Shrinking the 119 s brings this number down with it.
