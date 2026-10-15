@@ -47,7 +47,7 @@ export async function GET(req: Request): Promise<Response> {
   const colon = key.indexOf(":");
   const kind = colon > 0 ? key.slice(0, colon) : "";
   const id = key.slice(colon + 1);
-  const read = READERS[kind];
+  const read = Object.hasOwn(READERS, kind) ? READERS[kind] : undefined;
   if (!read || !id) return Response.json({ error: "kind" }, { status: 404 });
   const row = read(auth.profile.id, id);
   if (!row) return Response.json({ error: "record" }, { status: 404 });

@@ -20,9 +20,10 @@ type Action = keyof typeof ACTIONS;
 // Take, skip or clear one scheduled dose on the board, through the ONE resolution
 // core the web tri-state check-off posts to (setDoseStatusCore): the dose must belong
 // to the profile, the day must be today or the recent past, and a `take` may state
-// its wall time. A correction is the same door: `take` with `at` on a dose already
-// taken restates its time (the core refuses to restamp a standing row, so it is
-// cleared and taken again inside this request); `clear` undoes a take or a skip.
+// its wall time; an `at` that does not parse is a 400, never a silent tap instant.
+// A taken dose is never re-taken here: `take` with `at` on it is 409 already-taken
+// (restating a taken dose's time stays the web's correction path, which keeps the
+// row's id, recorded_at, logged_via and amount); `clear` undoes a take or a skip.
 export async function POST(
   req: Request,
   ctx: { params: Promise<{ doseId: string }> }
@@ -46,21 +47,24 @@ export async function POST(
   const at = typeof body?.at === "string" ? body.at : "";
   // As setDoseStatus resolves it: a stated wall time on the day, else the tap
   // instant for today and no instant for a past day.
+  const stated =
+    target === "taken" && at
+      ? statedInstantOnDate(day, at, getTimezone(profile.id))
+      : null;
+  if (target === "taken" && at && stated == null)
+    return Response.json({ error: "at" }, { status: 400 });
   const takenAt =
     target === "taken"
-      ? (statedInstantOnDate(day, at, getTimezone(profile.id)) ??
-        (day === localToday ? undefined : null))
+      ? (stated ?? (day === localToday ? undefined : null))
       : undefined;
 
   const set = () =>
     setDoseStatusCore(profile.id, doseId, day, target, "quick-log", {
       takenAt,
     });
-  let outcome = set();
-  if (outcome === "unchanged" && target === "taken" && at) {
-    setDoseStatusCore(profile.id, doseId, day, "clear", "quick-log");
-    outcome = set();
-  }
+  const outcome = set();
+  if (outcome === "unchanged" && target === "taken" && at)
+    return Response.json({ error: "already-taken" }, { status: 409 });
   if (outcome === "stale-dose")
     return Response.json({ error: "dose" }, { status: 404 });
   if (outcome === "inactive")

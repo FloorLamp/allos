@@ -37,6 +37,9 @@ type Answer = { name: string; scopes: string[]; expires?: string } | null;
 const answers = new Map<string, Answer>();
 let down = false;
 let broken = false;
+// `failing`: a well-formed device answer under a non-200 status (boarding erroring
+// mid-answer) must still fail closed: the status is checked, not only the body.
+let failing = false;
 
 function credential(answer: Answer): string {
   const token = `dev_${randomBytes(32).toString("base64url")}`;
@@ -52,7 +55,7 @@ beforeAll(() => {
       if (broken) return new Response("boom", { status: 500 });
       const { sha256 } = JSON.parse(String(init?.body)) as { sha256: string };
       const device = answers.has(sha256) ? answers.get(sha256) : null;
-      return Response.json({ device });
+      return Response.json({ device }, { status: failing ? 503 : 200 });
     })
   );
 });
@@ -173,6 +176,18 @@ describe("/v1 — the device credential, verified with boarding", () => {
     answers.set(createHash("sha256").update(token).digest("hex"), null);
     const second = await needs(req("/v1/needs", token));
     expect(second.status).toBe(401);
+  });
+
+  it("503s when boarding answers a device under a non-200 status", async () => {
+    const token = credential({ name: "m1x", scopes: ALL });
+    failing = true;
+    try {
+      const res = await needs(req("/v1/needs", token));
+      expect(res.status).toBe(503);
+      expect(await json(res)).toEqual({ error: "boarding" });
+    } finally {
+      failing = false;
+    }
   });
 
   it("503s when boarding is unreachable, and again when it answers nonsense — never a device", async () => {
@@ -335,19 +350,30 @@ describe("/v1 — each route's shape", () => {
       .find((d) => d.id === myDoseId);
     expect(dose?.status).toBe("taken");
 
-    // The correction: a take with a stated time on a taken dose restates it.
-    const restated = await boardDose(
+    // A taken dose is never deleted and re-taken: the row keeps its id, recorded_at,
+    // logged_via, amount and time, whether `at` parses or not.
+    const row = () =>
+      db
+        .prepare(
+          "SELECT id, recorded_at, occurred_at, logged_via, amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .all(myDoseId, mine.todayStr);
+    const kept = row();
+    expect(kept).toHaveLength(1);
+    const again = await boardDose(
       post(`/v1/board/${myDoseId}`, phone, { action: "take", at: "07:30" }),
       { params: Promise.resolve({ doseId: String(myDoseId) }) }
     );
-    expect((await json(restated)).outcome).toBe("logged");
-    const logs = db
-      .prepare(
-        "SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-      )
-      .all(myDoseId, mine.todayStr) as { occurred_at: string | null }[];
-    expect(logs).toHaveLength(1);
-    expect(logs[0].occurred_at).not.toBeNull();
+    expect(again.status).toBe(409);
+    expect(await json(again)).toEqual({ error: "already-taken" });
+    expect(row()).toEqual(kept);
+    const unparsed = await boardDose(
+      post(`/v1/board/${myDoseId}`, phone, { action: "take", at: "half past" }),
+      { params: Promise.resolve({ doseId: String(myDoseId) }) }
+    );
+    expect(unparsed.status).toBe(400);
+    expect(await json(unparsed)).toEqual({ error: "at" });
+    expect(row()).toEqual(kept);
 
     const cleared = await boardDose(
       post(`/v1/board/${myDoseId}`, phone, { action: "clear" }),
