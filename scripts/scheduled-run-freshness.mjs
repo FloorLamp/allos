@@ -8,8 +8,7 @@
 // is the canary failure this repo has now been billed for three times (the
 // canary that couldn't, the wake that wasn't, the wake alarm that lied).
 //
-// So: detect by STATE, the shape scripts/orchestrator-checkin.sh uses for its
-// durable wake. Ask the only question that matters — is this schedule still
+// So: detect by STATE. Ask the only question that matters — is this schedule still
 // firing — and make every answer actionable:
 //
 //   disabled   -> GitHub turned it off (60 days of repo inactivity, or a human).
@@ -40,9 +39,8 @@
 // this cannot parse, that is reported as its own failure and exits non-zero.
 // Collapsing it into "fine" would rebuild the exact canary being replaced: a
 // check that goes quiet precisely when it has lost the ability to see. The
-// mirror-image mistake — collapsing unparseable into "stale" — is the one
-// orchestrator-checkin.sh documents: both answers say "act", but the action
-// differs, so an alarm that cannot tell them apart repeats after the fix and
+// mirror-image mistake — collapsing unparseable into "stale" — fails too: both
+// answers say "act", but the action differs, so an alarm that cannot tell them apart repeats after the fix and
 // teaches its reader to skip it.
 //
 // Run FROM a frequent, activity-driven workflow (ci-main.yml, every push to

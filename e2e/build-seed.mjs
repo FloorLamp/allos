@@ -1,5 +1,5 @@
 // Hand a fresh agent worktree a production build instead of making it compile one
-// (#2605). Measured on the 4-core orchestration box: 199 s to build, 1.7 s to seed.
+// (#2605). Measured on a 4-core development box: 199 s to build, 1.7 s to seed.
 //
 // ---------------------------------------------------------------------------
 // WHEN it runs, and why that is the whole design
@@ -175,9 +175,8 @@ export function seedDecision(facts) {
   // unchanged, permanently. This branch inherits that hole knowingly. It is the
   // only evidence a record-less build can offer; the recorded branch above has no
   // such hole; and every build this harness makes writes a record, so a source
-  // reaching here is one `npm run build` produced outside it. Recording such a
-  // build (`node scripts/orchestration/seed-next-build.mjs record`) moves it to the
-  // branch above and is the remedy, not a wider mtime rule.
+  // reaching here is one `npm run build` produced outside it. Letting the harness
+  // build, which records it, is the remedy, not a wider mtime rule.
   if (!sourceFingerprint) {
     return { seed: false, reason: "its build inputs could not be read" };
   }

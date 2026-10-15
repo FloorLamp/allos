@@ -1,11 +1,11 @@
-// Shared non-browser test and hook limits. CI keeps the default; local agent
-// gates may allow more time on a contended development machine. Per-test limits
+// Shared non-browser test and hook limits. CI keeps the default; a local run
+// may allow more time on a contended development machine. Per-test limits
 // detect hangs; comparable tier timings are better for gradual slowdown.
 // See docs/internals/test-tier-timeouts.md for diagnosis and measurement policy.
 const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 
-// agent-gates.sh defaults this local override to 60,000 ms. A truthy CI value
-// disables the override so local contention allowances cannot relax CI's default.
+// The local override. A truthy CI value disables it so local contention
+// allowances cannot relax CI's default.
 const OVERRIDE_ENV = "ALLOS_VITEST_TIMEOUT_MS";
 
 /** Resolve the run's per-test limit from its environment, in milliseconds. */

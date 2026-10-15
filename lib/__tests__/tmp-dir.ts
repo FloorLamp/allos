@@ -21,7 +21,7 @@
 // we unlink the `/tmp/allos-*` entries that are older than any live run could be.
 // A teardown hook — `afterAll`, or `process.on("exit")` — cannot run in a process
 // that was KILLED, and on this box that is the normal way a run ends: agents
-// hitting a 10-minute tool cap mid-`agent-gates.sh`, a foreground Bash call timing
+// hitting a 10-minute tool cap mid-run, a foreground Bash call timing
 // out at 2 minutes and killing `npm run test` mid-flight, contention kills,
 // container restarts. Sweeping reclaims those by CONSTRUCTION, with no cooperation
 // from the process that leaked them.

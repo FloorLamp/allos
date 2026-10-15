@@ -2,9 +2,7 @@
 
 Inspect the failure's actual assertion, fixture, setup, and Playwright
 `error-context.md`. Record the tested commit, command, and exit code. A passing
-rerun does not explain a failure. [CI ownership](../orchestration/e2e-ci.md) and
-[environment access](../orchestration/environment.md) describe run ownership and
-available log transports.
+rerun does not explain a failure.
 
 ## Select a mechanism
 
