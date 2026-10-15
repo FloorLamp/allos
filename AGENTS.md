@@ -8,24 +8,26 @@ this app shouldn't be. Keep things simple. Write concisely. No
 
 Allos is a multi-user, login-gated health tracking and coaching app built with
 Next.js 16 App Router, Server Actions, and synchronous `better-sqlite3`.
-
 Node 24 is required and pinned in `.nvmrc`.
+
+**Backend first.** New work goes to the `/v1` API, data and integrations.
+Allos's own pages are in maintenance: keep them working, add no features.
 
 ## Commands
 
 ```bash
+npm run check       # format, lint, types, unit and DB/contract tests
+npm run test:smoke  # browser smoke set (needs Playwright Chromium)
+npm run test:e2e    # full browser suite
 npm run dev
 npm run build
-npm run lint
-npm run typecheck
-npm test
-npm run test:db
-npm run test:e2e
-npm run format:check
 ```
 
-Run the narrowest relevant checks while developing, then expand verification in
-proportion to the change.
+- Develop with the narrowest checks, then run `npm run check`. A change that
+  reaches the pages also runs `npm run test:smoke`
+  ([select-checks.mjs](scripts/select-checks.mjs) decides by path). The full
+  browser suite runs after merge and nightly.
+- Work lands as a PR; a merge queue tests the merged tree and merges it.
 
 ## Universal rules
 

@@ -1,30 +1,14 @@
 name: CI
 
-# PR-time checks the deploy pipeline doesn't provide. deploy.yml only runs on
-# push to main (gated by `next build`), so without this nothing validates a PR.
-# Safe to run on pull_request: it touches no secrets and does no deploy.
+# PR checks: the fast tiers (static analysis, unit, DB/contract) on every PR, and
+# the browser smoke set only when the PR reaches the maintained frontend
+# (scripts/select-checks.mjs, the same rule the merge queue uses). The full
+# browser suite runs after merge and nightly (e2e-main.yml), not per PR.
 #
-# pull_request ONLY among branch events (no push trigger): with both, every push
-# to a PR branch ran the whole suite twice — identical jobs on the push event and
-# the PR merge ref. Branches without a PR aren't validated until their PR opens,
-# which is when validation matters. The concurrency group cancels superseded
-# runs, so pushing a fixup two minutes after a commit doesn't finish CI for the
-# dead head.
-#
-# merge_group: the MERGE QUEUE's validation event. A queued PR is re-validated on
-# the speculative merge commit GitHub builds for its position in the queue — the
-# exact commit that will become main — which closes the "CI tests the merge
-# commit, not your branch" gap PRE-merge (docs/orchestration.md): a regression
-# made by the interaction of two green PRs now fails in the queue instead of
-# landing. Only the three cheap tiers run here (the browser jobs are gated to
-# pull_request below): the documented two-green-PRs breakage class is type/unit
-# (#1560/#1562, #2245), and 12 e2e shards per queue group at this merge rate
-# would dwarf the rest of CI. Update the browser job condition below to extend
-# the queue bar to the browser tier. Inert until the main ruleset requires a merge queue —
-# see docs/orchestration.md "The merge queue".
+# pull_request only: a push trigger as well ran every job twice. The concurrency
+# group cancels superseded runs.
 on:
   pull_request:
-  merge_group:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -42,7 +26,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      DOC_BREVITY_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      DOC_BREVITY_BASE: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -196,224 +180,31 @@ jobs:
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
 
-  # Browser end-to-end tier: boots the real Next app against an isolated seeded
-  # SQLite DB and drives it in Chromium (Playwright). Separate job so it runs in
-  # parallel with `check` and its slower browser/build steps don't gate the fast
-  # lint/type/unit feedback. No secrets; no ANTHROPIC_API_KEY, so AI features
-  # degrade gracefully (the flows under test don't need them).
-  #
-  # SHARDED (flaky-e2e hardening): each shard is a fresh runner + fresh
-  # `npx playwright test --shard=N/TOTAL` invocation → a fresh seeded template and
-  # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock AND removes the
-  # long-lived-server cumulative degradation the orchestration runbook documents
-  # for single-process full runs (docs/orchestration.md). fail-fast is off so a
-  # red shard still lets the others finish — one push yields the full failure
-  # picture instead of a partial one.
-  #
-  # This runs `npm run test:e2e` unfiltered, so the phone-viewport `mobile`
-  # project (#1420) rides along and its tests distribute across the shards.
-  # That is deliberately cheap: the project is OPT-IN (`*.mobile.spec.ts` only
-  # — see playwright.config.ts), rather than a mobile clone of the suite. It
-  # needs no job of its own — a separate job would pay a whole extra runner's
-  # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
-  e2e:
-    # pull_request only — see the merge_group note in the `on:` comment: the
-    # queue's bar is deliberately the three cheap tiers.
-    if: github.event_name == 'pull_request'
+  # Browser smoke set (`npm run test:smoke`): the maintained frontend still loads
+  # and its core flows work. Runs only when the PR reaches the frontend; the job
+  # still reports, green, when it skips. No secrets; AI features degrade.
+  smoke:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The shard COUNT lives here and nowhere else — the steps below read it
-        # back as `strategy.job-total`, so re-splitting the suite is a one-line
-        # edit that cannot leave a stale `/4` behind.
-        #
-        # The browser suite is the whole critical path — since #2429 split the
-        # non-browser work, the slowest of check/test-db/test-unit is ~93s while
-        # e2e sits at ~342s, so every push waits on this matrix and nothing else.
-        #
-        # A shard costs `FLOOR + WORK/N`. The old fit — `179s + 2872s/N`, taken
-        # across the 4- and 6-way runs — is retired: BOTH terms moved when #2517
-        # (two workers), #2521 (no redundant `tsc` in the e2e build) and #2542
-        # (the seed stopped hashing ~180 fixture logins, 25.4s -> 4.5s) landed.
-        #
-        # Re-measured from run 31596131851, an all-green 8-way run, and note the
-        # method: the floor is read PER STEP (job start -> the Playwright step
-        # starting) rather than fitted across two shard counts, so one run now
-        # gives both terms and re-deriving this needs no multi-N bench.
-        #
-        #   FLOOR  ~56s   (~49s setup — checkout, caches, build — plus ~7s of
-        #                  post-job steps; was 179s)
-        #   WORK  ~1778s  (sum of the eight Playwright steps, at two workers)
-        #
-        # That floor collapse is what justifies going past eight. The marginal
-        # wall-clock of one more shard is WORK/(N(N+1)) and does not involve the
-        # floor at all; the floor only sets what each extra runner WASTES. At
-        # 179s an extra pair bought little for a lot — at 56s the same pair costs
-        # a third as much setup, so the trade inverted rather than the arithmetic
-        # changing. Predicted mean: 278s at eight, 234s at ten, 204s at twelve.
-        #
-        # Twelve also attacks the IMBALANCE, which is the other half and is not
-        # in the model at all: `--shard` balances test COUNT, not duration, so
-        # shard 7 has run 289s of work against a 222s mean in every run sampled
-        # (289/240/238 vs a 178s fastest). The critical path is the MAX, not the
-        # mean, and raising N splits that heavy cluster across more runners — 342s
-        # observed at eight, ~249s predicted at twelve.
-        #
-        # Twelve did NOT dissolve that cluster, it only diluted it: measured over
-        # three all-green 12-way runs, shards 7 and 10 are still the two slowest
-        # EVERY time (182/182, 197/185, 183/194) at 1.22–1.32x the mean, because
-        # the skew is a property of the split rather than of N. Test count is
-        # simply the wrong weight — patient-portals-setup is 17 tests / 54s,
-        # food-log is 21 tests / 13s, and profile-switch-toasts is ONE test that
-        # takes 21s. So the shards now plan themselves by measured DURATION
-        # (scripts/e2e-shard-plan.ts), which is the "manifest to maintain" this
-        # comment previously traded away — see that script for why the manifest
-        # rots safely.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
-      # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
-      # brings both parents — enough for the docs-only diff below (HEAD^1 is the
-      # PR base).
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      # A PR with NO RUNTIME SURFACE skips the browser suite (#61, widened by
-      # #2627): the whole PR diff (merge commit vs its base parent) touching
-      # nothing the running app can reach means there is nothing for Playwright
-      # to drive. Steps below gate on this output; the job itself still
-      # completes green, so nothing blocks even if checks are later made
-      # required. The `check` job (phi-scan, format, lint) and both test tiers
-      # always run — those apply to prose and tooling too.
-      #
-      # The set is deliberately literal, and grows only against the question
-      # "what imports this", never "does this look like tooling":
-      #   • prose — README/SECURITY/LICENSE/AGENTS.md (+ its CLAUDE.md symlink)/docs
-      #   • the orchestration tooling under scripts/orchestration/ and
-      #     scripts/orchestrator-checkin.sh, which the app does not import and the
-      #     e2e harness never loads. Every rule in docs/orchestration.md that can
-      #     become a script does, so these are a steady trickle of PRs; each one
-      #     used to buy ~25 minutes of twelve-shard Playwright to exercise a UI it
-      #     cannot have changed.
-      #   • .agents/skills/ — shared agent instructions; no app or browser
-      #     harness imports them. Pure citation checks still run. This replaces
-      #     the old .claude/skills/ entry without growing the skip set; changes
-      #     to the thin Claude metadata entrypoints conservatively run normal CI.
-      #   • lib/__tests__/, lib/__db_tests__/, lib/__action_tests__/ and
-      #     components/__tests__/ — the unit tiers' own files. They are the
-      #     largest remaining entry and the
-      #     one that looks most like runtime, because they sit under lib/, so the
-      #     "what imports this" question is the whole justification: NOTHING in
-      #     app/, components/, e2e/ or the rest of scripts/ imports anything from
-      #     those four directories. Both tiers run unconditionally, so the suite
-      #     that actually executes a change to one still executes it; only
-      #     Playwright, which cannot reach a vitest file, is dropped.
-      #     Measured before adding it: #2721 (a new .test.ts plus a scanner module
-      #     only tests import) and #2722 (comments plus a .test.ts) each ran the
-      #     full twelve shards for ~38 CI-minutes, neither able to alter a
-      #     rendered pixel. Note the saving is CI MINUTES, not latency — the
-      #     slowest shard (3.6m) finishes inside the `check` job (3.7m), so the
-      #     matrix costs a PR author nothing in wall-clock.
-      #     A NON-TEST module may live here (lib/__db_tests__/migration-link-scan.ts,
-      #     the scanner #2721's two guards share) and the entry still holds for the
-      #     same reason it holds for the rest: its importers are tests. If a
-      #     non-test consumer ever appears, this entry is what has to go.
-      # The REST of scripts/ stays out: seed.ts, notify.ts and the gen-*.ts
-      # generators feed the app and its fixtures — the e2e harness seeds from
-      # seed.ts directly — so a change there must still drive the browser.
-      # The REST of lib/ stays out for the same reason, and that boundary is
-      # load-bearing: a comment-only edit to lib/queries/*.ts is invisible to this
-      # rule, which keys on PATHS rather than on content, and that is the correct
-      # conservative answer rather than a gap to close.
-      - name: Detect changes with a runtime surface
-        id: changes
-        run: |
-          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.agents/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "No runtime surface in this diff - skipping the browser suite."
-          fi
+      - name: Select
+        id: select
+        run: node scripts/select-checks.mjs ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} --github | tee -a "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/e2e-setup
-        if: steps.changes.outputs.code == 'true'
+        if: steps.select.outputs.smoke == 'true'
 
-      # The plan is a pure function of (spec list, e2e/spec-durations.json, shard
-      # count), so every shard computes the SAME twelve buckets and takes its own
-      # — no planning job, nothing serialized ahead of the matrix, no artifact
-      # passed between runners. It prints its bucket's file list, or
-      # `--shard=N/M` if the manifest is missing, so a deleted manifest degrades
-      # to the old count-based split rather than breaking the command line.
-      #
-      # It EXITS NON-ZERO if the twelve buckets are not an exact partition of the
-      # suite. That is the failure worth being loud about: a spec in no bucket is
-      # run by no shard, and the matrix still goes green.
-      #
-      # The planner enumerates the suite by WALKING e2e/ (2ms) rather than asking
-      # `playwright --list` (8.4s here, on every shard, for a name list the run
-      # then recomputes). The `check` job runs `--verify` to prove that walk still
-      # covers everything Playwright resolves — see that step for why the check
-      # belongs there and not on this path.
-      - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
-        if: steps.changes.outputs.code == 'true'
-        run: |
-          set -euo pipefail
-          # Read into an ARRAY rather than letting the shell split an unquoted
-          # $PLAN: word splitting is bash-only (zsh does not do it), so the
-          # unquoted form runs here and silently passes ONE long argument when a
-          # developer reproduces it locally, and it would be glob-expanded too.
-          # The command substitution is what enforces the plan's exit code —
-          # `set -e` aborts here, whereas piping the script into mapfile would
-          # swallow a non-zero exit and leave ARGS empty.
-          #
-          # `./node_modules/.bin/tsx`, not `npx tsx`: npx re-resolves the binary
-          # (and can reach the registry when it misses) on the critical path of
-          # every shard, to run a script the local install already provides.
-          PLAN=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
-          # Empty would mean NO file filter, i.e. run the whole suite on every
-          # shard. The planner never emits it; refuse rather than trust that.
-          [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
-          mapfile -t ARGS <<< "$PLAN"
-          npm run test:e2e -- "${ARGS[@]}"
-
-      # Flake telemetry (retained). The sharded matrix now runs at zero retries
-      # (playwright.config.ts, #1159), so there is no "flaky" status here and this
-      # reports an accurate empty — the flake backlog it once measured is cleared,
-      # which is what let full-suite retries drop. Kept because it's the same step
-      # e2e-full.yml relies on: an on-demand census at --retries=1 still surfaces
-      # pass-on-retry tests through this script. Telemetry only — always exits 0.
-      - name: Flake report
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
-        run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Smoke (Playwright)
+        if: steps.select.outputs.smoke == 'true'
+        run: npm run test:smoke
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        if: ${{ !cancelled() && steps.select.outputs.smoke == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-shard-${{ matrix.shard }}
+          name: playwright-report-smoke
           path: playwright-report/
-          retention-days: 7
-
-      # The same per-file durations, printed. The artifact below is the richer
-      # source, but downloading one means reaching *.blob.core.windows.net, which
-      # an agent sandbox behind a filtering proxy cannot do — the artifact LIST
-      # returns 200 and the download returns 403 CONNECT, so it reads as a
-      # permissions problem and is not. Job logs are plain API reads. One tagged
-      # line per spec file is a few hundred bytes and makes the manifest
-      # refreshable from anywhere that can read a log.
-      - name: Print per-file durations (sharding manifest source)
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
-        run: ./node_modules/.bin/tsx scripts/gen-e2e-durations.ts --emit-log test-results/e2e-results.json
-
-      # The raw JSON report, so e2e/spec-durations.json can be refreshed from a
-      # RUNNER rather than from someone's laptop. Twelve of these cover the whole
-      # suite, which is what the manifest needs — see the refresh recipe in
-      # docs/internals/e2e-hygiene.md. Small next to the HTML report above.
-      - name: Upload raw JSON report (sharding manifest source)
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-results-shard-${{ matrix.shard }}
-          path: test-results/e2e-results.json
           retention-days: 7

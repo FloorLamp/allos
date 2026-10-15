@@ -37,9 +37,8 @@ under `docs/`; internal contracts live under `docs/internals/`.
 | TypeScript                                 | Focused ESLint and `npm run typecheck` (includes Next type generation)                                 |
 | Build/runtime wiring                       | `npm run build` plus the affected test tier                                                            |
 
-Run the narrow checks while developing. Expand when the changed surface, a
-failure, or required CI checks justify it. Passing checks do not require another
-round of invented tests. CI owns the full browser matrix.
+Run narrow checks while developing, then `npm run check` (and `npm run
+test:smoke` for frontend changes). Passing checks need no extra invented tests.
 
 ## Keep documentation usable
 

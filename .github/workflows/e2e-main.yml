@@ -1,41 +1,12 @@
 name: E2E (main)
 
-# Post-merge BROWSER validation for main (#2791).
+# The full browser suite, after merge and nightly. Not a PR gate: PRs run the
+# fast checks plus the smoke set (ci.yml). A red here means: attribute it to the
+# range since the last green run, fix main first (a follow-up PR or a revert).
 #
-# ci.yml is `pull_request` only and ci-main.yml deliberately carries just the
-# three cheap tiers, so until now main had NO e2e coverage at all — an e2e
-# regression on main was not merely un-noticed, it was unobservable from main's
-# own pipeline. The receipt, 2026-08-15: the activity-editor redesign merged and
-# broke three specs; four unrelated PRs went red on specs none of them touched;
-# each orchestrator checked "is main green?", saw `CI (main)` success, and
-# concluded the failures were unrelated flakes. That conclusion was reasonable
-# and wrong three times in one evening, because the green they checked cannot see
-# e2e. The signal identifying the culprit existed only on the PRs that were
-# innocent.
-#
-# This makes a base regression attributable to the merge that caused it, and
-# gives the "unrelated failure" exoneration path something that actually covers
-# the failing tier to exonerate against (docs/orchestration/e2e-ci.md).
-#
-# A DETECTOR, NOT A GATE — same standing as ci-main.yml. A red here means: stop
-# merging, attribute it, fix main first (a follow-up PR or a revert), resume.
-#
-# AUTHORIZED at this shape (#2969, ruled 2026-08-16), which is why ci-main.yml's
-# header now records its objection as superseded rather than reading as an
-# argument against this file. That ruling covers a DETECTOR only: promoting this
-# to a per-merge gate is a separate decision, and the objection recorded in
-# ci-main.yml still stands against it.
-#
-# AND A NIGHTLY, UNCONDITIONALLY (#4370 part 1, ruled 2026-09-02). The push
-# detector below works correctly and its skip is a sensible optimisation, but a
-# change-triggered signal cannot watch time-triggered breakage: #4358's fixture
-# aged out at midnight, the last run that actually executed Playwright was
-# 2026-08-30T23:24:07Z, and runs 654-662 (00:20Z, 00:30Z, 00:50Z, 01:03Z) all
-# skipped, so main never once observed it. It was found by the next contributor's
-# PR going red. The nightly runs the whole suite whatever the diff was, so the
-# clock that causes this class is also what catches it. 00:41 UTC is chosen to
-# sit just past the UTC date boundary a day-keyed fixture ages out on, off the
-# :00 spike GitHub delays worst.
+# The nightly runs unconditionally, so time-triggered breakage on main surfaces
+# even on days without a runtime change (#4370).
+
 on:
   push:
     branches: [main]
@@ -73,8 +44,7 @@ jobs:
   #
   # The detection used to live inside the matrix job, so a skipped push produced
   # four shards reporting SUCCESS with every step skipped — indistinguishable,
-  # to a badge, to a person, or to scripts/orchestration/merge-gate-core.mjs's
-  # `baseDetectorNotice`, from four shards that ran the suite and passed. That is
+  # to a badge or a person, from four shards that ran the suite and passed. That is
   # silent in the direction of false confidence, which is the one direction a
   # detector may not be silent in.
   #
@@ -86,12 +56,6 @@ jobs:
   #
   # It also costs less on the runs it applies to: a skipped push paid FOUR
   # full-history checkouts and now pays one.
-  #
-  # ITS NAME MUST NOT START WITH `e2e-main`. `baseDetectorNotice` picks this
-  # workflow's check runs out of main's list by that prefix and counts them as
-  # shards, and this job always succeeds — so `e2e-main-detect` would read as one
-  # shard that ran and passed, which is the very false green above, restored
-  # through the back door.
   detect:
     runs-on: ubuntu-latest
     outputs:
@@ -106,7 +70,7 @@ jobs:
 
       # The same runtime-surface rule ci.yml applies to PRs, applied to the merge
       # — see that job for why each path is on the list. Roughly a fifth of recent
-      # main commits are prose, skills, orchestration tooling or unit-test files
+      # main commits are prose, skills or unit-test files
       # only, and no browser can exercise those; measured, such a run costs 1.4
       # CI-minutes against 39.6 for the same matrix.
       #
@@ -127,7 +91,7 @@ jobs:
           elif [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Cannot resolve the pushed range - running the matrix rather than guessing."
-          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.agents/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.agents/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
