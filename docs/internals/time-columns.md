@@ -100,6 +100,7 @@ clock fields need both a date and timezone; absent clocks stay absent.
 | `deleted_rows` | `deleted_at` | event | instant | bare |  |
 | `dental_procedures` | `procedure_date` | event | day | n/a |  |
 | `dental_procedures` | `created_at` | record | instant | bare |  |
+| `device_logins` | `created_at` | bookkeeping | instant | bare |  |
 | `document_coverage_markers` | `refused_at` | lifecycle | instant | bare |  |
 | `encounters` | `date` | day | day | n/a | Both the attribution day and the visit window's inclusive start. |
 | `encounters` | `end_date` | window-end | day | n/a |  |

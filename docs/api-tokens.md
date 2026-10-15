@@ -177,17 +177,16 @@ included; 1: a failed file or request; 2: bad arguments.
 
 ## Developer owners
 
-[api-token-format](../lib/api-token-format.ts) owns wire parsing, scopes, labels,
-and rate-limit identity; [api-tokens](../lib/api-tokens.ts) owns token storage and
-authentication. [Acquirer identity](../lib/acquirer-identity.ts) owns destination
-and report parsing; [routes](../app/api/documents) authorize before domain work.
+[api-token-format](../lib/api-token-format.ts): wire parsing, scopes, labels,
+rate-limit identity; [api-tokens](../lib/api-tokens.ts): storage and
+authentication; [acquirer identity](../lib/acquirer-identity.ts): destination and
+report parsing; [routes](../app/api/documents) authorize before domain work.
 [Upload outcomes](../lib/document-upload-api.ts),
-[coverage](../lib/document-coverage.ts), and
-[deletion decisions](../lib/document-tombstones.ts) have existing owners. Document
-hash blocks live in `import_tombstones`, separately from keyed-upsert tombstones.
+[coverage](../lib/document-coverage.ts) and
+[deletion decisions](../lib/document-tombstones.ts) have owners. Document hash
+blocks live in `import_tombstones`, apart from keyed-upsert tombstones.
 
 Register bearer paths in [public-paths](../lib/public-paths.ts), rate-limit before
-scrypt verification, and authenticate the required scope. Middleware registration
-is not authorization. Resolve profile reachability before write access and demo
-checks; `accessForProfile` alone assumes reachability. Reuse the ingest engine and
-account gates instead of adding another upload or authorization path.
+scrypt verification, authenticate the required scope; middleware registration is
+not authorization. Resolve reachability before write access and demo checks
+(`accessForProfile` assumes it). Reuse the ingest engine and account gates.
