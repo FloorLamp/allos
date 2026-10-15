@@ -20,7 +20,6 @@ Reuse the existing owner; read the matching contract.
 | Shared UI                       | `components/`, `components/quick-entry/`                      | `components/AGENTS.md` maps copy, layout, motion and overlay                                                         |
 | Browser tests                   | `e2e/helpers.ts`, `e2e/fixtures.ts`                           | [E2E writing guide](internals/e2e-hygiene.md)                                                                        |
 | CI failure                      | Failing test and its setup                                    | [E2E diagnosis](internals/e2e-diagnosis.md), [test timeouts](internals/test-tier-timeouts.md)                        |
-| Agent dispatch/review           | `scripts/orchestration/`                                      | [Orchestration](orchestration.md), only for an assigned orchestration role                                           |
 
 For product behavior, use [Features](features.md). User setup guides live directly
 under `docs/`; internal contracts live under `docs/internals/`.
@@ -33,14 +32,13 @@ under `docs/`; internal contracts live under `docs/internals/`.
 | Pure logic                                 | `npm test -- lib/__tests__/name.test.ts`                                                               |
 | DOM or hook behavior                       | `npm test -- components/__tests__/name.test.tsx`; [component guide](internals/component-tests.md)      |
 | SQL, request authorization, Server Actions | `npm run test:db -- path/to/existing.test.ts`; [DB fixtures](../lib/__db_tests__/AGENTS.md)            |
-| UI behavior that needs a browser           | `npm run test:e2e -- e2e/name.spec.ts --retries=0` (pages are in maintenance)                          |
+| UI behavior that needs a browser           | `npm run test:e2e -- e2e/name.spec.ts --retries=0`                                                     |
 | CSS or copy                                | Inspect affected states/viewports; run relevant existing tests; do not automatically change assertions |
 | TypeScript                                 | Focused ESLint and `npm run typecheck` (includes Next type generation)                                 |
 | Build/runtime wiring                       | `npm run build` plus the affected test tier                                                            |
 
-Run the narrow checks while developing, then `npm run check`; a frontend change
-also runs `npm run test:smoke`. Passing checks do not require another round of
-invented tests. The full browser suite runs after merge and nightly.
+Run narrow checks while developing, then `npm run check` (and `npm run
+test:smoke` for frontend changes). Passing checks need no extra invented tests.
 
 ## Keep documentation usable
 
@@ -49,9 +47,9 @@ Remove war stories, superseded instructions, issue-by-issue histories, and stale
 measurements. Git and PRs retain the history. Update an existing rule instead of
 appending another version. Link to code for implementation detail.
 
-`npm run docs:check` checks all Git-visible Markdown (including agent/skill docs)
-and dispatch/brief source files. New and short files have a 1,500-word limit;
-existing oversized files cannot exceed their word count at the comparison base.
+`npm run docs:check` checks all Git-visible Markdown (including agent/skill docs).
+New and short files have a 1,500-word limit; existing oversized files cannot
+exceed their word count at the comparison base.
 This applies to generated Markdown too: keep generated reference data separate
 from growing prose. The total across all checked files must not exceed the total
 at the base, so new text displaces old; the summary line prints both totals and
