@@ -23,12 +23,26 @@ vi.mock("next/headers", async (importOriginal) => ({
   }),
 }));
 
+// The answer path behind /api/ask, counted: a refused call must never reach it
+// (FloorLamp/allos#6088), and a refused call writes no ai-log row either.
+vi.mock("@/lib/record-qa-answer", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/record-qa-answer")>();
+  return {
+    ...actual,
+    answerRecordQuestion: vi.fn(actual.answerRecordQuestion),
+  };
+});
+
 import { db } from "@/lib/db";
 import { SESSION_COOKIE, createSession } from "@/lib/auth";
+import { aiLogSize } from "@/lib/ai-log";
+import { answerRecordQuestion } from "@/lib/record-qa-answer";
 import { seedProfile } from "./fixtures";
 import { GET as me } from "@/app/api/me/route";
 import { GET as board } from "@/app/api/board/route";
 import { POST as boardDose } from "@/app/api/board/[doseId]/route";
+import * as askRoute from "@/app/api/ask/route";
 import { GET as page } from "@/app/deck/health/route";
 import { GET as script } from "@/app/deck/health.js/route";
 
@@ -163,6 +177,60 @@ describe("/api twins — the session, not a device credential", () => {
     expect(await refused.json()).toEqual({ error: "access" });
     expect((await take(writer)).status).toBe(200);
     expect(await taken()).toBe("taken");
+  });
+
+  // /api/ask is a write-shaped POST (#6088): a cookie-authenticated GET would let a
+  // cross-site <img>, no-cors fetch or navigation spend a model call.
+  const ask = (headers: Record<string, string>, body = { q: "glucose" }) =>
+    askRoute.POST(
+      new Request("http://allos.test/api/ask", {
+        method: "POST",
+        headers: {
+          host: "allos.test",
+          cookie: `${SESSION_COOKIE}=${writer}`,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      })
+    );
+
+  it("has no GET on /api/ask (405), and a cross-site POST neither answers nor logs", async () => {
+    expect("GET" in askRoute).toBe(false);
+    const logBefore = aiLogSize();
+    const calls = vi.mocked(answerRecordQuestion).mock.calls.length;
+    for (const headers of [
+      { ...json, origin: "https://evil.wang.team" },
+      { ...json, origin: "http://allos.test", "sec-fetch-site": "same-site" },
+      json,
+    ]) {
+      const res = await ask(headers);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "origin" });
+    }
+    expect(vi.mocked(answerRecordQuestion).mock.calls.length).toBe(calls);
+    expect(aiLogSize()).toBe(logBefore);
+  });
+
+  it("answers a same-origin JSON POST from the session's own profile", async () => {
+    const res = await ask({ ...json, origin: "http://allos.test" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      profile: number;
+      offline: boolean;
+      citations: { title: string }[];
+    };
+    expect(body.profile).toBe(mine.profileId);
+    expect(body.offline).toBe(true);
+    expect(body.citations.length).toBeGreaterThan(0);
+    expect(body.citations.every((c) => !c.title.includes("WebTheirs"))).toBe(
+      true
+    );
+    const empty = await ask(
+      { ...json, origin: "http://allos.test" },
+      { q: " " }
+    );
+    expect(empty.status).toBe(400);
+    expect(await empty.json()).toEqual({ error: "q" });
   });
 });
 
