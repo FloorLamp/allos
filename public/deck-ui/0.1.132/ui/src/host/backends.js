@@ -44,8 +44,11 @@ export function backendRoute(backends, op, args = {}, {web = false, gesture = fa
     if (!['string', 'number', 'boolean'].includes(typeof v) || typeof v === 'number' && !Number.isFinite(v)) throw new HostError('refused', 'query values must be scalar');
     query.set(k, String(v));
   }
-  const suffix = query.size ? `?${query}` : '';
   const path = web ? filled.replace(/^\/v1\//, '/api/') : filled;
+  // A read the web twin takes as a same-origin JSON POST (allos's /api/ask: its cookie path refuses cross-site requests only on
+  // non-GET, FloorLamp/allos#6089): the query becomes the body. Still a read, so no gesture.
+  if (web && route.webPost) return {url: url + path, method: 'POST', body: Object.fromEntries(query)};
+  const suffix = query.size ? `?${query}` : '';
   return {url: url + path + suffix, method: route.method, body: args.body};
 }
 
@@ -56,4 +59,4 @@ export const ALLOS_OPS = Object.fromEntries([
   ['ask', 'GET', '/v1/ask', 'ask'], ['board', 'GET', '/v1/board', 'read'],
   ['dose', 'POST', '/v1/board/{dose}', 'log'], ['readings', 'GET', '/v1/readings', 'read'],
   ['log-reading', 'POST', '/v1/readings', 'log'], ['labs', 'GET', '/v1/labs', 'read'],
-].map(([name, method, path, scope]) => [name, {method, path, scope: `allos:${scope}`} ]));
+].map(([name, method, path, scope]) => [name, {method, path, scope: `allos:${scope}`, ...(name === 'ask' ? {webPost: true} : {})}]));

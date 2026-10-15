@@ -13,7 +13,7 @@ export function ago(at, now) {
 export function subtitle(a, now) {
   const state = {'needs-you': 'Needs you', failing: 'Failing', paused: 'Paused', unknown: 'State not known', ok: 'OK'}[a.state] ?? 'State not known';
   const at = a.sensitive ? a.lastRun?.at : a.lastSuccess?.at;
-  return state + (at ? ` · last ${a.sensitive ? 'run' : 'success'} ${ago(at, now)}` : '');
+  return state + (a.lastRun?.why ? ` · ${a.lastRun.why}` : '') + (at ? ` · last ${a.sensitive ? 'run' : 'success'} ${ago(at, now)}` : '');
 }
 export function rowOf(a, now) {
   const r = {id: a.id, key: `${a.backend}/${a.id}`, backend: a.backend, owner: a.owner ?? a.backend, group: a.group,
