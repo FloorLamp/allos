@@ -6,17 +6,18 @@ Contract: spaceport `shared/backend/README.md`; Deck's op map: spaceport
 ## Credential and scope
 
 `Authorization: Bearer dev_…` is verified by [device-credential](../lib/device-credential.ts)
-with Boarding (`BOARDING_URL`, default `http://boarding:9816`), then checked for
-`allos:read`, `allos:ask`, or `allos:log`. Each device links to one login
+using Boarding (`BOARDING_URL`, default `http://boarding:9816`) for
+`allos:read`, `allos:ask`, or `allos:log`. Health access requires login linking
 (`npm run device-links -- link <device> <login>`; Docker:
-`docker exec allos node dist/device-links.cjs link …`); its role and grants decide profiles.
+`docker exec allos node dist/device-links.cjs link …`); role and grants decide profiles.
+`GET /v1/needs` requires `allos:read` only.
 
 Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 `device` (unlinked), `profile` (unreachable), `access` (read-only/demo write);
 503 `boarding` (fail-closed). 400 names the bad field.
 
 `?profile=<id>` selects a reachable profile; default: login's own, then first.
-`profile` identifies the subject; days are profile-local, `at` an instant.
+`profile` identifies subjects; days are profile-local, `at` an instant.
 
 ## Routes
 
