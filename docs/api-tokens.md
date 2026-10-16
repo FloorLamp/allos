@@ -1,24 +1,21 @@
 # API tokens
 
-API tokens let scripts act as a login within a capability. The current scope,
-`upload:documents`, permits document uploads, run reports, and supporting reads;
-it does not permit downloading stored documents. Each request uses the login's
-current role and profile grants. Knowing an ID or portal mapping does not grant
-write access.
+`upload:documents` tokens permit uploads, run reports, and supporting reads,
+using current grants, excluding downloads. IDs and mappings do not grant access.
 
 ## Manage tokens
 
 Under **Settings → Account & security → API tokens**, name the client, choose its
 capability, and create a token. Copy it immediately; the secret is shown once.
-Use separate tokens for devices you may revoke independently.
+Use separate device tokens.
 
 A login can have 20 live tokens, formatted `<id>.<secret>`; the ID is public and
 only a scrypt hash of the secret is stored. Tokens never expire; revoke unused ones
 by last-used time. Revocation applies to the next request. A revoked row stays,
 hidden, to block ID reuse; deleting a login removes its tokens.
 
-Members manage their own tokens. Admins can also list and revoke other logins'
-tokens. Lists expose names, capabilities, and usage times, never secrets.
+Members manage their tokens; admins also manage others'. Lists expose names,
+capabilities, and usage, never secrets.
 
 ## Authenticate and select a destination
 
@@ -30,8 +27,7 @@ printf 'Authorization: Bearer %s\n' "$ALLOS_TOKEN" | curl -H @- \
   -F file=@labs.pdf 'https://allos.example/api/documents?profile=2'
 ```
 
-Keep credentials out of committed files and logs. Upload and inventory requests
-need exactly one destination:
+Keep credentials out of files and logs. Upload and inventory need one destination:
 
 - `profile=<id>`; there is no active-profile default.
 - `portal=<slug>&patient=<label>`, optionally with `account=<slug>`. Use the
@@ -46,6 +42,12 @@ write the resolved profile, and demo restrictions apply.
 Unknown, unmapped, ignored, or ambiguous portal identities all get 404
 `error: "unmapped-identity"`. An upload refusal, but not an inventory read or dry
 run, records a bounded pending identity for a person to map; repeats update it.
+
+Successful uploads (including dry runs) and sync reports resolving a portal patient
+return optional `accountId`: the string `/v1/accounts` row ID,
+`portal:<accountId>:<profileId>`. Profile-only requests and patient-less reports omit
+it; older servers may omit it. Clients scope it to the Allos instance and
+portal/account slugs, and may emit `from: {backend: "allos", id: accountId}`.
 
 ## Upload documents
 
@@ -169,8 +171,8 @@ packages or database access, reading `ALLOS_TOKEN`:
 node scripts/upload-docs.ts --url https://allos.example --profile 2 labs.pdf
 ```
 
-From a checkout: `npm run upload-docs -- …`. `--profile` takes a name or ID and can
-repeat; names ignore case and extra whitespace, and an ambiguous name is an error.
+`npm run upload-docs -- …` accepts repeated `--profile` names or IDs; names
+ignore case and whitespace but must be unambiguous.
 Each destination dedups independently. `--list` prints writable profiles;
 `--dry-run` checks without storing. Exit 0: no failures, duplicates and blocks
 included; 1: a failed file or request; 2: bad arguments.
