@@ -379,7 +379,10 @@ export async function reassignDocument(
   if (doc.stored_path) {
     try {
       const root = path.resolve(UPLOAD_DIR);
-      const fromAbs = path.resolve(process.cwd(), doc.stored_path);
+      const fromAbs = path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        doc.stored_path
+      );
       const destDir = path.join(UPLOAD_DIR, String(dest));
       const toAbs = path.resolve(destDir, path.basename(fromAbs));
       const contained = (p: string) =>
@@ -515,7 +518,10 @@ export async function deleteMedicalDocument(formData: FormData) {
 
   if (doc?.stored_path) {
     try {
-      fs.rmSync(path.join(process.cwd(), doc.stored_path), { force: true });
+      fs.rmSync(
+        path.join(/* turbopackIgnore: true */ process.cwd(), doc.stored_path),
+        { force: true }
+      );
     } catch {
       // best-effort; row is already gone
     }

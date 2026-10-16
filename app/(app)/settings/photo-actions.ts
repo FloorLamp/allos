@@ -97,12 +97,18 @@ export async function uploadProfilePhoto(
     // when its path differs so we don't leave a stale second file behind.
     if (prev.photo_path && prev.photo_path !== relPath) {
       try {
-        fs.rmSync(path.join(process.cwd(), prev.photo_path), { force: true });
+        fs.rmSync(
+          path.join(/* turbopackIgnore: true */ process.cwd(), prev.photo_path),
+          { force: true }
+        );
       } catch {
         // best-effort; the DB row is the source of truth
       }
     }
-    fs.writeFileSync(path.join(PHOTO_ROOT, filename), buffer);
+    fs.writeFileSync(
+      path.join(/* turbopackIgnore: true */ PHOTO_ROOT, filename),
+      buffer
+    );
   } catch {
     return { ok: false, error: "Couldn't save the image. Try again." };
   }
@@ -133,7 +139,10 @@ export async function removeProfilePhoto(
 
   if (prev.photo_path) {
     try {
-      fs.rmSync(path.join(process.cwd(), prev.photo_path), { force: true });
+      fs.rmSync(
+        path.join(/* turbopackIgnore: true */ process.cwd(), prev.photo_path),
+        { force: true }
+      );
     } catch {
       // best-effort; the row is nulled regardless
     }

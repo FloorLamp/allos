@@ -393,11 +393,11 @@ export function replicateToOffsite(
   const srcDir = opts.sourceBackupsDir ?? backupsDir();
 
   // 1. Copy the verified snapshot + its verification sidecar into the dest root.
-  const snapSrc = path.join(srcDir, snapshotName);
+  const snapSrc = path.join(/* turbopackIgnore: true */ srcDir, snapshotName);
   fs.copyFileSync(snapSrc, path.join(dest, snapshotName));
   const sidecar = verificationSidecarName(snapshotName);
-  const sidecarSrc = path.join(srcDir, sidecar);
-  if (fs.existsSync(sidecarSrc)) {
+  const sidecarSrc = path.join(/* turbopackIgnore: true */ srcDir, sidecar);
+  if (fs.existsSync(/* turbopackIgnore: true */ sidecarSrc)) {
     fs.copyFileSync(sidecarSrc, path.join(dest, sidecar));
   }
 
@@ -442,7 +442,7 @@ export function replicateToOffsite(
     listUploadFiles(destUploads)
   );
   for (const rel of toCopy) {
-    const from = path.join(uploadsRoot, rel);
+    const from = path.join(/* turbopackIgnore: true */ uploadsRoot, rel);
     const to = path.join(destUploads, rel);
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to);
