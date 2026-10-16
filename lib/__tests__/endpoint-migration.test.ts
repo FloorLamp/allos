@@ -8,16 +8,21 @@ const require = createRequire(import.meta.url);
 function migrate(
   input: string,
   mode = "run",
-  channel = "https://artifacts.example.internal/c/deck-ui/"
+  channel = "https://artifacts.example.internal/c/deck-ui/",
+  standalone = true
 ) {
   let output = "";
   let status: number | undefined;
   const files = new Map<string | number, string>([
     [0, input],
-    [
-      "/app/server.js",
-      'const nextConfig = {"allowedDevOrigins":["app.example.internal","localhost"]}\n',
-    ],
+    ...(standalone
+      ? ([
+          [
+            "/app/server.js",
+            'const nextConfig = {"allowedDevOrigins":["app.example.internal","localhost"]}\n',
+          ],
+        ] as const)
+      : []),
     [
       "/app/public/deck-ui/0.1.1/ui/contract/places.json",
       JSON.stringify([
@@ -36,9 +41,12 @@ function migrate(
                 if (!files.has(file)) throw new Error("Unexpected file");
                 return files.get(file);
               },
+              existsSync: (file: string) => files.has(file),
               readdirSync: () => ["0.1.1"],
             }
-          : require(name),
+          : name === "/app/next.config.js" && !standalone
+            ? { allowedDevOrigins: ["app.example.internal", "localhost"] }
+            : require(name),
       process: {
         argv: ["node", mode],
         env: { DECK_UI_CHANNEL: channel },
@@ -74,6 +82,19 @@ describe("endpoint migration from the running release", () => {
     });
     expect(migrate(output, "check").status).toBe(0);
     expect(migrate(output).output).toBe(output);
+  });
+
+  it("recovers from a release older than the standalone image (no server.js)", () => {
+    const input = "AI_BASE_URL=https://ai.example.internal\n";
+    const { output } = migrate(
+      input,
+      "run",
+      "https://artifacts.example.internal/c/deck-ui/",
+      false
+    );
+    expect(require("node:util").parseEnv(output)).toMatchObject({
+      ALLOWED_DEV_ORIGINS: "app.example.internal,localhost",
+    });
   });
 
   it("preserves configured overrides and refuses incomplete recovery", () => {
