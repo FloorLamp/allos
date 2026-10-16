@@ -23,8 +23,10 @@ const recovered = {
   CAPCOM_URL: env.AI_BASE_URL,
   DECK_UI_CHANNEL: process.env.DECK_UI_CHANNEL,
 };
-const server = fs.readFileSync("/app/server.js", "utf8");
-const config = JSON.parse(server.match(/const nextConfig = (.+)\r?\n/)[1]);
+// A standalone release inlines its Next config into server.js; an older one runs `next start` with /app/next.config.js.
+const config = fs.existsSync("/app/server.js")
+  ? JSON.parse(fs.readFileSync("/app/server.js", "utf8").match(/const nextConfig = (.+)\r?\n/)[1])
+  : require("/app/next.config.js");
 recovered.ALLOWED_DEV_ORIGINS = config.allowedDevOrigins?.join(",");
 if (!recovered.DECK_ORIGIN) {
   for (const version of fs.readdirSync("/app/public/deck-ui")) {
