@@ -8,3 +8,8 @@ lib/migrations/manifest.json
 # ZIP — including one a local .phi-denylist lists as a home ZIP — but these are public
 # reference coordinates (rounded to ~0.1°), never a person's data.
 lib/zip-centroids.json
+
+# Vendored deck-ui bundle manifests (public/deck-ui/<version>/manifest.json): sha256 digests of the published
+# files, updated by the automatic bump PRs. Digit runs inside a hash can Luhn-validate as NPI-shaped numbers;
+# the file holds only content hashes, never identifiers.
+public/deck-ui/*/manifest.json
