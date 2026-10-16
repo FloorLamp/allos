@@ -168,7 +168,12 @@ export async function ensureBuild(root: string = REPO_ROOT): Promise<void> {
     [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next", root), "build"],
     {
       cwd: root,
-      env: process.env,
+      // Next reconstructs worker flags from NODE_OPTIONS after CLI flags, so a
+      // runner's lower heap limit would otherwise override ours for TypeScript.
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --max-old-space-size=${BUILD_HEAP_MB}`,
+      },
       label: "next build",
     }
   );

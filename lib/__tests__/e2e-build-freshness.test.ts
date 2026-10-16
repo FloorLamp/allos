@@ -92,6 +92,10 @@ const walk = (rel) => {
 for (const d of ["app", "components", "lib", "public"]) walk(d);
 for (const f of ["next.config.js", "middleware.ts", "package.json", "package-lock.json", "postcss.config.js", "tsconfig.json"]) walk(f);
 fs.mkdirSync(dist, { recursive: true });
+const workerHeap = require('node:child_process').execFileSync(process.execPath,
+  ['-e', 'process.stdout.write(String(require("node:v8").getHeapStatistics().heap_size_limit))'],
+  { encoding: 'utf8' });
+fs.writeFileSync(path.join(dist, 'worker-heap'), workerHeap);
 fs.writeFileSync(path.join(dist, ${JSON.stringify(COMPILED_FROM)}), JSON.stringify(inputs, null, 2));
 fs.writeFileSync(path.join(dist, ${JSON.stringify(COMPILING)}), "");
 // Hold the window open while a test edits the tree under the running compiler.
@@ -116,7 +120,13 @@ const SOURCES: Record<string, string> = {
 
 let root: string;
 const savedEnv: Record<string, string | undefined> = {};
-const ENV_KEYS = ["CI", "E2E_SKIP_BUILD", "E2E_FORCE_BUILD", "E2E_NO_SEED"];
+const ENV_KEYS = [
+  "CI",
+  "E2E_SKIP_BUILD",
+  "E2E_FORCE_BUILD",
+  "E2E_NO_SEED",
+  "NODE_OPTIONS",
+];
 
 function write(rel: string, body: string): void {
   const abs = path.join(root, rel);
@@ -196,6 +206,14 @@ afterEach(() => {
 });
 
 describe("ensureBuild over a real tree", () => {
+  it("gives build subprocesses enough heap despite a runner's lower limit", async () => {
+    process.env.NODE_OPTIONS = "--max-old-space-size=256";
+    await ensureBuild(root);
+    expect(Number(read(".next/worker-heap"))).toBeGreaterThanOrEqual(
+      4 * 1024 ** 3
+    );
+  });
+
   it("REBUILDS after a source edited WHILE the previous build ran — the mtime rule read that as fresh (#5772)", async () => {
     const said = sayings();
     write(HOLD, "");
