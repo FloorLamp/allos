@@ -208,3 +208,16 @@ jobs:
           name: playwright-report-smoke
           path: playwright-report/
           retention-days: 7
+
+  image-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image and exercise bundled tools
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
