@@ -51,11 +51,11 @@ COPY . .
 RUN mkdir -p public \
   && NODE_OPTIONS=--max-old-space-size=4096 npm run build \
   && npx esbuild scripts/notify.ts --bundle --platform=node --target=node20 \
-       --format=cjs --external:better-sqlite3 --outfile=dist/notify.cjs \
+       --format=cjs --external:better-sqlite3 --alias:next/cache=./scripts/tool-cache.ts --outfile=dist/notify.cjs \
   && npx esbuild scripts/restore-check.ts --bundle --platform=node --target=node24 \
-       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/restore-check.cjs \
+       --format=cjs --external:better-sqlite3 --alias:next/cache=./scripts/tool-cache.ts --outfile=dist/restore-check.cjs \
   && npx esbuild scripts/device-links.ts --bundle --platform=node --target=node24 \
-       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/device-links.cjs
+       --format=cjs --external:better-sqlite3 --alias:next/cache=./scripts/tool-cache.ts --outfile=dist/device-links.cjs
 
 # Trim better-sqlite3 to what this image actually runs: one of the eight prebuilt
 # addons (~17MB the set), none of the SQLite amalgamation it no longer compiles
@@ -100,7 +100,7 @@ RUN apt-get update \
   /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # Standalone contains only Next's traced runtime dependencies. The bundled tools
-# resolve their external better-sqlite3 and next imports from that same tree.
+# resolve their external better-sqlite3 import from that same tree.
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
@@ -110,6 +110,10 @@ COPY --chmod=755 docker-notify.sh /usr/local/bin/docker-notify.sh
 
 # Bind mounts still get their ownership fixed by the entrypoint.
 RUN mkdir -p /app/data && chown node:node /app/data
+
+# Exercise every tool against synthetic data in the final runtime layout.
+COPY scripts/check-image-tools.mjs /tmp/check-image-tools.mjs
+RUN node /tmp/check-image-tools.mjs && rm /tmp/check-image-tools.mjs
 
 # Standalone otherwise inherits the container hostname and may bind only to it.
 ENV HOSTNAME=0.0.0.0
