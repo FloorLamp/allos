@@ -1,10 +1,9 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { expect, it } from "vitest";
-import { setTierConfigProvider } from "@/lib/ai-client";
+import { rawDb as db } from "@/lib/db";
 import { resolveTaskClient } from "@/lib/ai-resolve";
-import { getTierConfigs, setTierConfig } from "@/lib/settings/ai-tiers";
-import { migratedDb } from "./migrated-db";
+import { setTierConfig } from "@/lib/settings/ai-tiers";
 
 it("sends configured capcom aliases, authentication and Heavy images to /v1/messages", async () => {
   const requests: {
@@ -33,7 +32,6 @@ it("sends configured capcom aliases, authentication and Heavy images to /v1/mess
       })
     );
   });
-  const db = migratedDb();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -59,7 +57,6 @@ it("sends configured capcom aliases, authentication and Heavy images to /v1/mess
         model,
       });
     }
-    setTierConfigProvider(() => getTierConfigs(db));
     for (const task of ["extraction", "insight"] as const) {
       const resolved = resolveTaskClient(task)!;
       await resolved.client.messages.create({
@@ -88,8 +85,6 @@ it("sends configured capcom aliases, authentication and Heavy images to /v1/mess
       { url: "/v1/messages", key: "capcom_synthetic", body: { model: "fast" } },
     ]);
   } finally {
-    setTierConfigProvider(null);
-    db.close();
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve()))
