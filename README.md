@@ -236,10 +236,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 Checks:
 
 ```bash
-npm run check       # format, lint, types, unit and DB tests: every change
-npm run test:smoke  # a handful of browser specs: changes to the pages
-npm run test:e2e    # the full browser suite: CI runs it after merge and nightly
-npm run build
+npm run check       # every change: format, lint, types, unit and DB/contract tests
+npm run test:smoke  # changes to the pages: browser smoke set
+npm run test:e2e    # after merge and nightly: full browser suite
 ```
 
 The browser suites need Chromium downloaded once, and nothing else does:
