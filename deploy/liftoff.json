@@ -7,13 +7,7 @@
   "keep": 2,
   "resources": {
     "version": 1,
-    "secrets": [
-      {
-        "name": "ai",
-        "env": "ANTHROPIC_API_KEY",
-        "required": false
-      }
-    ],
+    "secrets": [],
     "data": [
       {
         "name": "database",
