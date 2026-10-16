@@ -249,6 +249,7 @@ import { migration as mCarePlanMetricSampleLinks } from "./20260916-care-plan-me
 import { migration as mBreathingRateSleepSamples } from "./20260911-breathing-rate-sleep-samples";
 import { migration as mFoodLogEventProperties } from "./20260922-food-log-event-properties";
 import { migration as mDeviceLogins } from "./20261015-device-logins";
+import { migration as mPortalSuccessIndex } from "./20261016-portal-success-index";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -507,6 +508,7 @@ export const MIGRATIONS: Migration[] = [
   mBreathingRateSleepSamples,
   mFoodLogEventProperties,
   mDeviceLogins,
+  mPortalSuccessIndex,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1
