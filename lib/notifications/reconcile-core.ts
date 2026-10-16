@@ -295,7 +295,7 @@ export const RECONCILE_CLOSING: Record<CloseReason, string> = {
 };
 
 // The same two sentences as a TAIL, for when the subject leads the line:
-// "[Norton] 🍽️ Morning food log — handled in the app."
+// "[Alex] 🍽️ Morning food log — handled in the app."
 const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
   resolved: "handled in the app.",
   rollover: "this was yesterday's message.",

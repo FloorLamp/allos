@@ -1888,8 +1888,8 @@ describe("the reviewed week, rendered as one artifact (#3033)", () => {
         socialJetlagMin: 8,
       })
     );
-    const msg = renderRecapMessage(recap, "Norton")!;
-    expect(msg.title).toBe("📊 Weekly recap — Norton");
+    const msg = renderRecapMessage(recap, "Alex")!;
+    expect(msg.title).toBe("📊 Weekly recap — Alex");
     // NEWS BEFORE STATS (#4228 D): the owner's own Aug 23–29 classification — Targets,
     // PRs, Resumed/Missed, Adherence, Fiber, Zone 2 are news; Workouts, Food, Sleep,
     // Sleep regularity are stats — with the declared order kept inside each section.

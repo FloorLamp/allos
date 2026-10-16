@@ -133,7 +133,7 @@ describe("redactSecrets: the #2938 shapes", () => {
 
   it("8. LEAVES account ids, errno, address and host — the diagnosis", () => {
     const s =
-      "Withings userid=12340001 sync failed: connect ECONNREFUSED 10.0.7.31:8443 (allos-worker-02.internal)";
+      "Withings userid=12340001 sync failed: connect ECONNREFUSED 203.0.113.7:8443 (allos-worker-02.internal)";
     expect(redactSecrets(s)).toBe(s);
   });
 

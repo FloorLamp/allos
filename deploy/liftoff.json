@@ -7,7 +7,28 @@
   "keep": 2,
   "resources": {
     "version": 1,
-    "secrets": [],
+    "secrets": [
+      {
+        "name": "deck-origin",
+        "env": "DECK_ORIGIN",
+        "required": false
+      },
+      {
+        "name": "capcom-url",
+        "env": "CAPCOM_URL",
+        "required": false
+      },
+      {
+        "name": "deck-ui-channel",
+        "env": "DECK_UI_CHANNEL",
+        "required": false
+      },
+      {
+        "name": "allowed-dev-origins",
+        "env": "ALLOWED_DEV_ORIGINS",
+        "required": false
+      }
+    ],
     "data": [
       {
         "name": "database",

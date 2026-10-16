@@ -65,6 +65,7 @@ function credential(answer: Answer): string {
 }
 
 beforeAll(() => {
+  vi.stubEnv("DECK_ORIGIN", "https://deck.example.internal");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: unknown, init?: RequestInit) => {
@@ -78,6 +79,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -603,18 +605,18 @@ describe("/v1/accounts", () => {
       new Request("http://allos.test/api/accounts", {
         headers: {
           cookie: `${SESSION_COOKIE}=${token}`,
-          origin: "https://deck.wang.team",
+          origin: "https://deck.example.internal",
         },
       })
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "https://deck.wang.team"
+      "https://deck.example.internal"
     );
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
     expect(res.headers.get("vary")).toBe("Origin");
     for (const [origin, allowed] of [
-      ["https://evil.wang.team", null],
+      ["https://evil.example.internal", null],
       ["", null],
     ] as const) {
       const other = await webAccounts(
@@ -646,13 +648,13 @@ describe("/v1/accounts", () => {
         new Request(
           `http://allos.test/api/accounts${status === 403 ? "?profile=999999" : ""}`,
           {
-            headers: { ...headers, origin: "https://deck.wang.team" },
+            headers: { ...headers, origin: "https://deck.example.internal" },
           }
         )
       );
       expect(response.status).toBe(status);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://deck.wang.team"
+        "https://deck.example.internal"
       );
       expect(response.headers.get("access-control-allow-credentials")).toBe(
         "true"
@@ -677,10 +679,13 @@ describe("/v1/accounts", () => {
     ).toBe(401);
   });
 
-  it("uses the configured Deck origin instead of the default", async () => {
-    vi.stubEnv("ALLOS_DECK_ORIGIN", "https://deck.example");
+  it("uses the configured Deck origin and disables CORS when unset", async () => {
+    vi.stubEnv("DECK_ORIGIN", "https://deck.example");
     try {
-      for (const origin of ["https://deck.example", "https://deck.wang.team"]) {
+      for (const origin of [
+        "https://deck.example",
+        "https://deck.example.internal",
+      ]) {
         const res = await webAccounts(
           new Request("http://allos.test/api/accounts", { headers: { origin } })
         );
@@ -689,8 +694,15 @@ describe("/v1/accounts", () => {
           origin === "https://deck.example" ? origin : null
         );
       }
+      vi.stubEnv("DECK_ORIGIN", "");
+      const res = await webAccounts(
+        new Request("http://allos.test/api/accounts", {
+          headers: { origin: "https://deck.example" },
+        })
+      );
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
     } finally {
-      vi.unstubAllEnvs();
+      vi.stubEnv("DECK_ORIGIN", "https://deck.example.internal");
     }
   });
 
@@ -718,7 +730,7 @@ describe("/v1/accounts", () => {
     }
   });
 
-  // Deck's Accounts place reads the twin from https://deck.wang.team: that origin
+  // Deck's Accounts place reads the twin from https://deck.example.internal: that origin
   // exactly, with credentials, on every answer; never a sibling or reflected one.
   it("lets Deck's origin read the accounts twin, and no other origin", async () => {
     const login = makeLogin("accounts-cors", "member");
@@ -735,21 +747,21 @@ describe("/v1/accounts", () => {
           },
         })
       );
-    const deck = await call("https://deck.wang.team");
+    const deck = await call("https://deck.example.internal");
     expect(deck.status).toBe(200);
     expect(deck.headers.get("access-control-allow-origin")).toBe(
-      "https://deck.wang.team"
+      "https://deck.example.internal"
     );
     expect(deck.headers.get("access-control-allow-credentials")).toBe("true");
     expect(deck.headers.get("vary")).toMatch(/Origin/);
     expect((await deck.json()).accounts.length).toBeGreaterThan(0);
-    const sibling = await call("https://evil.wang.team");
+    const sibling = await call("https://evil.example.internal");
     expect(sibling.headers.get("access-control-allow-origin")).toBeNull();
     expect(sibling.headers.get("vary")).toMatch(/Origin/);
-    const refused = await call("https://deck.wang.team", false);
+    const refused = await call("https://deck.example.internal", false);
     expect(refused.status).toBe(401);
     expect(refused.headers.get("access-control-allow-origin")).toBe(
-      "https://deck.wang.team"
+      "https://deck.example.internal"
     );
   });
 
