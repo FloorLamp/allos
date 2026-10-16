@@ -1,9 +1,10 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Metrics, metrics, recordSyncMetric } from "@/lib/metrics";
 import {
   metricsServer,
+  observeEventLoop,
   observeRequests,
   routeMatcher,
 } from "@/lib/metrics-runtime";
@@ -176,4 +177,40 @@ it("counts a timed sync once when its audit log also contains a disclosure", () 
   expect(metrics.render()).toContain(
     `allos_task_runs_total{task="health-connect",outcome="ok"} ${before + 1}`
   );
+});
+
+it("retains strictly over 200 ms breaches across scrapes and stops sampling on cleanup", () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const clock = vi.spyOn(performance, "now");
+  let now = 0;
+  clock.mockImplementation(() => now);
+  const registry = new Metrics();
+  const monitor = observeEventLoop(registry);
+  const scrape = () => {
+    monitor.collect();
+    return registry.render();
+  };
+  const sample = (delay: number) => {
+    now += 20 + delay;
+    vi.advanceTimersByTime(20);
+  };
+  try {
+    sample(199);
+    sample(200);
+    expect(scrape()).toContain("nodejs_eventloop_lag_breaches_total 0\n");
+    sample(200.001);
+    expect(scrape()).toContain("nodejs_eventloop_lag_breaches_total 1\n");
+    expect(scrape()).toContain("nodejs_eventloop_lag_breaches_total 1\n");
+    sample(500);
+    sample(0);
+    expect(scrape()).toContain("nodejs_eventloop_lag_breaches_total 2\n");
+    monitor.stop();
+    sample(500);
+    expect(scrape()).toContain("nodejs_eventloop_lag_breaches_total 2\n");
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    monitor.stop();
+    clock.mockRestore();
+    vi.useRealTimers();
+  }
 });

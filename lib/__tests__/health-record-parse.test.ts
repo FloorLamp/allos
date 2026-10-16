@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import zlib from "node:zlib";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   detectHealthRecord,
   parseHealthRecord,
@@ -162,4 +164,42 @@ describe("parseHealthRecord", () => {
   it("throws on an unrecognized buffer", () => {
     expect(() => parseHealthRecord(Buffer.from("<html></html>"))).toThrow();
   });
+});
+
+it("parses a large synthetic FHIR export within Deck's event-loop budget", async () => {
+  const buffer = Buffer.from(
+    JSON.stringify({
+      resourceType: "Bundle",
+      type: "collection",
+      entry: Array.from({ length: 10000 }, (_, i) => ({
+        resource: {
+          resourceType: "Observation",
+          status: "final",
+          code: {
+            coding: [
+              {
+                system: "http://loinc.org",
+                code: "2093-3",
+                display: "Cholesterol",
+              },
+            ],
+          },
+          effectiveDateTime: "2026-10-16T12:00:00Z",
+          valueQuantity: { value: 150 + (i % 20), unit: "mg/dL" },
+        },
+      })),
+    })
+  );
+  const lag = monitorEventLoopDelay({ resolution: 10 });
+  lag.enable();
+  try {
+    await delay(30);
+    const { parsed } = parseHealthRecord(buffer);
+    await delay(30);
+    expect(parsed.observations).toHaveLength(20);
+    expect(lag.count).toBeGreaterThan(0);
+    expect(lag.max / 1e6).toBeLessThanOrEqual(200);
+  } finally {
+    lag.disable();
+  }
 });
