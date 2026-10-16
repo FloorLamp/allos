@@ -1,0 +1,13 @@
+.dk-vehicles { padding: 16px; color: var(--text); font-family: system-ui, sans-serif; }
+.dp .dk-vehicles { overflow: auto; max-height: 65vh; }
+.dk-vehicles header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vehicle-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.vehicle-card section > .dk-btn:not(.vehicle-photo) { height: auto; min-height: 28px; white-space: normal; text-align: left; }
+.vehicle-card h2 { margin-top: 0; }
+.vehicle-photo { display: inline-flex; height: auto; flex: none; max-width: 100%; padding: 4px; }
+.vehicle-photo img { width: 96px; height: 72px; object-fit: cover; border-radius: 6px; }
+.vehicle-photo.hero { width: 100%; }
+.vehicle-photo.hero img { width: 100%; height: 220px; }
+.vehicle-strip { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0; }
+.vehicle-expiry { font-weight: 600; }
+@media (max-width: 600px) { .vehicle-card { padding: 12px; } .vehicle-photo.hero img { height: 160px; } }

@@ -1,0 +1,117 @@
+[
+  {
+    "id": "search",
+    "label": "Find",
+    "group": "top",
+    "origin": "deck",
+    "href": "/"
+  },
+  {
+    "id": "needs",
+    "label": "Needs",
+    "group": "top",
+    "origin": "deck",
+    "href": "/flightplan#needs"
+  },
+  {
+    "id": "flightplan",
+    "label": "Flightplan",
+    "backend": "flightplan",
+    "group": "top",
+    "origin": "deck",
+    "href": "/flightplan"
+  },
+  {
+    "id": "money",
+    "label": "Money",
+    "group": "top",
+    "origin": "purser",
+    "href": "/"
+  },
+  {
+    "id": "house",
+    "label": "House",
+    "backend": "habitat",
+    "group": "top",
+    "origin": "habitat",
+    "href": "/"
+  },
+  {
+    "id": "health",
+    "label": "Health",
+    "backend": "allos",
+    "group": "top",
+    "origin": "allos",
+    "href": "/deck/health"
+  },
+  {
+    "id": "people",
+    "label": "People",
+    "group": "library",
+    "origin": "deck",
+    "href": "/people"
+  },
+  {
+    "id": "clusters",
+    "label": "Clusters",
+    "group": "library",
+    "origin": "deck",
+    "href": "/projects"
+  },
+  {
+    "id": "vehicles",
+    "label": "Vehicles",
+    "group": "library",
+    "origin": "deck",
+    "href": "/vehicles"
+  },
+  {
+    "id": "properties",
+    "label": "Properties",
+    "group": "library",
+    "origin": "deck",
+    "href": "/properties"
+  },
+  {
+    "id": "insurance",
+    "label": "Insurance",
+    "group": "library",
+    "origin": "deck",
+    "href": "/insurance"
+  },
+  {
+    "id": "papers",
+    "label": "Papers",
+    "group": "library",
+    "origin": "deck",
+    "href": "/papers"
+  },
+  {
+    "id": "taxes",
+    "label": "Taxes",
+    "group": "library",
+    "origin": "deck",
+    "href": "/taxes"
+  },
+  {
+    "id": "things",
+    "label": "Things",
+    "group": "library",
+    "origin": "deck",
+    "href": "/things"
+  },
+  {
+    "id": "accounts",
+    "label": "Sign-ins",
+    "group": "library",
+    "origin": "deck",
+    "href": "/accounts"
+  },
+  {
+    "id": "security",
+    "label": "Security",
+    "group": "library",
+    "origin": "deck",
+    "href": "/security"
+  }
+]
