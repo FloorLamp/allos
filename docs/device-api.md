@@ -1,10 +1,10 @@
 # Device API (`/v1`)
 
-What Deck's devices rely on (spaceport `shared/backend/README.md`). Additive changes only.
+Contract: spaceport `shared/backend/README.md`.
 
 ## Credential and scope
 
-Every call: `Authorization: Bearer dev_…`, the device's boarding credential,
+`Authorization: Bearer dev_…`, boarding credential,
 verified with boarding ([device-credential](../lib/device-credential.ts);
 `BOARDING_URL`, default `http://boarding:9816`), then the route's scope:
 `allos:read`, `allos:ask`, `allos:log`. Then allos's grants: the owner links the
@@ -18,17 +18,18 @@ asked); 403 `access` (a write on a read-only or demo profile); 503 `boarding`
 (fail-closed). 400 names the bad field.
 
 `?profile=<id>` picks a reachable profile; default the login's own, else its
-first. Every answer carries `profile`. Days are profile-local; `at` an instant.
+first. Profile answers carry `profile`. Days are profile-local; `at` an instant.
 
 ## Routes
 
 | Route                      | Scope  | Answer                                                                                                                                                                                                                                       |
 | -------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`             | none   | `{ok, status, reason?, needs}`; 200 while the database answers                                                                                                                                                                               |
+| `GET /v1/accounts`         | `read` | `{accounts, generated}`: granted profiles’ portal logins and integrations; ETag/304                                                                                                                                                          |
 | `GET /v1/needs`            | `read` | `{needs: []}`                                                                                                                                                                                                                                |
 | `GET /v1/me`               | `read` | `{login: {id, label}, owner, profiles: [{id, label}]}`: the linked login; `owner`: allos's admin role                                                                                                                                        |
 | `GET /v1/profiles`         | `read` | `{profile, profiles: [{id, name, access: read\|write}]}`                                                                                                                                                                                     |
-| `GET /v1/find?q=&limit=20` | `read` | `{results: [{kind, loggedKind?, key, title, subtitle, date, href}]}`: the palette's search; `href` a site page; `limit` 1–50                                                                                                                 |
+| `GET /v1/find?q=&limit=20` | `read` | `{results: [{kind, loggedKind?, key, title, subtitle, date, href}]}`: search; `href` a page; `limit` 1–50                                                                                                                                    |
 | `GET /v1/record?key=`      | `read` | `{kind, key, record: {…}}`: a find row's scalar fields (`condition`, `allergy`, `encounter`, `document`, `protocol`, `activity`, `clinical-result`); other kinds 404 `kind`                                                                  |
 | `GET /v1/ask?q=`           | `ask`  | `{answer, offline, citations: [{index, kind, title, subtitle, date, href}]}`: grounded record Q&A; `offline` when no model is configured                                                                                                     |
 | `GET /v1/board`            | `read` | `{day, allDone, meds: [{id, name, doses: [{id, timeOfDay, label, status: taken\|skipped\|null, pastDue}]}]}`: today's scheduled doses in the page's order                                                                                    |
@@ -48,20 +49,6 @@ one. Writes are same-origin JSON (else 403 `origin`, 415 `type`); `ask` is `POST
 into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under the bundle's CSP. Admin only;
 others 404.
 
-Made-up find, `vitamin d`:
-
-```json
-{
-  "profile": 2,
-  "results": [
-    {
-      "kind": "clinical-result",
-      "key": "clinical-result:vitamin d",
-      "title": "Vitamin D",
-      "subtitle": "41 ng/mL · normal",
-      "date": "2026-09-30",
-      "href": "/results/vitamin-d"
-    }
-  ]
-}
-```
+Portal relays: setting `accounts_rover_origins` maps allos portal-account IDs to
+`rover:<login-id>` for Deck deduplication. Unmapped connections remain allos-owned.
+`generated` is the latest reported run/success, or Unix epoch before any run.
