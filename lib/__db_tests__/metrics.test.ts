@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Metrics, metrics } from "@/lib/metrics";
+import { Metrics, metrics, recordSyncMetric } from "@/lib/metrics";
 import {
   metricsServer,
   observeRequests,
@@ -118,6 +118,38 @@ it("seeds the latest persisted successful sync across profiles without identitie
     `allos_task_last_success_timestamp_seconds{task="garmin"} ${Date.parse("2026-10-01T12:00:00Z") / 1000}`
   );
   expect(metrics.render()).not.toContain("metrics-private-person");
+});
+
+it("omits attended success gauges from persisted and live syncs while retaining run metrics", () => {
+  const profileId = Number(
+    db
+      .prepare("INSERT INTO profiles (name) VALUES (?)")
+      .run("scheduled-metrics-fixture").lastInsertRowid
+  );
+  for (const task of ["fitbit-takeout", "patient-portals", "strava"]) {
+    recordSyncEvent(profileId, task, { ok: true });
+  }
+  seedSyncMetrics(profileId);
+  for (const task of ["fitbit-takeout", "patient-portals"]) {
+    expect(metrics.render()).not.toContain(
+      `allos_task_last_success_timestamp_seconds{task="${task}"}`
+    );
+    recordSyncEvent(profileId, task, { ok: true, durationSeconds: 0.25 });
+    const text = metrics.render();
+    expect(text).not.toContain(
+      `allos_task_last_success_timestamp_seconds{task="${task}"}`
+    );
+    expect(text).toContain(
+      `allos_task_runs_total{task="${task}",outcome="ok"}`
+    );
+    expect(text).toContain(`allos_task_duration_seconds_count{task="${task}"}`);
+  }
+  recordSyncMetric("strava:ride-details", true, 0.25);
+  for (const task of ["strava", "strava:ride-details"]) {
+    expect(metrics.render()).toContain(
+      `allos_task_last_success_timestamp_seconds{task="${task}"}`
+    );
+  }
 });
 
 it("counts a timed sync once when its audit log also contains a disclosure", () => {

@@ -1,9 +1,10 @@
 // Operational aggregates only. Shared across Next's separately bundled entrypoints.
 import type { AiEvent } from "./ai-log";
+import { isScheduledKind } from "./integrations/delivery";
 import { INTEGRATIONS } from "./integrations/registry";
 
-function knownTask(task: string): boolean {
-  return INTEGRATIONS.some(
+function knownTask(task: string) {
+  return INTEGRATIONS.find(
     (source) =>
       source.id === task ||
       source.backfills?.some(
@@ -65,7 +66,9 @@ export class Metrics {
   }
 
   success(task: string, timestamp: number) {
-    if (!knownTask(task) || !Number.isFinite(timestamp)) return;
+    const source = knownTask(task);
+    if (!source || !isScheduledKind(source.kind) || !Number.isFinite(timestamp))
+      return;
     const s = this.series(
       "allos_task_last_success_timestamp_seconds",
       "gauge",
