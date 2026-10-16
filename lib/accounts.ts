@@ -49,6 +49,13 @@ interface Account {
   actions: { kind: "url"; label: string; url: string }[];
 }
 
+export function portalAccountRowId(
+  profileId: number,
+  accountId: number
+): string {
+  return `portal:${accountId}:${profileId}`;
+}
+
 export function accountsForProfile(
   profileId: number,
   person: string,
@@ -100,7 +107,7 @@ export function accountsForProfile(
         ? { from: { backend: "rover" as const, id: roverId } }
         : {}),
       ...base(
-        `portal:${account.id}:${profileId}`,
+        portalAccountRowId(profileId, account.id),
         portal.name,
         "/integrations/patient-portals"
       ),

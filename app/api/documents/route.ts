@@ -1,3 +1,4 @@
+import { portalAccountRowId } from "@/lib/accounts";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
@@ -191,6 +192,7 @@ export async function POST(req: Request): Promise<Response> {
   // (#1748). Set only on the resolved-identity branch: a `profile=<id>` upload is a
   // person putting a file somewhere, and NULL says exactly that.
   let acquiredPortalId: number | null = null;
+  let accountId: string | undefined;
   // The IDENTITY half of the same fact (#2999) — the (login, patient) pair this archive
   // was acquired for. That is the grain the tool REPORTS at (one report per patient), so
   // it is the grain that lets a run report recognize its own delivery; anything coarser
@@ -238,6 +240,7 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
     profileId = resolved.profileId;
+    accountId = portalAccountRowId(profileId, resolved.accountId);
     acquiredPortalId = resolved.portalId;
     acquiredIdentityId = resolved.identityId;
   }
@@ -307,6 +310,7 @@ export async function POST(req: Request): Promise<Response> {
       ok: true,
       dryRun: true,
       profile: profileId,
+      ...(accountId ? { accountId } : {}),
       documents: reports,
       ...skippedNote,
     });
@@ -398,6 +402,7 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({
     ok: true,
     profile: profileId,
+    ...(accountId ? { accountId } : {}),
     documents,
     ...skippedNote,
   });

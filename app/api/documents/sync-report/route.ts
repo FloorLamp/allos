@@ -1,3 +1,4 @@
+import { portalAccountRowId } from "@/lib/accounts";
 import { revalidateRoute } from "@/lib/revalidate";
 import { writableProfileIdsForLogin } from "@/lib/auth";
 import { authenticateApiToken } from "@/lib/api-tokens";
@@ -535,6 +536,9 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({
     ok: true,
     profile: profileId,
+    ...(identity
+      ? { accountId: portalAccountRowId(profileId, identity.accountId) }
+      : {}),
     status,
     // How many of the reported labels are NEWLY waiting to be bound. Echoed so a tool can
     // tell its user "3 new patients need mapping in allos" without reading the card —
