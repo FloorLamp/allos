@@ -91,9 +91,13 @@ ENV COMMIT_MESSAGE=$COMMIT_MESSAGE
 
 # gosu lets the entrypoint drop from root to the app user after fixing up the
 # (bind-mounted) data dir's ownership.
+# The standalone server and bundled tools run directly with Node.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends gosu \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  /usr/local/lib/node_modules/npm /opt/yarn-* \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+  /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # Standalone contains only Next's traced runtime dependencies. The bundled tools
 # resolve their external better-sqlite3 and next imports from that same tree.

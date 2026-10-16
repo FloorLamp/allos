@@ -16,3 +16,17 @@ docker-compose.yml
 .agent-task
 test-results
 playwright-report
+.next-*
+docs
+e2e
+**/__tests__
+**/__db_tests__
+**/__action_tests__
+**/*.test.*
+**/*.spec.*
+.agents
+.claude
+.codex
+.husky
+coverage
+*.tsbuildinfo

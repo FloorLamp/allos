@@ -38,6 +38,10 @@ const SHARE_HEADERS = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Node loads the separate .js + .wasm pair, never the embedded browser bundle.
+  outputFileTracingExcludes: {
+    "/*": ["./node_modules/tesseract.js-core/*.wasm.js"],
+  },
   // Tesseract starts a worker by filename; tracing does not follow its imports.
   outputFileTracingIncludes: {
     "/*": [
