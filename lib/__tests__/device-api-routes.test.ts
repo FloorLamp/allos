@@ -48,7 +48,9 @@ function scopeOf(src: string, method: string): string | undefined {
     new RegExp(`export (async function|const) ${method}\\b`)
   );
   if (at < 0) return undefined;
-  return /authenticateDevice\(\s*\w+,\s*"allos:(\w+)"/.exec(src.slice(at))?.[1];
+  return /authenticateDevice(?:Credential)?\(\s*\w+,\s*"allos:(\w+)"/.exec(
+    src.slice(at)
+  )?.[1];
 }
 
 function v1Routes(dir = path.join(REPO, "app/v1")): string[] {
