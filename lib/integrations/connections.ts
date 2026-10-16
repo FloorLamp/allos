@@ -1,6 +1,6 @@
 import { metrics, recordSyncMetric } from "@/lib/metrics";
 import crypto from "node:crypto";
-import { db, writeTx } from "@/lib/db";
+import { db, writeTx, hoistedStatement } from "@/lib/db";
 import { log } from "@/lib/log";
 import type {
   IntegrationConnection,
@@ -37,6 +37,20 @@ export function getConnection(
       "SELECT * FROM integration_connections WHERE profile_id = ? AND source_id = ?"
     )
     .get(profileId, sourceId) as IntegrationConnection | undefined;
+}
+
+const CONNECTION_METADATA = hoistedStatement(`
+  SELECT source_id, status FROM integration_connections WHERE profile_id = ? ORDER BY source_id
+`);
+
+// Connection metadata only; credentials never leave this reader.
+export function listConnectionMetadata(
+  profileId: number
+): Pick<IntegrationConnection, "source_id" | "status">[] {
+  return CONNECTION_METADATA.all(profileId) as Pick<
+    IntegrationConnection,
+    "source_id" | "status"
+  >[];
 }
 
 // A recurring inbound health-data source, excluding the outbound calendar feed.
