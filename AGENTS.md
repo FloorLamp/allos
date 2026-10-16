@@ -10,7 +10,8 @@ Allos is a multi-user, login-gated health tracking and coaching app built with
 Next.js 16 App Router, Server Actions, and synchronous `better-sqlite3`.
 Node 24 is required and pinned in `.nvmrc`.
 
-**Backend first.** New work goes to the `/v1` API, data and integrations.
+**Backend first.** New work goes to the [`/v1` API](docs/device-api.md), data
+and integrations.
 Allos's own pages are in maintenance: keep them working, add no features.
 
 ## Commands
@@ -50,7 +51,6 @@ npm run build
   automatically require new tests or changed assertions.
 - Do not write redundant assertions or defensive assert checks for conditions
   already proven by types or prior control flow.
-
 - More specific instructions live in nested `AGENTS.md` files.
 - [Development guide](docs/development.md) maps tasks to code, documents, and
   checks. Read the matching contract before changing a shared domain model.

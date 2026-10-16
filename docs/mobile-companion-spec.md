@@ -18,8 +18,8 @@ the Home Assistant / Nextcloud companion model — and **do not build a true
 native / React Native client.**
 
 The argument against native is structural: writes are Server Actions and reads
-are Server Components, and the only JSON surface is the narrow
-[device API](device-api.md) Deck consumes. A native client over every domain
+are Server Components, and the JSON surfaces are narrow: the
+[device API](device-api.md) Deck consumes and [document upload](api-tokens.md). A native client over every domain
 means permanently versioning a REST layer — a second product. The shell renders
 the server's own UI instead: no version skew. The PWA stays supported.
 
