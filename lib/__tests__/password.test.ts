@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { hashPasswordSync, verifyPassword } from "../password";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
+import { hashPassword, hashPasswordSync, verifyPassword } from "../password";
 
 describe("password hashing", () => {
   it("stores a salted, self-describing hash that verifies only its password", async () => {
@@ -34,4 +36,27 @@ describe("password hashing", () => {
       expect(await verifyPassword("pw", bad)).toBe(false);
     }
   });
+});
+
+it("keeps concurrent token/password hashing and verification within Deck's lag budget", async () => {
+  const stored = await hashPassword("synthetic authentication load");
+  const lag = monitorEventLoopDelay({ resolution: 10 });
+  lag.enable();
+  try {
+    await delay(30);
+    const results = await Promise.all(
+      Array.from({ length: 12 }, async (_, index) => {
+        if (index % 2 === 0)
+          return verifyPassword("synthetic authentication load", stored);
+        const hash = await hashPassword("synthetic new password");
+        return verifyPassword("synthetic new password", hash);
+      })
+    );
+    await delay(30);
+    expect(results.every(Boolean)).toBe(true);
+    expect(lag.count).toBeGreaterThan(0);
+    expect(lag.max / 1e6).toBeLessThanOrEqual(200);
+  } finally {
+    lag.disable();
+  }
 });

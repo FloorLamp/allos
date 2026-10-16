@@ -92,6 +92,42 @@ export function metricsServer(
   });
 }
 
+// Sampling is independent of HTTP scrapes: a diagnostic scrape cannot erase a
+// breach. Count delayed samples, not milliseconds, with one label-free series.
+export function observeEventLoop(registry: Metrics) {
+  const lag = monitorEventLoopDelay({ resolution: 20 });
+  lag.enable();
+  registry.count("nodejs_eventloop_lag_breaches_total", {}, 0);
+  let previous = performance.now();
+  const timer = setInterval(() => {
+    const current = performance.now();
+    if (current > previous + 20 + 200)
+      registry.count("nodejs_eventloop_lag_breaches_total", {});
+    previous = current;
+  }, 20);
+  timer.unref();
+  return {
+    collect() {
+      registry.gauge(
+        "nodejs_eventloop_lag_p50_seconds",
+        {},
+        lag.count > 0 ? lag.percentile(50) / 1e9 : 0
+      );
+      registry.gauge(
+        "nodejs_eventloop_lag_p99_seconds",
+        {},
+        lag.count > 0 ? lag.percentile(99) / 1e9 : 0
+      );
+      registry.gauge("nodejs_eventloop_lag_max_seconds", {}, lag.max / 1e9);
+      lag.reset();
+    },
+    stop() {
+      clearInterval(timer);
+      lag.disable();
+    },
+  };
+}
+
 // The web process exports these aggregates; notify and CLI processes stay separate.
 export function startMetrics() {
   const shared = globalThis as typeof globalThis & {
@@ -117,27 +153,22 @@ export function startMetrics() {
   } catch (error) {
     console.error("metrics: no route manifest", (error as Error).message);
   }
-  observeRequests(metrics, routeMatcher(appPaths));
-  const lag = monitorEventLoopDelay({ resolution: 20 });
-  lag.enable();
+  const stopRequests = observeRequests(metrics, routeMatcher(appPaths));
+  const lag = observeEventLoop(metrics);
   const server = metricsServer(metrics, () => {
     metrics.gauge("nodejs_heap_used_bytes", {}, process.memoryUsage().heapUsed);
-    metrics.gauge(
-      "nodejs_eventloop_lag_p50_seconds",
-      {},
-      lag.count > 0 ? lag.percentile(50) / 1e9 : 0
-    );
-    metrics.gauge(
-      "nodejs_eventloop_lag_p99_seconds",
-      {},
-      lag.count > 0 ? lag.percentile(99) / 1e9 : 0
-    );
-    metrics.gauge("nodejs_eventloop_lag_max_seconds", {}, lag.max / 1e9);
-    lag.reset();
+    lag.collect();
   });
-  server.on("error", (error) =>
-    console.error("metrics listener failed", error.message)
-  );
+  const stop = () => {
+    lag.stop();
+    stopRequests();
+    shared.allosMetricsStarted = false;
+  };
+  server.once("close", stop);
+  server.on("error", (error) => {
+    stop();
+    console.error("metrics listener failed", error.message);
+  });
   server.listen(9830, "0.0.0.0");
   server.unref();
 }
