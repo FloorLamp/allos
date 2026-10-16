@@ -20,6 +20,9 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Routes
 
+[A test](../lib/__tests__/device-api-routes.test.ts) holds the table to
+`app/v1` and `/api` twins (none for `needs`).
+
 | Route                      | Scope  | Answer                                                                                                                                                                                                                                       |
 | -------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`             | none   | `{ok, status, reason?, needs}`; 200 while the database answers, else 503                                                                                                                                                                     |
@@ -38,8 +41,8 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Web twins and the Health place
 
-Except `needs`, `/api/<route>` twins use Allos's session cookie (missing: 401 `token`),
-login grants and active profile. Writes require same-origin JSON (403 `origin`,
+`/api/<route>` twins use Allos's session cookie (missing: 401 `token`), login grants and
+active profile. Writes require same-origin JSON (403 `origin`,
 415 `type`). Ask uses `POST /api/ask` `{q, profile?}` (GET: 405).
 `/api/accounts` allows credentialed CORS for exactly `ALLOS_DECK_ORIGIN`.
 
