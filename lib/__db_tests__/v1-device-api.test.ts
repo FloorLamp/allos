@@ -4,7 +4,7 @@
 // What matters here is the boundary: a credential boarding refuses (none, malformed,
 // revoked or expired) is 401; boarding not answering is 503 and never a device; a
 // device without the route's scope is 403; a verified device the owner never linked is
-// 403; and a linked device reads and writes ONLY the profiles its login is granted —
+// 403 for health routes; and a linked device reads and writes ONLY the profiles its login is granted —
 // another profile's rows never come back, and another profile's dose id writes
 // nothing. Then each route's shape.
 //
@@ -234,8 +234,26 @@ describe("/v1 — the device credential, verified with boarding", () => {
     expect(await json(res)).toEqual({ error: "scope" });
   });
 
+  it("serves needs to an unlinked read-only device without granting health access", async () => {
+    const token = credential({ name: "needs-poller", scopes: ["allos:read"] });
+    const res = await needs(req("/v1/needs", token));
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ needs: [] });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const health = await readings(req("/v1/readings", token));
+    expect(health.status).toBe(403);
+    expect(await json(health)).toEqual({ error: "device" });
+  });
+
+  it("refuses needs without allos:read even for a verified device", async () => {
+    const token = credential({ name: "needs-no-read", scopes: ["allos:ask"] });
+    const res = await needs(req("/v1/needs", token));
+    expect(res.status).toBe(403);
+    expect(await json(res)).toEqual({ error: "scope" });
+  });
+
   it("403s a verified device the owner never linked to a login", async () => {
-    const res = await needs(req("/v1/needs", stranger));
+    const res = await me(req("/v1/me", stranger));
     expect(res.status).toBe(403);
     expect(await json(res)).toEqual({ error: "device" });
   });

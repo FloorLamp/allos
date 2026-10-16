@@ -1,4 +1,4 @@
-import { authenticateDevice, refuse } from "@/lib/device-logins";
+import { authenticateDeviceCredential, refuse } from "@/lib/device-logins";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // behind a device yet, so the list is empty; the route exists because every Deck
 // backend answers it.
 export async function GET(req: Request): Promise<Response> {
-  const auth = await authenticateDevice(req, "allos:read");
+  const auth = await authenticateDeviceCredential(req, "allos:read");
   if (!auth.ok) return refuse(auth);
   return Response.json(
     { needs: [] },

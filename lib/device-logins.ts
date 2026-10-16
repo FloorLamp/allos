@@ -199,16 +199,11 @@ async function authenticateSession(req: Request): Promise<DeviceAuth> {
   return { ok: true, device: "session", login: session.login, ...here };
 }
 
-// Authenticate a `/v1` request and resolve the profile it acts on. Order matters and
-// is the contract's: the credential before anything (401 / 503), then the route's
-// scope (403 `scope`), then allos's own link (403 `device`) and grants (403 `profile`).
-// A request on `/api/…` is the session twin of the route instead.
-export async function authenticateDevice(
+// Backend-wide reads need a scoped credential, without access to health profiles.
+export async function authenticateDeviceCredential(
   req: Request,
   scope: DeviceScope
-): Promise<DeviceAuth> {
-  if (new URL(req.url).pathname.startsWith("/api/"))
-    return authenticateSession(req);
+): Promise<{ ok: true; device: string } | Extract<DeviceAuth, { ok: false }>> {
   let who;
   try {
     who = await verifier.check(bearer(req));
@@ -221,6 +216,22 @@ export async function authenticateDevice(
   }
   if (!who) return { ok: false, status: 401, error: "token" };
   if (!allows(who, scope)) return { ok: false, status: 403, error: "scope" };
+
+  return { ok: true, device: who.device };
+}
+
+// Authenticate a `/v1` request and resolve the profile it acts on. Order matters and
+// is the contract's: the credential before anything (401 / 503), then the route's
+// scope (403 `scope`), then allos's own link (403 `device`) and grants (403 `profile`).
+// A request on `/api/…` is the session twin of the route instead.
+export async function authenticateDevice(
+  req: Request,
+  scope: DeviceScope
+): Promise<DeviceAuth> {
+  if (new URL(req.url).pathname.startsWith("/api/"))
+    return authenticateSession(req);
+  const who = await authenticateDeviceCredential(req, scope);
+  if (!who.ok) return who;
 
   const link = LINK_STMT.get(who.device) as
     { id: number; username: string; role: Role } | undefined;
