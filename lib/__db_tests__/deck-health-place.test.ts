@@ -47,6 +47,7 @@ import { GET as board } from "@/app/api/board/route";
 import { POST as boardDose } from "@/app/api/board/[doseId]/route";
 import * as askRoute from "@/app/api/ask/route";
 import { GET as page } from "@/app/deck/health/route";
+import { deckHealthScript } from "@/lib/deck-ui";
 import { GET as script } from "@/app/deck/health.js/route";
 
 function makeLogin(username: string, role: "admin" | "member"): number {
@@ -96,7 +97,7 @@ beforeAll(() => {
 
 describe("/api twins — the session, not a device credential", () => {
   it("lets Boarding cookies reach Health and sends unsigned viewers to Boarding", () => {
-    const url = "https://allos.test/deck/health";
+    const url = "https://allos.test/health";
     expect(
       middleware(
         new NextRequest(url, {
@@ -105,7 +106,7 @@ describe("/api twins — the session, not a device credential", () => {
       ).status
     ).toBe(200);
     expect(middleware(new NextRequest(url)).headers.get("location")).toBe(
-      "https://allos.test/boarding/sign-in?to=%2Fdeck%2Fhealth"
+      "https://allos.test/boarding/sign-in?to=%2Fhealth"
     );
   });
 
@@ -350,6 +351,69 @@ describe("the Health place — the owner's alone", () => {
       expect((await script()).status).toBe(404);
     }
   });
+
+  it.each(["", "/health"])(
+    "mounts Health with API transport and links under %s",
+    async (base) => {
+      vi.stubEnv("DECK_BASE_PATH", base);
+      as(owner);
+      const calls: string[] = [];
+      const fetch = async (input: string | URL) => {
+        calls.push(String(input));
+        return Response.json([
+          { id: "health", href: "https://old.test/deck/health" },
+        ]);
+      };
+      const mount = vi.fn();
+      const host = vi.fn((transport: { fetch: typeof fetch }) => {
+        void transport.fetch("https://deck.test/api/board?profile=7");
+        return { backends: ["allos"] };
+      });
+      try {
+        // Execute the actual entry module with synthetic browser and mount boundaries.
+        const execute = new Function(
+          "mountHealth",
+          "webHost",
+          "ALLOS_OPS",
+          "window",
+          "location",
+          "navigator",
+          "localStorage",
+          "WebSocket",
+          "fetch",
+          "document",
+          `return (async () => {${deckHealthScript().replace(/^import .*;$/gm, "")} })()`
+        );
+        await execute(
+          mount,
+          host,
+          {},
+          { open() {}, matchMedia() {} },
+          { origin: "https://deck.test" },
+          {},
+          {},
+          class {},
+          fetch,
+          { getElementById: () => "mount" }
+        );
+        expect(calls).toEqual([
+          expect.stringMatching(
+            new RegExp(`^${base}/deck-ui/[^/]+/ui/contract/places.json$`)
+          ),
+          `https://deck.test${base}/api/board?profile=7`,
+        ]);
+        expect(mount).toHaveBeenCalledWith(
+          "mount",
+          { backends: ["allos"] },
+          { places: [{ id: "health", href: base || "/" }] }
+        );
+        const pageBody = await (await page()).text();
+        expect(pageBody).toContain(`src="${base}/health.js"`);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  );
 
   it("serves the owner the page under the bundle's CSP, with no inline script", async () => {
     as(owner);
