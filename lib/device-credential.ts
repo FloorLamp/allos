@@ -1,5 +1,5 @@
-// A TypeScript port of spaceport shared/devices.mjs (FloorLamp/spaceport; BACKEND.md
-// *Device credentials*): keep the behavior the same, change it there first.
+// A TypeScript port of spaceport shared/devices.mjs (FloorLamp/spaceport;
+// shared/backend/device-credentials.md): keep the behavior the same, change it there first.
 //
 // Device credentials: boarding enrolls a device once and issues its one credential
 // (`dev_` + 43 base64url, boarding README *Devices*); every service a device calls
