@@ -100,7 +100,8 @@ export type DeviceAuth =
     }
   | { ok: false; status: 401 | 403 | 415 | 503; error: DeviceRefusal };
 
-// BACKEND.md's words (`token`, `scope`, `boarding`) plus allos's own two: `device`
+// FloorLamp/spaceport shared/backend/device-credentials.md's words
+// (`token`, `scope`, `boarding`) plus allos's own two: `device`
 // (verified, but the owner linked it to no login) and `profile` (the login reaches no
 // profile, or not the one asked for).
 export type DeviceRefusal =
