@@ -22,6 +22,19 @@ describe("isValidTimezone", () => {
 });
 
 describe("timezone offsets", () => {
+  it("keeps whole-minute offsets for instants with milliseconds", () => {
+    const at = new Date("2026-07-15T12:00:00.999Z");
+    expect(timezoneOffsetMinutes("America/New_York", at)).toBe(-240);
+    expect(timezoneOffsetMinutes("Asia/Kathmandu", at)).toBe(345);
+    expect(timezoneOffsetMinutes("UTC", at)).toBe(0);
+    expect(formatTimezoneOffset("UTC", at)).toBe("UTC+00:00");
+  });
+
+  it("returns null for invalid zones or instants", () => {
+    expect(timezoneOffsetMinutes("Not/AZone", new Date())).toBeNull();
+    expect(timezoneOffsetMinutes("UTC", new Date(NaN))).toBeNull();
+  });
+
   it("formats current offsets with DST and fractional-hour support", () => {
     const winter = new Date("2026-01-15T12:00:00.000Z");
     const summer = new Date("2026-07-15T12:00:00.000Z");
