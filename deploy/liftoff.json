@@ -10,21 +10,25 @@
     "secrets": [
       {
         "name": "deck-origin",
+        "services": ["allos", "allos-notify"],
         "env": "DECK_ORIGIN",
         "required": false
       },
       {
         "name": "capcom-url",
+        "services": ["allos", "allos-notify"],
         "env": "CAPCOM_URL",
         "required": false
       },
       {
         "name": "deck-ui-channel",
+        "services": ["allos", "allos-notify"],
         "env": "DECK_UI_CHANNEL",
         "required": false
       },
       {
         "name": "allowed-dev-origins",
+        "services": ["allos", "allos-notify"],
         "env": "ALLOWED_DEV_ORIGINS",
         "required": false
       }
@@ -32,23 +36,27 @@
     "data": [
       {
         "name": "database",
+        "services": ["allos", "allos-notify"],
         "kind": "sqlite",
         "mount": "/app/data/allos.db"
       },
       {
         "name": "uploads",
+        "services": ["allos", "allos-notify"],
         "kind": "directory",
         "mount": "/app/data/uploads",
         "required": false
       },
       {
         "name": "payloads",
+        "services": ["allos", "allos-notify"],
         "kind": "directory",
         "mount": "/app/data/integration-payloads",
         "required": false
       },
       {
         "name": "logs",
+        "services": ["allos", "allos-notify"],
         "kind": "directory",
         "mount": "/app/data/logs",
         "required": false
