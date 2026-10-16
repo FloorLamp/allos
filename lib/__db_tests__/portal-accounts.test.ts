@@ -13,6 +13,7 @@
 // Plus discovery (the routine path by which allos learns identities), the per-identity
 // sync accounting, and provenance.
 
+import { accountsForProfile } from "@/lib/accounts";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { db, rawDb } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
@@ -608,10 +609,15 @@ describe("POST /api/documents — identity form", () => {
     const body = (await res.json()) as {
       ok: boolean;
       profile: number;
+      accountId: string;
       documents: { outcome: string }[];
     };
     expect(body.ok).toBe(true);
     expect(body.profile).toBe(mineProfile);
+    expect(body.accountId).toBe(`portal:${defaultAccount}:${mineProfile}`);
+    expect(
+      accountsForProfile(mineProfile, "Patient", "http://x").map((a) => a.id)
+    ).toContain(body.accountId);
     expect(body.documents[0].outcome).toBe("stored");
     expect(docCount(mineProfile)).toBe(1);
     expect(acquiredOf(mineProfile)).toEqual([portalId]);
@@ -675,6 +681,9 @@ describe("POST /api/documents — identity form", () => {
     expect(res.status).toBe(200);
     expect(docCount(mineProfile)).toBe(1);
     expect(docCount(strangersProfile)).toBe(0);
+    expect(await res.json()).toMatchObject({
+      accountId: `portal:${mom.id}:${mineProfile}`,
+    });
   });
 
   it("REFUSES an omitted account once the portal has two logins, storing nothing", async () => {
@@ -1084,6 +1093,40 @@ describe("POST /api/documents/sync-report", () => {
     }[];
   }
 
+  it("returns distinct Accounts row ids per account and profile", async () => {
+    const mom = createPortalAccount(portalId, "Mom");
+    if (!mom.ok) throw new Error(mom.error);
+    for (const [account, patient, profile] of [
+      [defaultAccount, "Jane Doe", mineProfile],
+      [mom.id, "Jane Doe", mineProfile],
+      [mom.id, "Other Patient", strangersProfile],
+    ] as const) {
+      bindPortalIdentity(account, patient, profile);
+      const res = await SYNC_REPORT(
+        report(profile === mineProfile ? memberToken : strangerToken, {
+          status: "nothing-new",
+          portal: "ochsner-mychart",
+          account: account === defaultAccount ? "default" : "mom",
+          patient,
+        })
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.accountId).toBe(`portal:${account}:${profile}`);
+      expect(
+        accountsForProfile(profile, "Patient", "http://x").map((a) => a.id)
+      ).toContain(body.accountId);
+    }
+    const res = await SYNC_REPORT(
+      report(memberToken, {
+        status: "nothing-new",
+        profile: String(mineProfile),
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).not.toHaveProperty("accountId");
+  });
+
   it("401s without a token", async () => {
     const res = await SYNC_REPORT(
       new Request("http://x/api/documents/sync-report", {
@@ -1108,6 +1151,9 @@ describe("POST /api/documents/sync-report", () => {
       })
     );
     expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      accountId: `portal:${defaultAccount}:${mineProfile}`,
+    });
     const rows = events(mineProfile);
     expect(rows).toHaveLength(1);
     expect(rows[0].ok).toBe(1);
@@ -1507,6 +1553,7 @@ describe("a `failed` report that names only a portal", () => {
       status: "failed",
     });
 
+    expect(body).not.toHaveProperty("accountId");
     const rows = listPortalRunReports().filter(
       (r) => r.accountId === defaultAccount
     );

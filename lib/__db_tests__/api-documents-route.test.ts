@@ -300,6 +300,7 @@ describe("POST /api/documents — per-file outcomes", () => {
     };
     expect(body.ok).toBe(true);
     expect(body.profile).toBe(writeProfile);
+    expect(body).not.toHaveProperty("accountId");
     expect(body.documents).toHaveLength(1);
     expect(body.documents[0].outcome).toBe("stored");
     expect(body.documents[0].name).toBe("labs.pdf");
