@@ -28,6 +28,7 @@ export interface ResolvedTaskClient {
   // The endpoint host for the AI-log `baseUrl` tag (never a full URL/secret).
   // Undefined for the default Anthropic endpoint.
   host?: string;
+  namedPrompts?: Anthropic;
 }
 
 // Resolve the client that will serve a task, or null when no tier is configured (the
@@ -46,6 +47,15 @@ export function resolveTaskClient(
   });
   return {
     client,
+    namedPrompts: config.apiKey.startsWith("capcom_")
+      ? config.apiShape === "anthropic"
+        ? client
+        : createAiClient({
+            apiShape: "anthropic",
+            apiKey: config.apiKey,
+            baseURL: config.baseUrl || undefined,
+          })
+      : undefined,
     model: effectiveModel(config),
     tier,
     apiShape: config.apiShape,

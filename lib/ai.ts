@@ -1,3 +1,4 @@
+import { runNamedPrompt } from "./ai-named-prompt";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import {
@@ -220,18 +221,31 @@ export async function generateInsight(
   const { client, model: MODEL, tier, host } = resolved;
 
   const startedAt = Date.now();
+  let named: Awaited<ReturnType<typeof runNamedPrompt>> | undefined;
+  let effect: "changed" | "no-op" = "no-op";
   try {
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 600,
-      system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Here is my health data for the day. Please give me my daily coaching analysis.\n\n${buildInsightPrompt(context)}`,
-        },
-      ],
-    });
+    if (resolved.namedPrompts) {
+      named = await runNamedPrompt(
+        resolved.namedPrompts,
+        "insight",
+        MODEL,
+        600,
+        [{ type: "text", text: buildInsightPrompt(context) }]
+      );
+    }
+    const msg =
+      named?.message ??
+      (await client.messages.create({
+        model: MODEL,
+        max_tokens: 600,
+        system: SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: `Here is my health data for the day. Please give me my daily coaching analysis.\n\n${buildInsightPrompt(context)}`,
+          },
+        ],
+      }));
     const text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
@@ -267,6 +281,7 @@ export async function generateInsight(
       usage: usageFrom(msg),
       detail: capDetail(`${date}` + (LOG_PROMPTS ? `\n${text}` : "")),
     });
+    effect = text ? "changed" : "no-op";
     return {
       summary: text || fallbackInsight(context, "failed"),
       model: text ? MODEL : offlineModelTag("failed"),
@@ -289,6 +304,8 @@ export async function generateInsight(
       summary: fallbackInsight(context, "failed"),
       model: offlineModelTag("failed"),
     };
+  } finally {
+    await named?.reportOutcome(effect);
   }
 }
 
