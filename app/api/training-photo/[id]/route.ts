@@ -61,7 +61,7 @@ export async function GET(
 
   const wantThumb = new URL(req.url).searchParams.get("thumb") === "1";
   const rel = wantThumb ? (row.thumb_path ?? row.stored_path) : row.stored_path;
-  const abs = path.resolve(process.cwd(), rel);
+  const abs = path.resolve(/* turbopackIgnore: true */ process.cwd(), rel);
   if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep)) {
     return jsonError("not found", 404);
   }

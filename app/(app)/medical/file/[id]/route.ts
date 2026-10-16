@@ -52,7 +52,10 @@ export async function GET(
 
   // Resolve and confine the path to the upload directory before touching disk, so
   // a tampered stored_path can't escape it via `..` or an absolute path.
-  const abs = path.resolve(process.cwd(), doc.stored_path);
+  const abs = path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    doc.stored_path
+  );
   if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep)) {
     return new Response("Not found", { status: 404 });
   }

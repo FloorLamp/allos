@@ -99,7 +99,7 @@ export function unlinkContainedFiles(
   }
   for (const rel of relPaths) {
     if (!rel) continue;
-    const abs = path.resolve(process.cwd(), rel);
+    const abs = path.resolve(/* turbopackIgnore: true */ process.cwd(), rel);
     try {
       const parent = fs.realpathSync(path.dirname(abs));
       if (parent !== root && !parent.startsWith(root + path.sep)) continue;

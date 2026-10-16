@@ -61,7 +61,10 @@ export async function GET(
     return new Response("Not found", { status: 404 });
 
   const wantThumb = new URL(req.url).searchParams.get("thumb") === "1";
-  const abs = path.resolve(process.cwd(), row.stored_path);
+  const abs = path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    row.stored_path
+  );
   if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep)) {
     return new Response("Not found", { status: 404 });
   }
@@ -69,7 +72,10 @@ export async function GET(
   // The thumbnail is contained by construction (a sibling of an already-contained
   // path) and is always the core's re-encoded JPEG, whatever the row's mime says.
   const thumbAbs = wantThumb
-    ? path.resolve(process.cwd(), thumbSiblingPath(row.stored_path))
+    ? path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        thumbSiblingPath(row.stored_path)
+      )
     : null;
   const serveThumb = thumbAbs != null && fs.existsSync(thumbAbs);
 

@@ -106,7 +106,7 @@ function deleteFilesUnderRoot(root: string, relPaths: readonly string[]) {
   for (const rel of relPaths) {
     if (!rel) continue;
     try {
-      const abs = path.resolve(process.cwd(), rel);
+      const abs = path.resolve(/* turbopackIgnore: true */ process.cwd(), rel);
       if (abs !== root && !abs.startsWith(root + path.sep)) {
         log.warn("skipping file outside uploads root", { root, rel });
         continue;
@@ -386,7 +386,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   const localUploadPaths = [
     ...docPaths,
     ...(prof.photo_path ? [prof.photo_path] : []),
-  ].map((rel) => path.resolve(process.cwd(), rel));
+  ].map((rel) => path.resolve(/* turbopackIgnore: true */ process.cwd(), rel));
   try {
     const swept = removeFromOffsiteMirror(localUploadPaths);
     if (swept > 0)

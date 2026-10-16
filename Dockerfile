@@ -37,17 +37,16 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Build the app, then drop dev dependencies (keeps the native addon).
+# Build the standalone app and bundled runtime tools.
 COPY . .
 # Ensure public/ exists even if the repo ships no static assets — the runner
 # stage COPYs it unconditionally and buildx errors on a missing source path.
 #
 # Also bundle the notification scheduler into one self-contained CJS file so the
-# runtime can run it with plain `node` — the runner image drops tsx (a devDep)
-# and never copies scripts/lib source, so `npm run notify` wouldn't work there.
+# runtime can run it with plain `node` — the runner image omits tsx (a devDep),
+# so `npm run notify` would not work there.
 # better-sqlite3 stays external (native addon, resolved from node_modules at
-# runtime). Must run before `npm prune --omit=dev`, while esbuild (via tsx) is
-# still present.
+# runtime). esbuild (via tsx) is available only in the builder.
 # NODE_OPTIONS also reaches Next's TypeScript subprocess, unlike Node CLI flags.
 RUN mkdir -p public \
   && NODE_OPTIONS=--max-old-space-size=4096 npm run build \
@@ -56,8 +55,7 @@ RUN mkdir -p public \
   && npx esbuild scripts/restore-check.ts --bundle --platform=node --target=node24 \
        --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/restore-check.cjs \
   && npx esbuild scripts/device-links.ts --bundle --platform=node --target=node24 \
-       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/device-links.cjs \
-  && npm prune --omit=dev
+       --format=cjs --external:better-sqlite3 --external:next/* --outfile=dist/device-links.cjs
 
 # Trim better-sqlite3 to what this image actually runs: one of the eight prebuilt
 # addons (~17MB the set), none of the SQLite amalgamation it no longer compiles
@@ -68,12 +66,12 @@ RUN mkdir -p public \
 # The require() is the point, not a flourish: with the source-build fallback gone, a
 # prune that broke resolution would otherwise surface as a container that won't boot.
 # Here it fails the build.
-RUN BS3=/app/node_modules/better-sqlite3 \
+RUN BS3=/app/.next/standalone/node_modules/better-sqlite3 \
   && TARGET="$(node -p "(process.platform === 'linux' && !process.report.getReport().header.glibcVersionRuntime ? 'linuxmusl' : process.platform) + '-' + process.arch")" \
   && test -f "$BS3/prebuilds/$TARGET.node" \
   && find "$BS3/prebuilds" -name '*.node' ! -name "$TARGET.node" -delete \
   && rm -rf "$BS3/deps" "$BS3/src" "$BS3/binding.gyp" "$BS3/build" \
-  && node -e "new (require('better-sqlite3'))(':memory:').prepare('select sqlite_version()').get()"
+  && node -e "new (require('/app/.next/standalone/node_modules/better-sqlite3'))(':memory:').prepare('select sqlite_version()').get()"
 
 # ---- runner ----
 FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runner
@@ -93,34 +91,34 @@ ENV COMMIT_MESSAGE=$COMMIT_MESSAGE
 
 # gosu lets the entrypoint drop from root to the app user after fixing up the
 # (bind-mounted) data dir's ownership.
+# The standalone server and bundled tools run directly with Node.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends gosu \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  /usr/local/lib/node_modules/npm /opt/yarn-* \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+  /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
-# Copy the pruned production install + build output. Same base image/arch as the
-# builder, so the one better-sqlite3 prebuild left in node_modules is the one this
-# stage resolves — and being N-API, it is ABI-stable across Node versions besides.
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/next.config.js ./next.config.js
-# The bundled notification scheduler (run by `node dist/notify.cjs`).
-COPY --from=builder /app/dist ./dist
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker-notify.sh /usr/local/bin/docker-notify.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-notify.sh
+# Standalone contains only Next's traced runtime dependencies. The bundled tools
+# resolve their external better-sqlite3 and next imports from that same tree.
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chmod=755 docker-notify.sh /usr/local/bin/docker-notify.sh
 
-# Default ownership for the in-image dir; a bind mount's host ownership wins, so
-# the entrypoint re-chowns it at startup before dropping to the node user.
-RUN mkdir -p /app/data && chown -R node:node /app
+# Bind mounts still get their ownership fixed by the entrypoint.
+RUN mkdir -p /app/data && chown node:node /app/data
 
+# Standalone otherwise inherits the container hostname and may bind only to it.
+ENV HOSTNAME=0.0.0.0
 COPY deploy/steps /liftoff/deploy/steps
 COPY deploy/files /liftoff/deploy/files
 COPY deploy/allos.alloy /liftoff/deploy/allos.alloy
 
 EXPOSE 3000 9830
 # Runs as root only long enough to chown the data dir, then execs as node.
-# next start honors PORT; default 3000.
+# The standalone server honors PORT; default 3000.
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

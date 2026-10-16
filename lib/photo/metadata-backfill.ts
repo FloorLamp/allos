@@ -183,7 +183,10 @@ async function backfillOne(
   row: StoredRow
 ): Promise<keyof PhotoBackfillTally> {
   const root = path.resolve(photoDomainRoot(spec.domain));
-  const abs = path.resolve(process.cwd(), row.stored_path);
+  const abs = path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    row.stored_path
+  );
   // Containment first, always: a corrupt/hostile stored_path is never followed,
   // let alone overwritten.
   if (abs !== root && !abs.startsWith(root + path.sep)) {
@@ -231,7 +234,10 @@ async function backfillOne(
     // derived artifact first means any failure leaves the original bytes intact
     // and the next pass simply retries the whole photo.
     replaceFile(
-      path.resolve(process.cwd(), thumbSiblingPath(row.stored_path)),
+      path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        thumbSiblingPath(row.stored_path)
+      ),
       photo.thumbBytes
     );
     replaceFile(abs, photo.bytes);

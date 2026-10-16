@@ -169,7 +169,12 @@ export async function ensureBuild(root: string = REPO_ROOT): Promise<void> {
     [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next", root), "build"],
     {
       cwd: root,
-      env: { ...process.env, NEXT_SKIP_TYPECHECK: "1" },
+      // Keep the heap limit in Next's child workers as well as the compiler.
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --max-old-space-size=${BUILD_HEAP_MB}`,
+        NEXT_SKIP_TYPECHECK: "1",
+      },
       label: "next build",
     }
   );
