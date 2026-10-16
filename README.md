@@ -170,6 +170,7 @@ the services you want:
 - [Notifications](docs/notifications.md)
 - [Home Assistant notification recipes](docs/home-assistant-notifications.md)
 - [API tokens, the document-upload API, and the upload CLI](docs/api-tokens.md)
+- [Device API (`/v1`) for Deck](docs/device-api.md)
 - [Outbound email](#outbound-email)
 - [Public read-only demo mode](docs/demo.md)
 
