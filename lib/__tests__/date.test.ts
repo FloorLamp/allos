@@ -1,3 +1,5 @@
+import * as dateHelpers from "@/lib/date";
+import zonedVectors from "./fixtures/zoned-vectors.json";
 import { describe, expect, it } from "vitest";
 import {
   dateStrInTz,
@@ -467,5 +469,26 @@ describe("ageMonthsFrom (canonical age-in-months policy)", () => {
     for (const [bd, sa, on] of cases) {
       expect(ageMonthsFrom(bd, sa, on)).toBe(inline(bd, sa, on));
     }
+  });
+});
+
+// Spaceport shared/test/zoned-vectors.json (FloorLamp/spaceport#765).
+// Its wire adapter uses ISO Dates and [zone, epochMs] for the curried dayIn.
+describe("Spaceport zoned vectors", () => {
+  const adapters: Record<string, (...args: never[]) => unknown> = {
+    dayIn: (zone: string, epochMs: number) => dateHelpers.dayIn(zone)(epochMs),
+    tzOffsetMs: (zone: string, iso: string) =>
+      dateHelpers.tzOffsetMs(zone, new Date(iso)),
+    zonedDateParts: (zone: string, iso: string) =>
+      dateHelpers.zonedDateParts(zone, new Date(iso)),
+    zonedWallTimeToUtc: (
+      ...args: Parameters<typeof dateHelpers.zonedWallTimeToUtc>
+    ) => dateHelpers.zonedWallTimeToUtc(...args)?.toISOString() ?? null,
+    isRealIsoDate: dateHelpers.isRealIsoDate,
+    shiftDateStr: dateHelpers.shiftDateStr,
+    hhmmFromMinutes: dateHelpers.hhmmFromMinutes,
+  };
+  it.each(zonedVectors)("$fn($args)", ({ fn, args, expected }) => {
+    expect(adapters[fn](...(args as never[]))).toEqual(expected);
   });
 });

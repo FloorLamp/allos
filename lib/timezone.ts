@@ -1,3 +1,5 @@
+import { tzOffsetMs } from "./date";
+
 // Timezone resolution shared by lib/settings.getTimezone (request paths) and
 // lib/db.appTimezone (the day-boundary source, read inline to avoid a settings→db
 // import cycle). Keeping the decision here means the two entry points can't drift.
@@ -19,26 +21,14 @@ export function isValidTimezone(tz: string): boolean {
 }
 
 // UTC offset for an IANA timezone at a specific instant, in whole minutes and
-// DST-aware. Intl emits GMT/GMT-4/GMT+5:30; normalize that browser/ICU shape once
-// so timezone pickers and solar calculations cannot disagree.
+// DST-aware. Reuse the cached wall-clock calculation used by date helpers.
 export function timezoneOffsetMinutes(
   timezone: string,
   at: Date
 ): number | null {
   try {
-    const part = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      timeZoneName: "shortOffset",
-      hour: "numeric",
-    })
-      .formatToParts(at)
-      .find((item) => item.type === "timeZoneName");
-    if (!part) return null;
-    if (part.value === "GMT") return 0;
-    const match = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(part.value);
-    if (!match) return null;
-    const minutes = Number(match[2]) * 60 + Number(match[3] ?? 0);
-    return match[1] === "-" ? -minutes : minutes;
+    const offset = tzOffsetMs(timezone, at);
+    return Number.isFinite(offset) ? Math.round(offset / 60_000) || 0 : null;
   } catch {
     return null;
   }
