@@ -98,7 +98,10 @@ export function listProfileMedicalFiles(
   const out: ExportFile[] = [];
   const seenNames = new Set<string>();
   for (const r of rows) {
-    const abs = path.resolve(process.cwd(), r.stored_path);
+    const abs = path.resolve(
+      /* turbopackIgnore: true */ process.cwd(),
+      r.stored_path
+    );
     const size = availableFileSize(abs, UPLOAD_ROOT, required);
     if (size === null) continue;
     // Prefix with the row id so two documents that share a filename stay distinct.
@@ -127,7 +130,7 @@ export function getProfilePhotoFile(
     .get(profileId) as { photo_path: string | null } | undefined;
   const stored = row?.photo_path;
   if (!stored) return null;
-  const abs = path.resolve(process.cwd(), stored);
+  const abs = path.resolve(/* turbopackIgnore: true */ process.cwd(), stored);
   const size = availableFileSize(abs, PHOTO_ROOT, required);
   if (size === null) return null;
   const ext = abs.split(".").pop()?.toLowerCase();
@@ -280,7 +283,10 @@ export function listProfileMediaFiles(
       .prepare(MEDIA_ROW_SELECTS[domain])
       .all(profileId) as MediaRow[];
     for (const r of rows) {
-      const abs = path.resolve(process.cwd(), r.stored_path);
+      const abs = path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        r.stored_path
+      );
       const size = availableFileSize(abs, profileRoot, required);
       if (size === null) continue;
       const base = sanitizeName(path.basename(r.stored_path)) || "file";

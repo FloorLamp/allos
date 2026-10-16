@@ -62,7 +62,7 @@ export async function GET(
   const wantPoster = new URL(req.url).searchParams.get("poster") === "1";
   if (wantPoster && !row.poster_path) return videoJsonError("no poster", 404);
   const rel = wantPoster ? row.poster_path! : row.stored_path;
-  const abs = path.resolve(process.cwd(), rel);
+  const abs = path.resolve(/* turbopackIgnore: true */ process.cwd(), rel);
   if (abs !== UPLOAD_ROOT && !abs.startsWith(UPLOAD_ROOT + path.sep)) {
     return videoJsonError("not found", 404);
   }

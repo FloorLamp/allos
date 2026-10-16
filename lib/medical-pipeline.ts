@@ -219,7 +219,9 @@ function dispatchExtraction(
     extractionSemaphore.run(async () => {
       let buffer: Buffer;
       try {
-        buffer = fs.readFileSync(path.join(process.cwd(), storedPath));
+        buffer = fs.readFileSync(
+          path.join(/* turbopackIgnore: true */ process.cwd(), storedPath)
+        );
       } catch (err) {
         log.error("extraction: could not read stored file", {
           docId,
@@ -998,7 +1000,9 @@ function beginReprocess(
     return { status: "processing" }; // already in flight
   let buffer: Buffer;
   try {
-    buffer = fs.readFileSync(path.join(process.cwd(), d.stored_path));
+    buffer = fs.readFileSync(
+      path.join(/* turbopackIgnore: true */ process.cwd(), d.stored_path)
+    );
   } catch {
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
@@ -1462,7 +1466,9 @@ async function extractPersistInputForPreview(
   if (!d || !d.stored_path) return { skip: "No stored file — cannot preview." };
   let buffer: Buffer;
   try {
-    buffer = fs.readFileSync(path.join(process.cwd(), d.stored_path));
+    buffer = fs.readFileSync(
+      path.join(/* turbopackIgnore: true */ process.cwd(), d.stored_path)
+    );
   } catch {
     return { skip: "Stored file is missing — cannot preview." };
   }

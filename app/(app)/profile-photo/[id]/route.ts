@@ -35,7 +35,10 @@ export async function GET(
 
   // Resolve and confine the path to the photos directory before touching disk, so
   // a tampered photo_path can't escape it via `..` or an absolute path.
-  const abs = path.resolve(process.cwd(), row.photo_path);
+  const abs = path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    row.photo_path
+  );
   if (abs !== PHOTO_ROOT && !abs.startsWith(PHOTO_ROOT + path.sep)) {
     return new Response("Not found", { status: 404 });
   }
