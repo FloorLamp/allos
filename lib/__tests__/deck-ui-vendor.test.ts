@@ -6,17 +6,18 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { vendor } from "../../scripts/deck-ui.mjs";
+import pin from "../deck-ui-pin.json";
+import { HOST_API, vendor } from "../../scripts/deck-ui.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-function channel(tamper: boolean) {
+function channel(tamper: boolean, hostApi = HOST_API) {
   const js = "export const x = 1;\n";
   const manifest = JSON.stringify({
     version: "0.1.1",
     revision: "a".repeat(40),
-    hostApi: 1,
+    hostApi,
     files: { "ui/src/mount.js": sha(js) },
   });
   const served = new Map<string, string>([
@@ -58,6 +59,28 @@ function checkout(): string {
 }
 
 describe("vendoring Deck's web UI", () => {
+  it("pins a bundle compatible with this consumer's host API", () => {
+    expect(pin.hostApi).toBe(HOST_API);
+  });
+
+  it("rejects a host API mismatch unless explicitly allowed", async () => {
+    const root = checkout();
+    const source = channel(false, HOST_API + 1);
+    await expect(vendor("0.1.1", { root, ...source })).rejects.toThrow(
+      /needs host API/
+    );
+    expect(existsSync(join(root, "lib/deck-ui-pin.json"))).toBe(false);
+    const pin = await vendor("0.1.1", {
+      root,
+      ...source,
+      allowHostApiMismatch: true,
+    });
+    expect(pin.hostApi).toBe(HOST_API + 1);
+    expect(
+      JSON.parse(readFileSync(join(root, "lib/deck-ui-pin.json"), "utf8"))
+    ).toEqual(pin);
+  });
+
   it("writes the version and its pin when every file is its sha256", async () => {
     const root = checkout();
     const pin = await vendor("0.1.1", { root, ...channel(false) });
@@ -68,12 +91,15 @@ describe("vendoring Deck's web UI", () => {
     expect(existsSync(join(root, "lib/deck-ui-pin.json"))).toBe(true);
   });
 
-  it("refuses a download that is not its sha256 and writes nothing", async () => {
-    const root = checkout();
-    await expect(vendor("0.1.1", { root, ...channel(true) })).rejects.toThrow(
-      /not its sha256/
-    );
-    expect(existsSync(join(root, "public/deck-ui/0.1.1"))).toBe(false);
-    expect(existsSync(join(root, "lib/deck-ui-pin.json"))).toBe(false);
-  });
+  it.each([false, true])(
+    "refuses a corrupt download even with the host API override (%s)",
+    async (allowHostApiMismatch) => {
+      const root = checkout();
+      await expect(
+        vendor("0.1.1", { root, ...channel(true), allowHostApiMismatch })
+      ).rejects.toThrow(/not its sha256/);
+      expect(existsSync(join(root, "public/deck-ui/0.1.1"))).toBe(false);
+      expect(existsSync(join(root, "lib/deck-ui-pin.json"))).toBe(false);
+    }
+  );
 });
