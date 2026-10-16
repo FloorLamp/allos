@@ -113,7 +113,11 @@ RUN mkdir -p /app/data && chown node:node /app/data
 
 # Standalone otherwise inherits the container hostname and may bind only to it.
 ENV HOSTNAME=0.0.0.0
-EXPOSE 3000
+COPY deploy/steps /liftoff/deploy/steps
+COPY deploy/files /liftoff/deploy/files
+COPY deploy/allos.alloy /liftoff/deploy/allos.alloy
+
+EXPOSE 3000 9830
 # Runs as root only long enough to chown the data dir, then execs as node.
 # The standalone server honors PORT; default 3000.
 ENTRYPOINT ["docker-entrypoint.sh"]

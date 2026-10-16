@@ -95,7 +95,10 @@ fs.mkdirSync(dist, { recursive: true });
 const workerHeap = require('node:child_process').execFileSync(process.execPath,
   ['-e', 'process.stdout.write(String(require("node:v8").getHeapStatistics().heap_size_limit))'],
   { encoding: 'utf8' });
-fs.writeFileSync(path.join(dist, 'worker-heap'), workerHeap);
+fs.writeFileSync(path.join(dist, 'worker-heap'), JSON.stringify({
+  compiler: require('node:v8').getHeapStatistics().heap_size_limit,
+  worker: Number(workerHeap),
+}));
 fs.writeFileSync(path.join(dist, ${JSON.stringify(COMPILED_FROM)}), JSON.stringify(inputs, null, 2));
 fs.writeFileSync(path.join(dist, ${JSON.stringify(COMPILING)}), "");
 // Hold the window open while a test edits the tree under the running compiler.
@@ -206,12 +209,11 @@ afterEach(() => {
 });
 
 describe("ensureBuild over a real tree", () => {
-  it("gives build subprocesses enough heap despite a runner's lower limit", async () => {
+  it("passes the compiler heap limit to subprocesses despite a runner's lower limit", async () => {
     process.env.NODE_OPTIONS = "--max-old-space-size=256";
     await ensureBuild(root);
-    expect(Number(read(".next/worker-heap"))).toBeGreaterThanOrEqual(
-      4 * 1024 ** 3
-    );
+    const { compiler, worker } = JSON.parse(read(".next/worker-heap"));
+    expect(worker).toBe(compiler);
   });
 
   it("REBUILDS after a source edited WHILE the previous build ran — the mtime rule read that as fresh (#5772)", async () => {

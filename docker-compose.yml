@@ -11,6 +11,7 @@ services:
     image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}
     ports:
       - "${PORT:-3000}:3000"
+      - "127.0.0.1:9830:9830"
     # Secrets / config come from .env (copy .env.example → .env).
     env_file:
       - .env

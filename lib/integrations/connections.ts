@@ -1,5 +1,6 @@
+import { metrics, recordSyncMetric } from "@/lib/metrics";
 import crypto from "node:crypto";
-import { db, writeTx } from "@/lib/db";
+import { db, writeTx, hoistedStatement } from "@/lib/db";
 import { log } from "@/lib/log";
 import type {
   IntegrationConnection,
@@ -15,7 +16,7 @@ import {
   type TokenExpiryChoice,
 } from "@/lib/token-lifecycle";
 import { cutoffDaysAgo, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
-import { utcInstant } from "@/lib/date";
+import { utcInstant, parseUtcSql } from "@/lib/date";
 import { boundSyncDetailsJson, truncatedSyncDetails } from "./sync-details";
 import {
   summarizeSplit,
@@ -36,6 +37,20 @@ export function getConnection(
       "SELECT * FROM integration_connections WHERE profile_id = ? AND source_id = ?"
     )
     .get(profileId, sourceId) as IntegrationConnection | undefined;
+}
+
+const CONNECTION_METADATA = hoistedStatement(`
+  SELECT source_id, status FROM integration_connections WHERE profile_id = ? ORDER BY source_id
+`);
+
+// Connection metadata only; credentials never leave this reader.
+export function listConnectionMetadata(
+  profileId: number
+): Pick<IntegrationConnection, "source_id" | "status">[] {
+  return CONNECTION_METADATA.all(profileId) as Pick<
+    IntegrationConnection,
+    "source_id" | "status"
+  >[];
 }
 
 // A recurring inbound health-data source, excluding the outbound calendar feed.
@@ -174,6 +189,7 @@ export function recordSync(
 }
 
 export interface SyncEventInput {
+  durationSeconds?: number;
   ok: boolean;
   windowStart?: string | null;
   windowEnd?: string | null;
@@ -216,7 +232,7 @@ export interface SyncEventInput {
 
 type AccountedSyncEventInput = Pick<
   SyncEventInput,
-  "ok" | "raw_ref" | "error" | "identity"
+  "ok" | "raw_ref" | "error" | "identity" | "durationSeconds"
 > & {
   profileId: number;
   sourceId: string;
@@ -258,6 +274,9 @@ export function recordSyncEvent(
   sourceId: string,
   ev: SyncEventInput
 ): number | null {
+  // Audit disclosures can accompany a run; only its timed terminal event counts.
+  if (ev.durationSeconds != null)
+    recordSyncMetric(sourceId, ev.ok, ev.durationSeconds);
   try {
     const info = db
       .prepare(
@@ -1204,4 +1223,31 @@ export function disconnectWeather(profileId: number) {
     status: "disconnected",
     config: null,
   });
+}
+
+// The Node startup boundary fans out over profiles; only kind and time leave here.
+export function seedSyncMetrics(profileId: number): void {
+  const rows = db
+    .prepare(
+      `
+    SELECT source_id, MAX(at) AS at FROM integration_sync_events
+    WHERE profile_id = ? AND ok = 1 GROUP BY source_id
+    UNION ALL
+    SELECT source_id, last_sync_at AS at FROM integration_connections
+    WHERE profile_id = ? AND last_sync_at IS NOT NULL
+    UNION ALL
+    SELECT source_id || ':' || kind AS source_id, MAX(finished_at) AS at
+    FROM integration_backfill_jobs
+    WHERE profile_id = ? AND status = 'completed' AND finished_at IS NOT NULL
+    GROUP BY source_id, kind
+  `
+    )
+    .all(profileId, profileId, profileId) as {
+    source_id: string;
+    at: string;
+  }[];
+  for (const row of rows) {
+    const timestamp = parseUtcSql(row.at); // stored UTC: SQLite datetime or ISO with Z
+    if (timestamp) metrics.success(row.source_id, timestamp.getTime() / 1000);
+  }
 }

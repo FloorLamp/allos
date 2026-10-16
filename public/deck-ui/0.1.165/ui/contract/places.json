@@ -1,0 +1,54 @@
+[
+  {
+    "id": "search",
+    "label": "Search",
+    "href": "https://deck.wang.team/"
+  },
+  {
+    "id": "attention",
+    "label": "Attention",
+    "href": "https://deck.wang.team/attention"
+  },
+  {
+    "id": "people",
+    "label": "People",
+    "href": "https://deck.wang.team/?q=people"
+  },
+  {
+    "id": "projects",
+    "label": "Projects",
+    "href": "https://deck.wang.team/projects"
+  },
+  {
+    "id": "map",
+    "label": "Map",
+    "href": "https://deck.wang.team/map"
+  },
+  {
+    "id": "activity",
+    "label": "Activity",
+    "href": "https://deck.wang.team/activity"
+  },
+  {
+    "id": "money",
+    "label": "Money",
+    "href": "https://purser.wang.team/"
+  },
+  {
+    "id": "accounts",
+    "label": "Sign-ins",
+    "href": "https://deck.wang.team/accounts"
+  },
+  {
+    "id": "health",
+    "label": "Health",
+    "href": "https://allos.wang.team/deck/health",
+    "backend": "allos"
+  },
+  {
+    "id": "house",
+    "label": "House",
+    "href": "https://habitat.wang.team/",
+    "backend": "habitat"
+  }
+]

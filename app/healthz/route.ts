@@ -2,7 +2,7 @@ import { GET as health } from "@/app/api/health/route";
 
 export const dynamic = "force-dynamic";
 
-// The Deck backend healthcheck (spaceport shared/BACKEND.md *Health*): 200 with
+// The Deck backend healthcheck (spaceport shared/backend/health.md): 200 with
 // `ok: true` while allos can serve, even degraded. /api/health is the stricter
 // container probe — it answers 503 for a stale backup or a filling disk, states a
 // person must fix but which do not stop requests — so this folds its verdict into the

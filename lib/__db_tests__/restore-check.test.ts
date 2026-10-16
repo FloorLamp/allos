@@ -124,15 +124,38 @@ describe("isolated application restore entrypoint", () => {
     }
   );
 
+  it("removes abandoned restore workspaces before verifying the checkpoint", () => {
+    const files = fs.readdirSync(root);
+    const stale = path.join(root, ".allos-restore-abandoned");
+    fs.mkdirSync(path.join(stale, "data"), { recursive: true });
+    fs.writeFileSync(path.join(stale, "data", "allos.db"), "abandoned");
+    const result = probe();
+    expect(result.status, result.stderr).toBe(0);
+    expect(fs.readdirSync(root)).toEqual(files);
+  });
+
   it.each([
     "missing upload",
+    "outside upload root",
+    "missing profile photo",
     "corrupt database",
     "newer schema",
     "unknown migration",
   ])("refuses %s without modifying the checkpoint", (reason) => {
     const file = path.join(root, "allos.db");
-    if (reason === "missing upload")
-      fs.rmSync(path.join(root, "uploads"), { recursive: true });
+    if (reason === "missing profile photo")
+      fs.rmSync(path.join(root, "uploads", "profile-photos", `${profile}.png`));
+    if (reason === "missing upload" || reason === "outside upload root") {
+      const db = new Database(file);
+      db.prepare(
+        `INSERT INTO medical_documents (profile_id, filename, stored_path)
+         VALUES (?, 'fixture.pdf', ?)`
+      ).run(
+        profile,
+        reason === "missing upload" ? "data/uploads/missing.pdf" : file
+      );
+      db.close();
+    }
     if (reason === "corrupt database") fs.writeFileSync(file, "not a database");
     if (reason === "newer schema") {
       const db = new Database(file);
@@ -149,7 +172,15 @@ describe("isolated application restore entrypoint", () => {
     const before = digest(file),
       result = probe();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Allos restore verification failed");
+    expect(result.stderr).toContain("Allos restore verification failed:");
+    if (
+      reason === "missing upload" ||
+      reason === "outside upload root" ||
+      reason === "missing profile photo"
+    )
+      expect(result.stderr).toContain(
+        "Referenced upload is missing or outside its data directory"
+      );
     expect(digest(file)).toBe(before);
     expect(fs.existsSync(path.join(root, "must-not-open.db"))).toBe(false);
   });

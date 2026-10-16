@@ -1,7 +1,7 @@
 {
-  "version": "0.1.127",
-  "revision": "dabf70e882d16beb694cffe1bdb7b0a479d5835c",
+  "version": "0.1.165",
+  "revision": "32baba648924bff6f86da126d2d0ee28d99cfe39",
   "hostApi": 1,
-  "manifest": "55e20224b1035d353324f76e0586f3db41c07ab2b4fef44a08a5a50551245c3a",
+  "manifest": "d14afa2143d612be0b27d3b453938a8e47b6a4f441ed3a237ae91b42f1c04f14",
   "channel": "https://hangar.wang.team/c/deck-ui/"
 }

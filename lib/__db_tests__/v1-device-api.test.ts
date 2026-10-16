@@ -15,6 +15,20 @@ import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { seedProfile } from "./fixtures";
 import { linkDevice } from "@/lib/device-logins";
+import { createSession, SESSION_COOKIE } from "@/lib/auth";
+import { GET as webAccounts } from "@/app/api/accounts/route";
+import { GET as accounts } from "@/app/v1/accounts/route";
+import {
+  upsertConnection,
+  recordSyncEvent,
+} from "@/lib/integrations/connections";
+import {
+  createPortal,
+  accountsForPortal,
+  bindPortalIdentity,
+  recordPortalRunReport,
+} from "@/lib/portals";
+import { setPublicUrl, setSetting } from "@/lib/settings";
 import { GET as healthz } from "@/app/healthz/route";
 import { GET as needs } from "@/app/v1/needs/route";
 import { GET as me } from "@/app/v1/me/route";
@@ -26,6 +40,9 @@ import { GET as board } from "@/app/v1/board/route";
 import { POST as boardDose } from "@/app/v1/board/[doseId]/route";
 import { GET as readings, POST as logReading } from "@/app/v1/readings/route";
 import { GET as labs } from "@/app/v1/labs/route";
+
+// Exercise the real device and cookie authorization boundaries.
+vi.unmock("@/lib/auth");
 
 // ── A boarding stand-in ──────────────────────────────────────────────────────────
 //
@@ -380,6 +397,14 @@ describe("/v1 — each route's shape", () => {
       { params: Promise.resolve({ doseId: String(myDoseId) }) }
     );
     expect((await json(cleared)).outcome).toBe("cleared");
+    // A non-string `at` on an untaken dose is refused, not logged as a take with no time.
+    const numeric = await boardDose(
+      post(`/v1/board/${myDoseId}`, phone, { action: "take", at: 730 }),
+      { params: Promise.resolve({ doseId: String(myDoseId) }) }
+    );
+    expect(numeric.status).toBe(400);
+    expect(await json(numeric)).toEqual({ error: "at" });
+    expect(row()).toEqual([]);
 
     const bad = await boardDose(
       post(`/v1/board/${myDoseId}`, phone, { action: "eat" }),
@@ -440,5 +465,302 @@ describe("/v1 — each route's shape", () => {
       post("/v1/readings", reader, { weight: 80 })
     );
     expect(readOnly.status).toBe(403);
+  });
+});
+
+describe("/v1/accounts", () => {
+  it("lists only granted connections, with coverage and no patient or credential content", async () => {
+    setPublicUrl("https://allos.example");
+    upsertConnection(mine.profileId, "oura", {
+      status: "connected",
+      config: { token: "secret-token" },
+    });
+    upsertConnection(mine.profileId, "health-connect", { status: "connected" });
+    upsertConnection(theirs.profileId, "strava", {
+      status: "connected",
+      config: { token: "other-secret" },
+    });
+    recordSyncEvent(mine.profileId, "oura", {
+      ok: true,
+      written: 7,
+      windowStart: "2026-10-01",
+      windowEnd: "2026-10-02",
+    });
+    const portal = createPortal("Example Clinic", "mychart");
+    if (!portal.ok) throw new Error(portal.error);
+    const account = accountsForPortal(portal.id)[0];
+    bindPortalIdentity(account.id, "PRIVATE PATIENT MRN", mine.profileId);
+    recordPortalRunReport(account, {
+      ok: false,
+      status: "failed",
+      message: "PRIVATE DIAGNOSIS",
+      discovered: 1,
+    });
+    const hidden = createPortal("Hidden Clinic", "ecw");
+    if (!hidden.ok) throw new Error(hidden.error);
+    bindPortalIdentity(
+      accountsForPortal(hidden.id)[0].id,
+      "OTHER PATIENT",
+      theirs.profileId
+    );
+    setSetting(
+      "accounts_rover_origins",
+      JSON.stringify({ [account.id]: "rover:example" })
+    );
+    const res = await accounts(req("/v1/accounts", phone));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    const data = JSON.parse(body);
+    expect(data.accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          institution: "Oura Ring",
+          state: "ok",
+          lastRun: { at: expect.stringMatching(/Z$/), outcome: "success" },
+          data: {
+            kind: "readings",
+            count: 7,
+            from: "2026-10-01",
+            to: "2026-10-02",
+            storedAt: "allos",
+          },
+        }),
+        expect.objectContaining({
+          institution: "Google Health Connect",
+          state: "unknown",
+          lastRun: null,
+        }),
+        expect.objectContaining({
+          institution: "Example Clinic",
+          state: "failing",
+          from: { backend: "rover", id: "rover:example" },
+        }),
+      ])
+    );
+    for (const secret of [
+      "secret-token",
+      "other-secret",
+      "PRIVATE",
+      "OTHER PATIENT",
+      "Hidden Clinic",
+      "Strava",
+      "scrypt$",
+    ])
+      expect(body).not.toContain(secret);
+    for (const row of data.accounts) {
+      expect(row.id).toMatch(/^[a-z0-9][a-z0-9:._@-]{0,199}$/);
+      expect(row.person).toBe("DevMine");
+      expect(row.actions[0].url).toMatch(/^https:\/\/allos.example\//);
+    }
+    const cached = await accounts(
+      new Request("http://allos.test/v1/accounts", {
+        headers: {
+          authorization: `Bearer ${phone}`,
+          "if-none-match": res.headers.get("etag")!,
+        },
+      })
+    );
+    expect(cached.status).toBe(304);
+    expect(await cached.text()).toBe("");
+    recordSyncEvent(mine.profileId, "health-connect", {
+      ok: false,
+      error: "PRIVATE DOCUMENT TITLE",
+      windowStart: "PRIVATE MRN",
+    });
+    const safe = await accounts(req("/v1/accounts", phone));
+    expect(await safe.text()).not.toContain("PRIVATE");
+    upsertConnection(mine.profileId, "health-connect", {
+      status: "disconnected",
+    });
+    const changed = await accounts(
+      new Request("http://allos.test/v1/accounts", {
+        headers: {
+          authorization: `Bearer ${phone}`,
+          "if-none-match": res.headers.get("etag")!,
+        },
+      })
+    );
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("etag")).not.toBe(res.headers.get("etag"));
+  });
+
+  it("uses session grants across profiles; the admin's own profile is owner whoever asks", async () => {
+    const login = makeLogin("accounts-session", "member");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login, mine.profileId);
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login, theirs.profileId);
+    db.prepare("UPDATE profiles SET name = 'Cloris Family' WHERE id = ?").run(
+      theirs.profileId
+    );
+    db.prepare(
+      "UPDATE logins SET own_profile_id = ? WHERE username = 'device-owner'"
+    ).run(mine.profileId);
+    const { token } = createSession(login);
+    const res = await webAccounts(
+      new Request("http://allos.test/api/accounts", {
+        headers: {
+          cookie: `${SESSION_COOKIE}=${token}`,
+          origin: "https://deck.wang.team",
+        },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("vary")).toBe("Origin");
+    for (const [origin, allowed] of [
+      ["https://evil.wang.team", null],
+      ["", null],
+    ] as const) {
+      const other = await webAccounts(
+        new Request("http://allos.test/api/accounts", {
+          headers: { cookie: `${SESSION_COOKIE}=${token}`, origin },
+        })
+      );
+      expect(other.status).toBe(200);
+      expect(other.headers.get("access-control-allow-origin")).toBe(allowed);
+      expect(other.headers.get("vary")).toBe("Origin");
+    }
+    for (const [headers, status] of [
+      [
+        {
+          "if-none-match": res.headers.get("etag")!,
+          cookie: `${SESSION_COOKIE}=${token}`,
+        },
+        304,
+      ],
+      [{}, 401],
+      [
+        {
+          cookie: `${SESSION_COOKIE}=${token}`,
+        },
+        403,
+      ],
+    ] as const) {
+      const response = await webAccounts(
+        new Request(
+          `http://allos.test/api/accounts${status === 403 ? "?profile=999999" : ""}`,
+          {
+            headers: { ...headers, origin: "https://deck.wang.team" },
+          }
+        )
+      );
+      expect(response.status).toBe(status);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://deck.wang.team"
+      );
+      expect(response.headers.get("access-control-allow-credentials")).toBe(
+        "true"
+      );
+      expect(response.headers.get("vary")).toBe("Origin");
+    }
+    expect((await res.json()).accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ institution: "Strava", person: "Cloris" }),
+        expect.objectContaining({ institution: "Oura Ring", person: "owner" }),
+      ])
+    );
+    const owner = await accounts(req("/v1/accounts", ownerDesk));
+    expect((await owner.json()).accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ institution: "Oura Ring", person: "owner" }),
+        expect.objectContaining({ institution: "Strava", person: "Cloris" }),
+      ])
+    );
+    expect(
+      (await webAccounts(new Request("http://allos.test/api/accounts"))).status
+    ).toBe(401);
+  });
+
+  it("uses the configured Deck origin instead of the default", async () => {
+    vi.stubEnv("ALLOS_DECK_ORIGIN", "https://deck.example");
+    try {
+      for (const origin of ["https://deck.example", "https://deck.wang.team"]) {
+        const res = await webAccounts(
+          new Request("http://allos.test/api/accounts", { headers: { origin } })
+        );
+        expect(res.status).toBe(401);
+        expect(res.headers.get("access-control-allow-origin")).toBe(
+          origin === "https://deck.example" ? origin : null
+        );
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // allos's own standing decides `state` (lib/integrations/source-state.ts): a feed
+  // silent past its tolerance is failing, as on its Integrations page, never a
+  // stale "ok" from the last event.
+  it("reads a source silent past its tolerance as failing", async () => {
+    upsertConnection(mine.profileId, "oura", { status: "connected" });
+    recordSyncEvent(mine.profileId, "oura", { ok: true, written: 1 });
+    const oura = async () =>
+      (
+        (await (await accounts(req("/v1/accounts", phone))).json())
+          .accounts as {
+          institution: string;
+          state: string;
+        }[]
+      ).find((a) => a.institution === "Oura Ring")?.state;
+    expect(await oura()).toBe("ok");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 30 * 86_400_000);
+      expect(await oura()).toBe("failing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Deck's Accounts place reads the twin from https://deck.wang.team: that origin
+  // exactly, with credentials, on every answer; never a sibling or reflected one.
+  it("lets Deck's origin read the accounts twin, and no other origin", async () => {
+    const login = makeLogin("accounts-cors", "member");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login, mine.profileId);
+    const { token } = createSession(login);
+    const call = (origin: string, cookie = true) =>
+      webAccounts(
+        new Request("http://allos.test/api/accounts", {
+          headers: {
+            origin,
+            ...(cookie ? { cookie: `${SESSION_COOKIE}=${token}` } : {}),
+          },
+        })
+      );
+    const deck = await call("https://deck.wang.team");
+    expect(deck.status).toBe(200);
+    expect(deck.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+    expect(deck.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(deck.headers.get("vary")).toMatch(/Origin/);
+    expect((await deck.json()).accounts.length).toBeGreaterThan(0);
+    const sibling = await call("https://evil.wang.team");
+    expect(sibling.headers.get("access-control-allow-origin")).toBeNull();
+    expect(sibling.headers.get("vary")).toMatch(/Origin/);
+    const refused = await call("https://deck.wang.team", false);
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+  });
+
+  it("refuses a credential without allos:read", async () => {
+    const res = await accounts(
+      req(
+        "/v1/accounts",
+        credential({ name: "accounts-no-read", scopes: ["allos:log"] })
+      )
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "scope" });
   });
 });

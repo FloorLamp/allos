@@ -1,3 +1,4 @@
+import { metrics } from "./metrics";
 // Persisted AI activity log. Every AI call (extraction, suggestions,
 // auto-suggest, insight) and its outcome is appended as a JSON line to
 // data/logs/ai.jsonl — an audit trail that's readable directly on the host
@@ -143,6 +144,7 @@ function nextId(): string {
 // (so it also reaches stdout / `docker logs`). Best-effort — never throws into
 // the caller's AI flow.
 export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
+  metrics.ai(e);
   // Stamp the ambient session context (if any) unless the caller set it
   // explicitly. A missing context (background/notify/CLI) leaves the tags null.
   const ctx = getLogContext();
