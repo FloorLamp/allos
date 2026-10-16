@@ -15,6 +15,7 @@ const request = vi.hoisted(() => ({ jar: new Map<string, string>() }));
 vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 vi.mock("next/headers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/headers")>()),
+  headers: async () => new Headers({ host: "allos.test" }),
   cookies: async () => ({
     get: (name: string) =>
       request.jar.has(name)
@@ -35,6 +36,8 @@ vi.mock("@/lib/record-qa-answer", async (importOriginal) => {
 });
 
 import { db } from "@/lib/db";
+import { NextRequest } from "next/server";
+import { middleware } from "@/middleware";
 import { SESSION_COOKIE, createSession } from "@/lib/auth";
 import { aiLogSize } from "@/lib/ai-log";
 import { answerRecordQuestion } from "@/lib/record-qa-answer";
@@ -92,6 +95,68 @@ beforeAll(() => {
 });
 
 describe("/api twins — the session, not a device credential", () => {
+  it("lets Boarding cookies reach Health and sends unsigned viewers to Boarding", () => {
+    const url = "https://allos.test/deck/health";
+    expect(
+      middleware(
+        new NextRequest(url, {
+          headers: { cookie: "__Host-boarding_member=synthetic-session" },
+        })
+      ).status
+    ).toBe(200);
+    expect(middleware(new NextRequest(url)).headers.get("location")).toBe(
+      "https://allos.test/boarding/sign-in?to=%2Fdeck%2Fhealth"
+    );
+  });
+
+  it("accepts only a Boarding-verified owner for Health data", async () => {
+    const admins = db
+      .prepare("SELECT id FROM logins WHERE role = 'admin'")
+      .all() as { id: number }[];
+    db.prepare("UPDATE logins SET role = 'member' WHERE role = 'admin'").run();
+    const id = makeLogin("boarding-owner", "admin");
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      mine.profileId,
+      id
+    );
+    const fetch = vi.fn(async () =>
+      Response.json({ owner: true, who: "synthetic-owner" })
+    );
+    vi.stubGlobal("fetch", fetch);
+    const req = () =>
+      new Request("https://allos.test/api/board", {
+        headers: { cookie: "__Host-boarding_member=synthetic-session" },
+      });
+    try {
+      const res = await board(req());
+      expect(res.status).toBe(200);
+      expect((await res.json()).meds).toHaveLength(1);
+      request.jar.set("__Host-boarding_member", "synthetic-session");
+      expect((await page()).status).toBe(200);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/owner"),
+        expect.objectContaining({
+          headers: {
+            cookie: "__Host-boarding_member=synthetic-session",
+            "x-forwarded-host": "allos.test",
+          },
+        })
+      );
+      fetch.mockResolvedValue(Response.json({ owner: false }));
+      expect((await board(req())).status).toBe(401);
+      fetch.mockRejectedValue(new Error("unavailable"));
+      expect((await board(req())).status).toBe(401);
+    } finally {
+      request.jar.delete("__Host-boarding_member");
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM logins WHERE id = ?").run(id);
+      for (const admin of admins)
+        db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(
+          admin.id
+        );
+    }
+  });
+
   it("401s without a session cookie", async () => {
     const res = await me(get("/api/me", null));
     expect(res.status).toBe(401);

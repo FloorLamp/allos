@@ -147,21 +147,22 @@ export function middleware(req: NextRequest) {
     );
   }
 
-  if (!token) {
+  if (!token && !req.cookies.has("__Host-boarding_member")) {
     if (pathname.startsWith("/api/")) {
       return withCsp(
         NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       );
     }
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    const health = isDeckPlacePath(pathname);
+    url.pathname = health ? "/boarding/sign-in" : "/login";
     url.search = "";
-    url.searchParams.set("next", pathname + search);
+    url.searchParams.set(health ? "to" : "next", pathname + search);
     return withCsp(NextResponse.redirect(url));
   }
 
   const res = NextResponse.next(passNonce);
-  const out = slides ? withSlidingCookie(res, token) : res;
+  const out = token && slides ? withSlidingCookie(res, token) : res;
   return isDeckPlacePath(pathname) ? out : withCsp(out);
 }
 

@@ -55,6 +55,7 @@ export const deckHealthHtml = (): string =>
 <title>Health</title>
 <link rel="stylesheet" href="${DECK_UI}/ui/src/tokens.css">
 <link rel="stylesheet" href="${DECK_UI}/ui/src/base.css">
+<script defer src="/boarding/client.js"></script>
 <script type="module" src="${DECK_HEALTH_SCRIPT}"></script>
 </head>
 <body>
