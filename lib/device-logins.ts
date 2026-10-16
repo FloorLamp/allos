@@ -161,7 +161,7 @@ function reach(
 // a device credential in a browser. The session's login and grants decide the profiles
 // exactly as for a linked device; a scope is a device's, so it does not apply.
 //
-// A cookie is ambient, and SameSite=Lax does not stop a sibling *.wang.team site (same
+// A cookie is ambient, and SameSite=Lax does not stop a sibling subdomain (same
 // site, other origin), so a write must come from allos's own origin: `Origin` equal to
 // the host the request was made to (as Next checks a Server Action; a missing one is
 // refused), `Sec-Fetch-Site` same-origin when the browser sends it, and a JSON body (a

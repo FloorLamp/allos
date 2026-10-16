@@ -293,7 +293,7 @@ export function deliveredDocumentCountsByAccount(
 //
 // `listPendingIdentities()` is instance-wide, and the page used to hand the whole thing
 // to any member holding write access to ANY profile. A pending row's patient label is a
-// portal-reported full name ("WANG, DANA") — exactly the cross-household-member
+// portal-reported full name ("EXAMPLE, DANA") — exactly the cross-household-member
 // disclosure the login/profile access model everywhere else prevents — so a caregiver
 // with write access to only the child profile was shown another adult's proxy-patient
 // labels from a portal with no connection to anything they can reach.

@@ -150,7 +150,7 @@ describe("/api twins — the session, not a device credential", () => {
 
   it("refuses a write from another origin, even a sibling site's, and writes nothing", async () => {
     for (const headers of [
-      { ...json, origin: "https://evil.wang.team" },
+      { ...json, origin: "https://evil.example.internal" },
       { ...json, origin: "https://evil.example" },
       { ...json, origin: "http://allos.test", "sec-fetch-site": "same-site" },
       json,
@@ -203,7 +203,7 @@ describe("/api twins — the session, not a device credential", () => {
     const logBefore = aiLogSize();
     const calls = vi.mocked(answerRecordQuestion).mock.calls.length;
     for (const headers of [
-      { ...json, origin: "https://evil.wang.team" },
+      { ...json, origin: "https://evil.example.internal" },
       { ...json, origin: "http://allos.test", "sec-fetch-site": "same-site" },
       json,
     ]) {

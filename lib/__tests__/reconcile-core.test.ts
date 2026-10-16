@@ -271,23 +271,23 @@ describe("the closing lines", () => {
 // (replacementWithTitle, #377); the reconcile close now follows the same convention.
 
 describe("reconcileClosingText (#1822 item 7)", () => {
-  const TITLE = "[Norton] 🍽️ Morning food log";
+  const TITLE = "[Alex] 🍽️ Morning food log";
 
   it("names the subject on a RESOLVED close, attribution intact", () => {
     expect(reconcileClosingText("resolved", TITLE)).toBe(
-      "[Norton] 🍽️ Morning food log — handled in the app."
+      "[Alex] 🍽️ Morning food log — handled in the app."
     );
   });
 
   it("names the subject on a ROLLOVER close too", () => {
     expect(reconcileClosingText("rollover", TITLE)).toBe(
-      "[Norton] 🍽️ Morning food log — this was yesterday's message."
+      "[Alex] 🍽️ Morning food log — this was yesterday's message."
     );
   });
 
   it("names the subject on an EXPIRED close too", () => {
     expect(reconcileClosingText("expired", TITLE)).toBe(
-      "[Norton] 🍽️ Morning food log — too late to confirm here, log it in the app."
+      "[Alex] 🍽️ Morning food log — too late to confirm here, log it in the app."
     );
   });
 
@@ -337,7 +337,7 @@ describe("reconcileClosingText (#1822 item 7)", () => {
 // was already a list — an integer is strictly less than the message it replaces.
 
 describe("reconcileClosingText outcome detail (#2274)", () => {
-  const DOSES = "[Norton] 💊 Evening supplements";
+  const DOSES = "[Alex] 💊 Evening supplements";
   // Names only, no times — the pre-#2867 shape, which still renders exactly as it did.
   const tally = (taken: string[], skipped: string[]) =>
     closingTallyDetail({ taken: taken.map((name) => ({ name })), skipped });
@@ -350,7 +350,7 @@ describe("reconcileClosingText outcome detail (#2274)", () => {
         tally(["Vitamin D", "Magnesium"], ["Omega-3"])
       )
     ).toBe(
-      "[Norton] 💊 Evening supplements — Vitamin D, Magnesium taken · Omega-3 skipped."
+      "[Alex] 💊 Evening supplements — Vitamin D, Magnesium taken · Omega-3 skipped."
     );
   });
 
@@ -358,19 +358,19 @@ describe("reconcileClosingText outcome detail (#2274)", () => {
     expect(
       reconcileClosingText(
         "resolved",
-        "[Norton] 💊 Midday supplements",
+        "[Alex] 💊 Midday supplements",
         tally(["Vitamin D", "Magnesium", "Omega-3"], [])
       )
     ).toBe(
-      "[Norton] 💊 Midday supplements — Vitamin D, Magnesium, Omega-3 taken."
+      "[Alex] 💊 Midday supplements — Vitamin D, Magnesium, Omega-3 taken."
     );
     expect(
       reconcileClosingText(
         "resolved",
-        "[Norton] 💊 Bedtime supplements",
+        "[Alex] 💊 Bedtime supplements",
         tally([], ["Melatonin"])
       )
-    ).toBe("[Norton] 💊 Bedtime supplements — Melatonin skipped.");
+    ).toBe("[Alex] 💊 Bedtime supplements — Melatonin skipped.");
   });
 
   it("never says the reconcile's private word", () => {
@@ -389,7 +389,7 @@ describe("reconcileClosingText outcome detail (#2274)", () => {
   it("falls back to today's sentence with nothing to state", () => {
     for (const detail of [null, undefined, tally([], [])]) {
       expect(reconcileClosingText("resolved", DOSES, detail)).toBe(
-        "[Norton] 💊 Evening supplements — handled in the app."
+        "[Alex] 💊 Evening supplements — handled in the app."
       );
     }
   });
@@ -423,7 +423,7 @@ describe("reconcileClosingText outcome detail (#2274)", () => {
     // unit, no count, no adherence tail. (A name that carries its own dosage is the
     // item's own label, which the reminder already showed.)
     expect(text).toBe(
-      "[Norton] 💊 Evening supplements — Vitamin D 1000 IU taken."
+      "[Alex] 💊 Evening supplements — Vitamin D 1000 IU taken."
     );
     expect(text.toLowerCase()).not.toMatch(/great|well done|nice|you /);
   });

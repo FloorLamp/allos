@@ -330,7 +330,7 @@ describe("portal logins (accounts)", () => {
       "https://user@portal.example",
       "user@portal.example/login",
       "portal.example",
-      "192.168.1.10",
+      "203.0.113.7",
     ]) {
       const r = createPortalAccount(portalId, bad);
       expect(r.ok, bad).toBe(false);

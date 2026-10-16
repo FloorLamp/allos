@@ -14,7 +14,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CHANNEL = "https://hangar.wang.team/c/deck-ui/";
+export const CHANNEL = process.env.DECK_UI_CHANNEL;
 export const HOST_API = 1; // the deck/ui host API this app serves (/api)
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const SAFE = /^(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9_][A-Za-z0-9_./-]*$/;
@@ -30,6 +30,7 @@ export async function vendor(
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(version ?? ""))
     throw new Error(`deck-ui: a published version (0.1.n), not ${version}`);
+  if (!channel) throw new Error("deck-ui: DECK_UI_CHANNEL is required");
   const get = async (url) => {
     const res = await fetch(new URL(url, channel));
     if (!res.ok) throw new Error(`deck-ui: ${url}: HTTP ${res.status}`);
@@ -84,7 +85,6 @@ export async function vendor(
     revision: manifest.revision,
     hostApi: manifest.hostApi,
     manifest: sha(manifestBytes),
-    channel,
   };
   writeFileSync(
     join(root, "lib/deck-ui-pin.json"),

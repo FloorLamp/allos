@@ -96,7 +96,7 @@ export function mintSlug(name: string): string {
 // Strict on every axis that could smuggle a fetch target through: exactly one `@` (the
 // local part excludes it), no whitespace, no `/` and no `:` ANYWHERE, and a domain that
 // is a real dotted name ending in an alphabetic TLD. So `user@host` (no TLD),
-// `user@host/path`, `user@192.168.1.1` (numeric last label), `a@b@c.com` and anything
+// `user@host/path`, `user@203.0.113.7` (numeric last label), `a@b@c.com` and anything
 // carrying a scheme or a query string all fail it and fall through to the heuristics
 // below, which reject them.
 //

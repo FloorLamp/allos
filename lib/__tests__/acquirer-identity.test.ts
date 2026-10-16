@@ -58,12 +58,12 @@ describe("rejectsAddress — the never-store-a-URL invariant", () => {
   it("catches every shape of address", () => {
     for (const v of [
       "https://mychart.example.org",
-      "http://10.0.0.1/login",
+      "http://203.0.113.7/login",
       "//mychart.example.org",
       "mailto:someone@example.org",
       "javascript:alert(1)",
       "mychart.example.org",
-      "192.168.1.10",
+      "203.0.113.7",
       "user@host",
       "some/path",
       "  HTTPS://MyChart.Example.org/  ",
@@ -125,10 +125,10 @@ describe("the email allowance — account names only", () => {
       "mom@gmail.com/login",
       "mom@gmail.com?next=/",
       // An IP-hosted address has no alphabetic TLD, so it is not an email shape.
-      "user@192.168.1.1",
+      "user@203.0.113.7",
       // Unchanged shapes, which never had an `@` to begin with.
       "gmail.com",
-      "192.168.1.1",
+      "203.0.113.7",
       "some/path",
     ]) {
       expect(rejectsAddress(v, { allowEmail: true }), v).toBe(true);
