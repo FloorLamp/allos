@@ -41,14 +41,12 @@ first. Profile answers carry `profile`. Days are profile-local; `at` an instant.
 Web: routes except `needs` use `/api/<route>`, same handlers, and the session cookie (none:
 401 `token`); grants decide profiles and writes; default profile the session's active
 one. Writes are same-origin JSON (else 403 `origin`, 415 `type`); `ask` is `POST
-/api/ask` `{q, profile?}` there (GET 405).
+/api/ask` `{q, profile?}` there (GET 405). `/api/accounts`: credentialed CORS for `ALLOS_DECK_ORIGIN`.
 
 `/deck/health`: deck-ui's Health views, vendored by `node scripts/deck-ui.mjs <version>`
 into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under its CSP. Admin only;
 others 404.
 
-Portal relays: setting `accounts_rover_origins` maps allos portal-account IDs to
-`rover:<login-id>` for Deck deduplication. Unmapped connections remain allos-owned.
-`generated`: latest run/success, else Unix epoch.
-
-Only `GET /api/accounts` allows credentialed CORS from `ALLOS_DECK_ORIGIN` (default `https://deck.wang.team`); always `Vary: Origin`.
+Portal relays: setting `accounts_rover_origins` maps portal-account IDs to
+`rover:<login-id>` for Deck dedup. Unmapped stay allos's.
+`generated`: the latest run or success, else the epoch.

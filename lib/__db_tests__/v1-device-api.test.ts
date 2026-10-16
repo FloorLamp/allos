@@ -718,6 +718,41 @@ describe("/v1/accounts", () => {
     }
   });
 
+  // Deck's Accounts place reads the twin from https://deck.wang.team: that origin
+  // exactly, with credentials, on every answer; never a sibling or reflected one.
+  it("lets Deck's origin read the accounts twin, and no other origin", async () => {
+    const login = makeLogin("accounts-cors", "member");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login, mine.profileId);
+    const { token } = createSession(login);
+    const call = (origin: string, cookie = true) =>
+      webAccounts(
+        new Request("http://allos.test/api/accounts", {
+          headers: {
+            origin,
+            ...(cookie ? { cookie: `${SESSION_COOKIE}=${token}` } : {}),
+          },
+        })
+      );
+    const deck = await call("https://deck.wang.team");
+    expect(deck.status).toBe(200);
+    expect(deck.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+    expect(deck.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(deck.headers.get("vary")).toMatch(/Origin/);
+    expect((await deck.json()).accounts.length).toBeGreaterThan(0);
+    const sibling = await call("https://evil.wang.team");
+    expect(sibling.headers.get("access-control-allow-origin")).toBeNull();
+    expect(sibling.headers.get("vary")).toMatch(/Origin/);
+    const refused = await call("https://deck.wang.team", false);
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+  });
+
   it("refuses a credential without allos:read", async () => {
     const res = await accounts(
       req(

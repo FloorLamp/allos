@@ -1,15 +1,21 @@
 import { GET as accounts } from "@/app/v1/accounts/route";
 
-export async function GET(req: Request): Promise<Response> {
-  const response = await accounts(req);
-  response.headers.append("Vary", "Origin");
-  const origin = process.env.ALLOS_DECK_ORIGIN ?? "https://deck.wang.team";
-  if (req.headers.get("origin") === origin) {
-    response.headers.set("Access-Control-Allow-Origin", origin);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-  }
-  return response;
-}
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// The session twin of /v1/accounts (docs/device-api.md, *Web twins*), readable from
+// Deck's Accounts place on its own origin (deck-ui's web host: a credentialed GET,
+// no preflight; deck.wang.team is same-site, so the Lax session cookie rides along).
+// Exactly that origin, never a reflected one, on every answer this route gives
+// (a request with no session cookie at all is middleware's 401 and carries none).
+export async function GET(req: Request): Promise<Response> {
+  const res = await accounts(req);
+  const origin = process.env.ALLOS_DECK_ORIGIN || "https://deck.wang.team";
+  const headers = new Headers(res.headers);
+  headers.append("Vary", "Origin");
+  if (req.headers.get("origin") === origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Credentials", "true");
+  }
+  return new Response(res.body, { status: res.status, headers });
+}
