@@ -1,6 +1,6 @@
 import { cache } from "react";
 import crypto from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db, hoistedStatement } from "./db";
 import { recordAudit } from "./audit";
@@ -455,6 +455,53 @@ export function resolveSessionToken(token: string): CurrentSession | null {
   };
 }
 
+// Boarding owns the browser session; never mint an independent Allos session.
+export async function resolveBrowserSession(
+  cookie: string,
+  host: string
+): Promise<CurrentSession | null> {
+  const token = cookie
+    .split(/;\s*/)
+    .find((c) => c.startsWith(`${SESSION_COOKIE}=`))
+    ?.slice(SESSION_COOKIE.length + 1);
+  const local = token ? resolveSessionToken(token) : null;
+  if (local) return local;
+  const member = cookie
+    .split(/;\s*/)
+    .find((c) => c.startsWith("__Host-boarding_member="));
+  if (!member || !host) return null;
+  try {
+    const res = await fetch(
+      `${process.env.BOARDING_URL || "http://boarding:9816"}/owner`,
+      {
+        headers: { cookie: member, "x-forwarded-host": host },
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+    if (!res.ok || (await res.json()).owner !== true) return null;
+  } catch {
+    return null;
+  }
+  // Multiple admins do not identify which Allos login belongs to the owner.
+  const logins = db
+    .prepare("SELECT id, username, role FROM logins WHERE role = 'admin'")
+    .all() as SessionLogin[];
+  if (logins.length !== 1) return null;
+  const login = logins[0];
+  const profiles = accessibleProfiles(login.id, login.role);
+  const profile =
+    profiles.find((p) => p.id === ownProfileForLogin(login.id)) ?? profiles[0];
+  if (!profile) return null;
+  return {
+    login,
+    profile,
+    access: "write",
+    deviceSessionKey: deviceSessionKey(hashToken(member)),
+  };
+}
+
 // Resolve the caller's session from the cookie, or null.
 //
 // Wrapped in React `cache()` so it runs at most ONCE per server request even
@@ -467,9 +514,17 @@ export function resolveSessionToken(token: string): CurrentSession | null {
 // profile action revalidates, producing a fresh request with a fresh cache).
 export const getCurrentSession = cache(
   async function getCurrentSession(): Promise<CurrentSession | null> {
-    const token = (await cookies()).get(SESSION_COOKIE)?.value;
-    if (!token) return null;
-    return resolveSessionToken(token);
+    const jar = await cookies();
+    const token = jar.get(SESSION_COOKIE)?.value;
+    const local = token ? resolveSessionToken(token) : null;
+    if (local) return local;
+    const member = jar.get("__Host-boarding_member")?.value;
+    if (!member) return null;
+    const h = await headers();
+    return resolveBrowserSession(
+      `__Host-boarding_member=${member}`,
+      h.get("x-forwarded-host") ?? h.get("host") ?? ""
+    );
   }
 );
 
