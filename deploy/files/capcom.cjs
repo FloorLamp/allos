@@ -4,7 +4,9 @@ const Database = require("better-sqlite3");
 const env = fs.readFileSync(0, "utf8");
 const token = env.match(/^CAPCOM_API_KEY=(capcom_[^\r\n]+)$/m)?.[1];
 if (!token) process.exit(1);
-const base = "http://10.69.6.200:9817";
+const config = require("node:util").parseEnv(env);
+const base = config.CAPCOM_URL || config.AI_BASE_URL;
+if (!base) throw new Error("CAPCOM_URL is required");
 const values = {
   AI_BASE_URL: base,
   HEALTH_AI_MODEL: "default",

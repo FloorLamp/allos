@@ -43,11 +43,12 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 `/api/<route>` twins use Allos's session cookie (missing: 401 `token`), login grants and
 active profile. Writes require same-origin JSON (403 `origin`,
-415 `type`). Ask uses `POST /api/ask` `{q, profile?}` (GET: 405).
-`/api/accounts` allows credentialed CORS for exactly `ALLOS_DECK_ORIGIN`.
+415 `type`). Ask: `POST /api/ask` `{q, profile?}` (GET: 405).
+`/api/accounts`: credentialed CORS: `DECK_ORIGIN` only.
+`CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
 
-`/deck/health` is admin-only (otherwise 404), with bundle CSP.
-Vendor: `node scripts/deck-ui.mjs <version>`; pin: `lib/deck-ui-pin.json`.
+`/deck/health`: admin-only, bundle CSP. Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`;
+pin: `lib/deck-ui-pin.json`.
 
 Boarding's [browser sessions](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
 do not apply: Allos signs in its own sessions; Boarding only verifies devices.

@@ -84,7 +84,10 @@ const nextConfig = {
   // The workstation's nginx virtual hosts proxy the development server on port
   // 3000. Allow those origins so Next's HMR WebSocket works through the proxy;
   // ordinary page requests already carry the same preserved Host header.
-  allowedDevOrigins: ["allos.agent.wang.team", "allos.agent.nortonwang.com"],
+  allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },

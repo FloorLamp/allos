@@ -112,7 +112,7 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
     const portal = createPortal(`Clinic ${day}`);
     // A portal is born with its implicit default login; that is the account here.
     const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
-    const label = "Dana Wang";
+    const label = "Dana Example";
     expect(bindPortalIdentity(account.id, label, profile.id).ok).toBe(true);
     // One ok run and one failed run on the same instant: the row states both days, and
     // a conversion applied to only one of them would pass a single-field assertion.

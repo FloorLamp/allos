@@ -640,7 +640,7 @@ export function redactingReplacer(key: string, value: unknown): unknown {
 // (#2965, ruled 2026-08-16). This survives, unmasked, in the profile-facing
 // column as well as the admin log:
 //
-//   ECONNREFUSED 10.0.7.31:8443 (allos-worker-02.internal) userid=41207755
+//   ECONNREFUSED 203.0.113.7:8443 (allos-worker-02.internal) userid=41207755
 //
 // It is not a credential. For a self-hosting operator it is their own machine,
 // and seeing it is how they fix a broken integration. On a hosted deployment it
