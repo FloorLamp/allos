@@ -12,7 +12,7 @@ const docPath = a => `/doc/${a.id}${a.message != null ? `/message/${encodeURICom
 
 /** Each bridge op as [method, path, body?] on the site (bridge's test checks every one has an /api route). */
 export const ROUTES = {
-  'bridge.find': a => ['GET', `/api/find${qs({q: a.q, limit: a.limit})}`],
+  'bridge.find': a => ['GET', `/api/find${qs({q: a.q, limit: a.limit, phase: a.phase})}`],
   'bridge.ask': a => ['GET', `/api/ask${qs({q: a.q})}`],
   'bridge.doc': a => ['GET', `/api/doc/${a.id}`],
   'bridge.pages': a => ['GET', `/api${docPath(a)}/pages${qs({q: a.q})}`],
@@ -22,6 +22,7 @@ export const ROUTES = {
   'bridge.day': a => ['GET', `/api/day/${encodeURIComponent(a.date)}`],
   'bridge.subject': a => ['GET', `/api/subject${qs({name: a.name})}`],
   'bridge.facets': () => ['GET', '/api/facets'],
+  'bridge.people': a => ['GET', `/api/people${qs({q: a.q, relation: a.relation})}`],
   'bridge.browse': a => ['GET', `/api/browse${qs({source: a.source, type: a.type, year: a.year, sort: a.sort})}`],
   'bridge.usage': a => ['GET', `/api/usage${qs({doc: a.doc})}`],
   'bridge.actions': () => ['GET', '/api/actions'],
@@ -152,7 +153,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
     kind: 'web', hostApi: HOST_API,
     /** The registry's backend names (the places this host can offer). */
     backends: Object.keys(backends),
-    caps: {recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: false, needs: true},
+    caps: {recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: false, needs: true, codes: false},
     async call(op, args = {}, {signal} = {}) {
       if (signal?.aborted) throw new HostError('cancelled');
       if (ROUTES[op]) return bridge(op, args, signal);

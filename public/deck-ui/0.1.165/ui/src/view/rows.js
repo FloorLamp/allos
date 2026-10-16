@@ -12,6 +12,8 @@ import * as model from '../../../palette/model.mjs';
 import {Glyph} from '../glyphs.js';
 import {size} from '../viewer.js';
 import {keycap} from './keys.js';
+import {formatQuantity, toneOf} from '../quantity.js';
+import {Delta} from './stat-tiles.js';
 
 const html = htm.bind(h);
 
@@ -29,7 +31,7 @@ export function age(at, now = Date.now()) {
 }
 
 /** A section's label by its rows' kind (the Needs you and House rows have none). */
-export const sectionOf = kind => ({needs: '', house: '', ask: 'ASK', command: 'COMMANDS', action: 'ACTIONS', recent: 'RECENT', citation: 'SOURCES'})[kind] ?? 'FOUND';
+export const sectionOf = kind => ({needs: '', house: '', code: 'CODES', ask: 'ASK', command: 'COMMANDS', action: 'ACTIONS', recent: 'RECENT', citation: 'SOURCES'})[kind] ?? 'FOUND';
 
 /** An open group's label: its section's, else its documents counted (`14 DOCUMENTS · 2 ALTERNATES`). */
 export function scopeLabel(key, list) {
@@ -62,12 +64,18 @@ export function actionLook(a) {
 const PLAIN = /^[A-Za-z0-9]+$/;
 const strip = u => String(u ?? '').replace(/^https?:\/\/(www\.)?/, '');
 
-/** What a row shows, no DOM: {glyph, accent (the glyph in accent), thumb (a resource path), prefix, title, lines (title lines: 2 for
- *  Recent text), sub, subClass (mono, soft, accent), source (the chip's name), more (the group affordance), key (a command's),
- *  age, peer: {text, dir}, tip}. `n` a citation's number. */
-export function lines(row, {n = 0, mod = 'Control'} = {}) {
-  const out = {glyph: 'document', accent: false, thumb: null, prefix: '', title: '', lines: 1, sub: '', subClass: '', source: null, more: null, key: null, age: null, peer: null, tip: ''};
+/** What a row shows, no DOM: {glyph, accent (the glyph in accent), thumb (a resource path), prefix, title, titleClass (mono), lines
+ *  (title lines: 2 for Recent text), sub, subClass (mono, soft, accent), source (the chip's name), more (the group affordance), key
+ *  (a command's), button (a trailing button's label: a click is Enter on the row), age, peer: {text, dir}, tip}. `n` a citation's
+ *  number; `now` the time the ages are from. */
+export function lines(row, {n = 0, mod = 'Control', now = Date.now()} = {}) {
+  const out = {glyph: 'document', accent: false, thumb: null, prefix: '', title: '', titleClass: '', lines: 1, sub: '', subClass: '', source: null, more: null, key: null, button: null, age: null, peer: null, tip: ''};
   switch (row.kind) {
+    case 'code': {
+      // a one-time code (SPEC.md, *Codes*): the code in mono over who sent it and how long ago; the Copy button is Enter
+      const c = row.code, from = c.from || 'a text';
+      return {...out, glyph: 'key', accent: true, title: String(c.code), titleClass: 'mono', sub: `${from} · ${age(c.at, now)}`, button: 'Copy', tip: `Code from ${from}\nEnter copies it`};
+    }
     case 'recent': {
       const i = row.item;
       out.peer = {text: `${i.direction === 'sent' ? '→' : '←'} ${(i.peers ?? []).length > 1 ? `${i.peers[0]} +${i.peers.length - 1}` : i.peers?.[0] ?? ''}`.trim(), dir: i.direction === 'sent' ? 'sent' : 'received'};
@@ -96,7 +104,7 @@ export function lines(row, {n = 0, mod = 'Control'} = {}) {
     }
     case 'needs': return {...out, glyph: 'warn', warn: true, title: 'Needs you', more: `${row.count} ›`, tip: 'What only you can fix to keep your data flowing (Enter or Tab shows it)'};
     case 'need': {
-      // a need (spaceport shared/BACKEND.md): what to do over why; a command to copy shows as itself
+      // a need (spaceport shared/backend/README.md): what to do over why; a command to copy shows as itself
       const n = row.need, a = n.action ?? {}, cmd = a.kind === 'command' ? String(a.command ?? '') : '';
       const sub = cmd || n.detail || [model.sourceName(n.source), n.since ? `since ${model.dateLabel(String(n.since).slice(0, 10))}` : null].filter(Boolean).join(' · ');
       return {...out, glyph: 'warn', warn: true, title: n.title, sub: [n.from?.backend ?? n.backend, sub].filter(Boolean).join(' · '), subClass: cmd ? 'mono' : '', tip: [n.title, n.detail, cmd, a.label].filter(Boolean).join('\n')};
@@ -130,7 +138,7 @@ export function lines(row, {n = 0, mod = 'Control'} = {}) {
     case 'person': case 'trip': {
       // bridge's person (a contact: their texts, papers, projects) and trip (flights, stays, cars sharing dates): Enter views it, Tab
       // lists its numbers and documents
-      const e = row[row.kind], sub = row.result.subtitle ?? '', n = (e.ids?.length ?? 0) + (e.documents?.length ?? 0), title = row.result.title || e.name;
+      const e = row[row.kind], sub = [e.organisation, e.lastContact ? `Last contact ${e.lastContact}` : null, row.result.subtitle].filter(Boolean).join(' · '), n = (e.ids?.length ?? 0) + (e.documents?.length ?? 0), title = row.result.title || e.name;
       return {...out, glyph: row.kind, title, sub, more: `${n} ›`, tip: `${title}\n${sub}`};
     }
     case 'topic': {
@@ -251,12 +259,13 @@ export function Row({row, n = 0, selected = false, confirm = null, copied = fals
     <span class=${`dp-tile${l.accent ? ' accent' : ''}${l.warn ? ' warn' : ''}${thumb ? ' thumb' : ''}`}>${thumb
       ? html`<img src=${thumb} alt="" loading="lazy" draggable="false" onError=${ev => { ev.target.remove(); }} />` : null}<${Glyph} name=${l.glyph} size=${18} /></span>
     <span class="dp-lines">
-      <span class=${`dp-title${l.lines > 1 ? ' two' : ''}`}>${l.prefix ? html`<span class="dp-n">${l.prefix}</span>` : null}${l.title}</span>
+      <span class=${`dp-title${l.lines > 1 ? ' two' : ''}${l.titleClass ? ` ${l.titleClass}` : ''}`}>${l.prefix ? html`<span class="dp-n">${l.prefix}</span>` : null}${l.title}</span>
       ${row.kind === 'series' ? html`<span class="dp-sub dp-serieslines"><span class="dp-span">${l.sub}</span><${SeriesChips} row=${row} focus=${focus} act=${act} /></span>`
         : l.sub ? html`<span class=${`dp-sub ${l.subClass}`}>${l.sub}</span>` : null}
     </span>
     <span class="dp-end">${confirm ? html`<span class="dp-confirm">Enter ${confirm} · Esc Cancel</span>`
       : copied ? html`<span class="dp-copied"><${Glyph} name="check" size=${14} /> Copied</span>`
+      : l.button ? html`<button type="button" tabindex="-1" class="dp-pill dp-act" title=${`${l.button} (Enter)`} onClick=${ev => { ev.stopPropagation(); act.open(row.id); }}>${l.button}</button>`
       : l.more ? html`<button type="button" tabindex="-1" class="dp-pill" title="Show all (Tab)" onClick=${ev => { ev.stopPropagation(); act.group(row.id); }}>${l.more}</button>`
       : l.source ? html`<button type="button" tabindex="-1" class="dp-pill dp-src" title=${`Open in ${l.source}`} onClick=${ev => { ev.stopPropagation(); act.source(row.id); }}>${l.source} ↗</button>`
       : l.key ? html`<kbd class="dk-key">${l.key}</kbd>`
@@ -284,15 +293,19 @@ export const Block = ({b, onAction, live = true}) => html`<div class=${`dk-state
 // ---- rows for bridge's own pages (projects, attention): documents, projects and plain lines --------------------------------------
 
 /** items: [{id, document} | {id, project} | {id, glyph, title, sub}], each optionally with `sub` (its second line instead), `notes`
- *  ([{text, tone}] under its lines), `summary`, `href` (where a click goes), `badge` ({text, tone}: the trailing column) or `end`
- *  ({label, onClick}: a button there instead of the chip). opts: `current` (an id shown selected), `checkable` (a checkbox in each
+ *  ([{text, tone}] under its lines), `summary`, `href` (where a click goes), `quantity` (the trailing figure: a quantity.js quantity,
+ *  tabular, in its tone — `money(-42.5)` for a ledger; with `delta` a second line under it), `badge` ({text, tone}: the trailing
+ *  column) or `end` ({label, onClick}: a button there instead of the chip); `glyph: null` shows no tile and `dot` (a tone or category
+ *  name: accent, ok, warn, bad, sent, received, muted) a small dot instead; `section` ({key, label}, quantity.js `dateSection`):
+ *  consecutive items with one key sit under a sticky heading, with `sectionTotal(items, section)` (a quantity or null) at its right.
+ *  opts: `current` (an id shown selected), `checkable` (a checkbox in each
  *  tile: `checked` ids, `onCheck(id, on)`), `onOpen(item, {page})`, `onSource(item)`, `loading` (placeholder rows, how many), `error`
  *  ({title, line, action, onAction}: the state block), `empty` ({title, line, glyph}). */
-export function RowList({items = [], current = null, checkable = false, checked = [], onCheck, onOpen, onSource, loading = 0, error = null, empty = null}) {
+export function RowList({items = [], current = null, checkable = false, checked = [], onCheck, onOpen, onSource, sectionTotal, loading = 0, error = null, empty = null}) {
   if (loading) return html`<div class="dp-rows dp-plain" aria-busy="true"><${Placeholders} n=${loading} /></div>`;
   if (error) return html`<${Block} b=${{glyph: 'warn', title: error.title, line: error.line ?? '', action: error.action ?? null, warn: true}} onAction=${error.onAction} />`;
   if (!items.length && empty) return html`<${Block} b=${{glyph: empty.glyph ?? 'document', title: empty.title, line: empty.line ?? ''}} />`;
-  return html`<div class=${`dp-rows dp-plain${checkable ? ' checkable' : ''}`} role="list">${items.map(it => {
+  const one = it => {
     const d = it.document, p = it.project;
     const row = d ? {kind: 'document', id: `doc:${d.id}`, result: {kind: 'document', title: d.title, document: d}, ...(it.reason ? {reason: it.reason} : {})}
       : p ? {kind: 'project', id: `project:${p.id}`, project: p} : null;
@@ -300,17 +313,32 @@ export function RowList({items = [], current = null, checkable = false, checked 
     if (it.title != null && row) l.title = it.title;
     if (it.sub != null) l.sub = it.sub;
     const on = checked.includes(it.id), open = ev => { if (ev.target.closest('button, input, a')) return; onOpen?.(it, {page: ev.ctrlKey || ev.metaKey}); };
-    return html`<div key=${it.id} class=${`dp-row${it.id === current ? ' sel' : ''}${on ? ' picked' : ''}${onOpen ? ' link' : ''}`} role="listitem" data-id=${it.id}
+    const bare = !row && it.glyph === null && !checkable;
+    return html`<div key=${it.id} class=${`dp-row${it.id === current ? ' sel' : ''}${on ? ' picked' : ''}${onOpen ? ' link' : ''}${it.quantity ? ' qty' : ''}${bare ? ' bare' : ''}`} role="listitem" data-id=${it.id}
       onClick=${open} title=${l.tip || null}>
-      <span class=${`dp-tile${l.accent || it.accent ? ' accent' : ''}`}><${Glyph} name=${l.glyph} size=${18} />${checkable ? html`<input type="checkbox" class="dp-check" aria-label="Select" checked=${on}
-        onChange=${ev => onCheck?.(it.id, ev.target.checked)} />` : null}</span>
-      <span class="dp-lines"><span class="dp-title">${l.title}</span>${l.sub ? html`<span class=${`dp-sub ${l.subClass ?? ''}`}>${l.sub}</span>` : null}
+      ${bare ? (it.dot ? html`<span class=${`dp-dot dot-${it.dot}`} aria-hidden="true"></span>` : html`<span></span>`)
+        : html`<span class=${`dp-tile${l.accent || it.accent ? ' accent' : ''}`}><${Glyph} name=${l.glyph} size=${18} />${checkable ? html`<input type="checkbox" class="dp-check" aria-label="Select" checked=${on}
+        onChange=${ev => onCheck?.(it.id, ev.target.checked)} />` : null}</span>`}
+      <span class="dp-lines"><span class="dp-title">${!bare && it.dot ? html`<span class=${`dp-dot dot-${it.dot}`} aria-hidden="true"></span>` : null}${l.title}</span>${l.sub ? html`<span class=${`dp-sub ${l.subClass ?? ''}`}>${l.sub}</span>` : null}
         ${it.notes?.length ? html`<span class="dp-notes">${it.notes.map(x => html`<span class=${`dp-note ${x.tone ?? ''}`}>${x.text}</span>`)}</span>` : null}
         ${it.summary ? html`<span class="dp-summary">${it.summary}</span>` : null}</span>
       <span class="dp-end">${it.end ? html`<button type="button" class="dk-btn" onClick=${ev => { ev.stopPropagation(); it.end.onClick(it); }}>${it.end.label}</button>`
+        : it.quantity ? html`<span class="dp-figure"><span class=${`dp-qty tone-${toneOf(it.quantity)}`}>${formatQuantity(it.quantity)}</span>${it.delta ? html`<${Delta} d=${it.delta} />` : null}</span>`
         : it.badge ? html`<span class=${`dp-note ${it.badge.tone ?? ''}`}>${it.badge.text}</span>`
         : l.more ? html`<span class="dp-pill">${l.more}</span>`
         : l.source && d?.url ? html`<button type="button" class="dp-pill dp-src" title=${`Open in ${l.source}`} onClick=${ev => { ev.stopPropagation(); onSource?.(it); }}>${l.source} ↗</button>` : null}</span>
     </div>`;
+  };
+  const sections = [];
+  for (const it of items) {
+    const last = sections.at(-1);
+    if (last && it.section && last.section?.key === it.section.key) last.items.push(it); else sections.push({section: it.section ?? null, items: [it]});
+  }
+  if (!sections.some(g => g.section)) return html`<div class=${`dp-rows dp-plain${checkable ? ' checkable' : ''}`} role="list">${items.map(one)}</div>`;
+  return html`<div class=${`dp-rows dp-plain dp-sectioned${checkable ? ' checkable' : ''}`}>${sections.map((g, i) => {
+    const total = g.section && sectionTotal ? sectionTotal(g.items, g.section) : null;
+    return html`<section key=${g.section?.key ?? `s${i}`} class="dp-sec" aria-label=${g.section?.label ?? null}>
+      ${g.section ? html`<h3 class="dp-sechead"><span>${g.section.label}</span>${total ? html`<span class=${`dp-qty tone-${toneOf(total)}`}>${formatQuantity(total)}</span>` : null}</h3>` : null}
+      <div role="list">${g.items.map(one)}</div></section>`;
   })}</div>`;
 }

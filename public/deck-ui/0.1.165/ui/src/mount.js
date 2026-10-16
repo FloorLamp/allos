@@ -1,11 +1,15 @@
 // The site's entry points (DESIGN.md §7): bridge's pages mount the shared UI into an element with the web host (host/web.js): the
 // viewer (doc.html's pane), the palette (`/`, in page layout) and plain rows (projects, attention). Each answers an unmount.
+import {createSecurity} from './security.js';
+import {Security} from './view/security.js';
 import {h, render} from '../vendor/preact.mjs';
 import {createController} from './controller.js';
 import {createViewer} from './viewer.js';
 import {Viewer} from './view/viewer/frame.js';
 import {Palette} from './view/palette.js';
 import {ShellBar} from './view/shell-bar.js';
+import {StatTiles} from './view/stat-tiles.js';
+import {Drawer} from './view/drawer.js';
 import {RowList} from './view/rows.js';
 import {createDetails} from './details.js';
 import {Details} from './view/viewer/details.js';
@@ -16,7 +20,7 @@ import {Accounts} from './view/accounts.js';
 import {createHealth} from './health.js';
 import {Health} from './view/health.js';
 
-const STYLES = ['tokens.css', 'base.css', 'view/viewer/viewer.css', 'view/palette.css', 'view/chart.css', 'view/shell-bar.css', 'view/house.css', 'view/accounts.css', 'view/health.css'];
+const STYLES = ['tokens.css', 'base.css', 'view/viewer/viewer.css', 'view/palette.css', 'view/chart.css', 'view/shell-bar.css', 'view/foundation.css', 'view/house.css', 'view/accounts.css', 'view/health.css'];
 
 /** The style sheets added here (href → settled once it loaded or failed). */
 const adding = new Map();
@@ -119,7 +123,7 @@ export function mountPalette(el, host, opts = {}) {
 /** Plain rows on bridge's own pages (projects, attention, activity, the map's lists): documents, projects and lines in the rows'
  *  anatomy (view/rows.js RowList). opts: `items`, `current`, `checkable`, `checked`, `onCheck`, `onOpen(item, {page})` (default: the
  *  item's `href`, else a document's page, a project's; Mod+click a new tab), `onSource(item)` (default: the document's page at its
- *  source through the host), `loading`, `error`, `empty`. Answers {update(opts), unmount()}. */
+ *  source through the host), `loading`, `error`, `empty`, `sectionTotal(items, section)`. Answers {update(opts), unmount()}. */
 export function mountRows(el, host, opts = {}) {
   let o = opts;
   const href = it => it.href ?? (it.document ? `/doc/${it.document.id}` : it.project ? `/projects#${it.project.id}` : null);
@@ -145,6 +149,25 @@ export function mountShellBar(el, opts = {}) {
   const d = drawing(el, () => render(h(ShellBar, o), el));
   return {update(next) { o = {...o, ...next}; d.draw(); }, unmount() { d.unmount(); }};
 }
+
+/** Stat tiles (CONTRACT.md *Stat tiles*): opts {tiles, onOpen(ref), label}. Answers {update(opts), unmount()}. */
+export function mountStatTiles(el, opts = {}) {
+  let o = opts;
+  const d = drawing(el, () => render(h(StatTiles, o), el));
+  return {update(next) { o = {...o, ...next}; d.draw(); }, unmount() { d.unmount(); }};
+}
+
+/** The detail drawer (CONTRACT.md *Drawer*): opts {open, title, sub, onClose, children, label}; children is text or a Preact node.
+ *  Answers {update(opts), unmount()}. */
+export function mountDrawer(el, opts = {}) {
+  let o = opts;
+  const d = drawing(el, () => render(h(Drawer, o), el));
+  return {update(next) { o = {...o, ...next}; d.draw(); }, unmount() { d.unmount(); }};
+}
+
+export {formatQuantity, money, delta, toneFor, dateSection} from './quantity.js';
+export {StatTiles, Drawer};
+export {Facts} from './view/drawer.js';
 
 /** The House place (CONTRACT.md *House*), offered only where the host's registry has a habitat backend (`host.backends`); else nothing
  *  is drawn. opts: `view` tablet | phone | admin, `brand`, `places`, `current` (the shell bar, phone and admin), `quick` (entity ids),
@@ -187,4 +210,13 @@ export function mountHealth(el, host, opts = {}) {
   v.subscribe(() => d.draw());
   health.start();
   return {health, refresh: () => health.refresh(), unmount() { health.stop(); v.reset(); d.unmount(); }};
+}
+
+/** Read-only Security foundation; sources are protected HTTP adapters (SECURITY.md). */
+export function mountSecurity(el, sources = {}) {
+  const security = createSecurity(sources);
+  const d = drawing(el, () => render(h(Security, {security}), el));
+  security.subscribe(() => d.draw());
+  security.refresh();
+  return {security, refresh: () => security.refresh(), unmount() { security.stop(); d.unmount(); }};
 }

@@ -5,7 +5,7 @@
 // must refuse it, touching nothing: it proves the op is wired and checked, never runs it. An op whose cap the host turned off must
 // be `unsupported` (one that changes something may say `refused` first).
 const READS = new Set(['env.get', 'bridge.find', 'bridge.doc', 'bridge.pages', 'bridge.conversation', 'bridge.related', 'bridge.project', 'bridge.day',
-  'bridge.subject', 'bridge.facets', 'bridge.browse', 'bridge.usage', 'bridge.texts', 'bridge.textsPages', 'bridge.textsConversation', 'bridge.matches', 'bridge.needs', 'bridge.actions', 'bridge.prefetch', 'recent.list', 'devices.targets', 'files.pending', 'prefs.get', 'picks.list']);
+  'bridge.subject', 'bridge.facets', 'bridge.browse', 'bridge.usage', 'bridge.texts', 'bridge.textsPages', 'bridge.textsConversation', 'bridge.matches', 'bridge.needs', 'bridge.actions', 'bridge.prefetch', 'recent.list', 'codes.list', 'devices.targets', 'files.pending', 'prefs.get', 'picks.list']);
 /** bridge's own failures (no such document, unreachable, not set up) still show the op reached bridge through the host. */
 const REACHED = new Set(['http', 'unreachable', 'not-set-up']);
 
