@@ -24,6 +24,7 @@ e2e
 **/__action_tests__
 **/*.test.*
 **/*.spec.*
+vitest*.ts
 .agents
 .claude
 .codex
