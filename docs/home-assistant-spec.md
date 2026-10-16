@@ -69,9 +69,9 @@ selection supplies the broader board. Reuse the
 including the same dismissal and snooze decisions as the app.
 
 The dose board needs resolved entries too, which Upcoming removes. The
-[device API](device-api.md) `GET /v1/board` and `POST /v1/board/<doseId>` already
-answer that board and its take/skip for a device credential, through the shared
-dose-status core with its honest typed outcomes; an HA board reuses that shape.
+[device API](device-api.md) `GET /v1/board` and `POST /v1/board/<doseId>` answer
+that board and its take/skip (the shared dose-status core); an HA board reuses
+that shape.
 The board exposes the profile's medication names; explain that and revocation
 during setup.
 
