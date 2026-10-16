@@ -54,6 +54,7 @@ export function backendRoute(backends, op, args = {}, {web = false, gesture = fa
 
 // allos docs/device-api.md. Destinations and device grants remain trusted host config.
 export const ALLOS_OPS = Object.fromEntries([
+  ['accounts', 'GET', '/v1/accounts', 'read'],
   ['me', 'GET', '/v1/me', 'read'], ['profiles', 'GET', '/v1/profiles', 'read'],
   ['find', 'GET', '/v1/find', 'read'], ['record', 'GET', '/v1/record', 'read'],
   ['ask', 'GET', '/v1/ask', 'ask'], ['board', 'GET', '/v1/board', 'read'],

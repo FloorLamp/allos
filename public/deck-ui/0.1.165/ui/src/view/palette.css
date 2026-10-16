@@ -99,8 +99,11 @@
 .dp-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .dp-title { font: var(--font-title); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dp-title.two { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+/* a one-time code (SPEC.md, *Codes*): digits in mono, spaced to read at a glance */
+.dp-title.mono { font: var(--font-mono); font-size: 15px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
 .dp-n { color: var(--muted); margin-right: var(--gap-xs); font-variant-numeric: tabular-nums; }
 .dp-sub { font: var(--font-sub); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dp.people .dp-sub { white-space: normal; }
 .dp-row.sel .dp-sub { color: var(--soft); }
 .dp-sub.soft { color: var(--soft); }
 .dp-sub.mono { font: var(--font-mono); font-size: 12px; color: var(--soft); }
@@ -124,13 +127,10 @@
 .dp-confirm { font: var(--font-chip); color: var(--warn); white-space: nowrap; }
 .dp-copied { display: inline-flex; align-items: center; gap: var(--gap-xs); font: var(--font-chip); color: var(--ok); }
 
-/* the focused row's preview (SPEC.md, *Preview*): a card over the list's right side, under (or over) the selected row; its image
-   whole, letterboxed past the widths it may take */
-.dp-peek { position: absolute; z-index: 2; right: var(--gutter); height: 120px; min-width: 72px; max-width: 200px; overflow: hidden; cursor: pointer;
-  border: 1px solid var(--line); border-radius: var(--row-radius); background: var(--raised); box-shadow: 0 6px 18px rgb(0 0 0 / .28);
-  animation: dp-fade var(--t-rows) var(--ease); }
+/* The web/phone fallback occupies its own space above the rows. */
+.dp-peek { flex: none; height: min(45vh, 480px); margin: var(--gap-s) var(--gutter); overflow: hidden; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--row-radius); background: var(--raised); box-shadow: 0 6px 18px rgb(0 0 0 / .28); }
 .dp-peek img { display: block; width: 100%; height: 100%; object-fit: contain; }
-@media (max-width: 560px) { .dp-peek { height: 96px; max-width: 150px; right: var(--gap-s); } }
 
 /* section labels: the label at the gutter; All n ›, Recent's Clear at the right */
 .dp-label { display: flex; align-items: center; gap: var(--gap-s); height: var(--label); padding: 0 var(--gutter); margin-top: var(--gap-xs); }

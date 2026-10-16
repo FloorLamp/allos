@@ -40,6 +40,14 @@ export const textsItems = (r, now = new Date()) => (r?.conversations ?? []).map(
 /** Where the desktop READMEs say how to give a device its bridge token (the state block's Set up). */
 export const SETUP_URL = 'https://github.com/FloorLamp/spaceport/blob/main/deck/README.md#setting-up-a-machine';
 
+/** How long a one-time code stays in Codes after it came (SPEC.md, *Codes*): the hosts drop it then too. */
+export const CODE_MS = 15 * 60_000;
+/** The codes still within CODE_MS at `now`, newest first (a host's codes.list or codes.changed list, anything odd left out). */
+export const liveCodes = (list, now) => (Array.isArray(list) ? list : [])
+  .filter(c => c && typeof c.id === 'string' && typeof c.code === 'string' && Number.isFinite(c.at) && now - c.at < CODE_MS)
+  .map(c => ({id: c.id, code: c.code, from: typeof c.from === 'string' ? c.from : '', at: c.at}))
+  .sort((a, b) => b.at - a.at);
+
 /** A browse scope's key (the site's filtered browse, folded into the palette as a group): `browse:source=gmail&type=receipt&year=2024&sort=oldest`. */
 export const browseKey = f => `browse:${new URLSearchParams(Object.entries(BROWSE).flatMap(([k]) => f?.[k] ? [[k, String(f[k])]] : [])).toString()}`;
 const BROWSE = {source: 1, type: 1, year: 1, sort: 1};
@@ -83,14 +91,23 @@ export function browseTitle(f) {
 export function createController(host, {debounce = 250, copiedMs = 260, flashMs = 1600, picks: recordPicks = true, onView = null, commands = true, beforeHide = null,
   popOutState = null, now = () => Date.now(), timers = globalThis} = {}) {
   let state = model.initial();
-  const env = {targets: [], actions: [], needs: [], recent: [], found: {}, answers: {}, groups: {}, picks: {}, commands: commands !== false && !!host.caps.transfers};
+  const env = {targets: [], actions: [], needs: [], codes: [], recent: [], found: {}, foundOrder: {}, answers: {}, groups: {}, picks: {}, commands: commands !== false && !!host.caps.transfers};
   const listeners = new Set(), work = new Set(), asks = new Set();
-  let search = null; // {timer, abort} of the pending find
+  let search = null; // {timer, skeleton, abort} of the pending find
   let lastFound = null; // the query whose found rows show last (kept while the next query's find runs)
-  let copiedTimer = null, flashTimer = null, hideTimer = null;
+  let copiedTimer = null, flashTimer = null, hideTimer = null, codesTimer = null;
   let inputAt = 0; // the person's last key or click in the page (c.input)
   const c = {
     host, env,
+    peopleRelation: '',
+    peopleRelations: [],
+    people() { return /^people(?:\s|:|$)/i.test(state.query.trim()) && !state.scopes.length; },
+    relation(value) {
+      c.peopleRelation = value;
+      for (const q of Object.keys(env.found)) if (/^people(?:\s|:|$)/i.test(q)) delete env.found[q];
+      queryChanged();
+      changed();
+    },
     get state() { return state; },
     /** bridge's find for the query: {query, busy, error: {code, status, message} | null}. */
     find: {query: '', busy: false, error: null},
@@ -130,12 +147,12 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
     shownEnv: () => shown(),
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
 
-    /** Every load the UI needs before it shows: the platform, picks, actions, what needs the owner, Recent, targets, the browse
-     *  choices (each per the host's caps). */
+    /** Every load the UI needs before it shows: the platform, picks, actions, what needs the owner, the codes, Recent, targets, the
+     *  browse choices (each per the host's caps). */
     async start() {
       c.platform = await host.call('env.get', {}).catch(() => null);
       env.commands = commands !== false && !!host.caps.transfers;
-      await Promise.all([loadRecentCount(), loadPicks(), loadActions(), loadNeeds(), loadRecent(), loadTargets(), loadFacets()]);
+      await Promise.all([loadRecentCount(), loadPicks(), loadActions(), loadNeeds(), loadCodes(), loadRecent(), loadTargets(), loadFacets()]);
       changed();
     },
     /** A key or a click by the person in the page (the view's, as it notes `ui.input`): an outcome shown for a hotkey stays. */
@@ -159,11 +176,13 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
       const queries = new Set([state.query, ...state.scopes.map(s => s.back?.query ?? '')].map(q => q.trim()).filter(Boolean));
       if (lastFound) queries.add(lastFound);
       for (const q of queries) if (healthQuery(q) != null) queries.delete(q);
+      if (c.find.partial) queries.delete(c.find.query);
       const keys = state.scopes.map(s => s.key);
       const only = (o, ks, ok = () => true) => Object.fromEntries([...ks].filter(k => o[k] !== undefined && ok(o[k])).map(k => [k, o[k]]));
       return {state: {...state, answer: healthQuery(state.query) != null ? null : state.answer, confirm: null}, found: only(env.found, queries), answers: only(env.answers, queries), groups: only(env.groups, keys),
         charts: only(c.charts, keys, x => !x.busy), lastFound, find: {query: c.find.query, error: c.find.error}, asking: c.asking,
-        viewer: c.viewer, viewerTarget: c.viewer ? c.viewerTarget ?? null : null};
+        ...(Object.keys(env.foundOrder).length ? {foundOrder: only(env.foundOrder, queries)} : {}),
+        ...(c.peopleRelations.length || c.peopleRelation ? {peopleRelation: c.peopleRelation, peopleRelations: c.peopleRelations} : {}), viewer: c.viewer, viewerTarget: c.viewer ? c.viewerTarget ?? null : null};
     },
     /** A snapshot back (Deck's own window opening on the panel's view): its state and rows as they were; what was still loading asked
      *  again (the find, a group's rows, an ask). `quiet`: the listeners not told (the caller draws). */
@@ -175,9 +194,12 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
         .map(x => ({key: x.key, title: String(x.title ?? ''), rows: Array.isArray(x.rows) ? x.rows : null, back: record(x.back) ?? {}}));
       state = {...model.initial(), query: str(st.query) ?? '', selected: str(st.selected), chip: Number.isInteger(st.chip) ? st.chip : null, answer: record(st.answer), scopes};
       env.found = record(s.found) ?? {}; env.answers = record(s.answers) ?? {}; env.groups = record(s.groups) ?? {};
+      env.foundOrder = record(s.foundOrder) ?? {};
       c.charts = record(s.charts) ?? {};
       c.viewer = record(s.viewer);
       c.viewerTarget = c.viewer ? record(s.viewerTarget) ?? c.viewer : null;
+      c.peopleRelation = str(s.peopleRelation) ?? '';
+      c.peopleRelations = (Array.isArray(s.peopleRelations) ? s.peopleRelations : []).filter(x => typeof x === 'string');
       const q = state.query.trim();
       lastFound = str(s.lastFound) && env.found[s.lastFound] ? s.lastFound : null;
       c.find = {query: q, busy: false, error: record(s.find)?.query === q ? record(s.find.error) : null};
@@ -354,7 +376,7 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
       if (state.answer) return null;
       const q = state.query.trim();
       if (!q) return host.caps.recent && !c.recentLoaded ? 'recent' : null;
-      return c.find.busy && c.find.query === q ? 'found' : null;
+      return c.find.busy && c.find.skeleton && (!c.find.partial || !env.found[q]?.length) && c.find.query === q ? 'found' : null;
     },
     /** The block's action: Retry (Recent, the search, the group), Set up (the README), Ask instead (Shift+Enter). */
     blockAction() {
@@ -391,10 +413,13 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
   function clear() {
     cancelSearch();
     state = model.initial();
-    for (const k of ['found', 'answers', 'groups']) env[k] = {};
+    c.peopleRelation = '';
+    c.peopleRelations = [];
+    for (const k of ['found', 'foundOrder', 'answers', 'groups']) env[k] = {};
     lastFound = null;
     for (const t of [copiedTimer, flashTimer, hideTimer]) timers.clearTimeout(t);
     Object.assign(c, {find: {query: '', busy: false, error: null}, asking: null, groups: {}, status: null, viewer: null, copied: null, flash: null, files: null});
+    pruneCodes();
   }
   /** env, with the previous query's found rows while this query's find runs (none of its own yet). */
   function shown() {
@@ -440,6 +465,8 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
   function cancelSearch() {
     if (!search) return;
     timers.clearTimeout(search.timer);
+    timers.clearTimeout(search.skeleton);
+    if (c.find.partial) delete env.found[c.find.query];
     search.abort.abort();
     search.done();
     search = null;
@@ -448,13 +475,15 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
     cancelSearch();
     const q = state.query.trim();
     if (!q || env.found[q] && healthQuery(q) == null) { c.find = {query: q, busy: false, error: null}; if (env.found[q]) lastFound = q; return; }
+    delete env.foundOrder[q];
     if (healthQuery(q) != null) delete env.found[q];
     c.find = {query: q, busy: true, error: null};
     const abort = new AbortController();
     let done;
     const p = new Promise(resolve => { done = resolve; });
     const timer = timers.setTimeout(() => runFind(q, abort.signal).finally(done), debounce);
-    search = {timer, abort, done};
+    const skeleton = timers.setTimeout(() => { if (!abort.signal.aborted) { c.find.skeleton = true; changed(); } }, debounce + 300);
+    search = {timer, abort, done, skeleton};
     track(p);
   }
   async function runFind(q, signal) {
@@ -466,20 +495,39 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
         if (!await healthIdentity(host)) { delete env.found[q]; delete env.answers[q]; throw new Error('Health is unavailable'); }
         r = await host.call('allos.find', {query: {q: health, limit: 20}}, {signal});
         r = {results: healthResults(r?.results ?? [])};
-      } else r = await host.call('bridge.find', {q, limit: 20}, {signal});
+      } else if (c.people()) r = await host.call('bridge.people', {q: q.replace(/^people(?:\s*:\s*|\s+|$)/i, ''), relation: c.peopleRelation}, {signal});
+      else r = await host.call('bridge.find', {q, limit: 20, phase: 'words'}, {signal});
       if (signal.aborted) return;
+      if (c.people()) c.peopleRelations = [...new Set([...c.peopleRelations, ...(r?.results ?? []).map(r => r.person?.relation).filter(Boolean)])].sort();
       env.found = {...env.found, [q]: r?.results ?? []};
+      const progressive = r?.progressive === 'two-phase-v1' && r.enrichment;
+      if (progressive) {
+        // Freeze the displayed order, including picks; the full answer is a replacement, never a patch.
+        delete env.foundOrder[q];
+        env.foundOrder[q] = model.rows(state, env).filter(x => x.result).map(x => x.id);
+        c.find.partial = true;
+        lastFound = q;
+        c.foundAt = globalThis.performance?.now() ?? now();
+        changed();
+        const next = new URL(r.enrichment, 'https://bridge.invalid');
+        if (!/^\/(v1|api)\/find$/.test(next.pathname) || next.origin !== 'https://bridge.invalid' || next.searchParams.get('q') !== q || next.searchParams.get('phase') !== 'full') throw new Error('Invalid Find enrichment');
+        r = await host.call('bridge.find', {q, limit: Number(next.searchParams.get('limit') ?? 20), phase: 'full'}, {signal});
+        if (signal.aborted) return;
+        env.found = {...env.found, [q]: r?.results ?? []};
+      }
       c.find = {query: q, busy: false, error: null};
       lastFound = q;
       c.foundAt = globalThis.performance?.now() ?? now();
       telemetry('find', true, t0, `results:${env.found[q].length}`);
     } catch (e) {
+      if (signal.aborted) return;
       const f = failure(e);
       if (f.code === 'cancelled') return;
+      if (c.find.partial) delete env.found[q];
       c.find = {query: q, busy: false, error: f};
       telemetry('find', false, t0, outcome(f));
     } finally {
-      if (search?.abort.signal === signal) search = null;
+      if (search?.abort.signal === signal) { timers.clearTimeout(search.skeleton); search = null; }
     }
     changed();
   }
@@ -509,6 +557,26 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
       if (!merged.has(key) || !need.from) merged.set(key, {...need, backend});
     }
     env.needs = [...merged.values()];
+  }
+  /** The desktops' one-time codes (codes cap; SPEC.md, *Codes*): the host's list, kept only in memory here as there. */
+  async function loadCodes() {
+    if (!host.caps.codes) return;
+    try { setCodes((await host.call('codes.list', {}))?.codes); } catch { /* the last list stays */ }
+  }
+  /** A codes list from the host: those still within CODE_MS, and a timer for the moment the oldest shown expires (then the rows
+   *  go without a word from the host). */
+  function setCodes(list) {
+    env.codes = liveCodes(list, now());
+    pruneCodes();
+  }
+  function pruneCodes() {
+    timers.clearTimeout(codesTimer);
+    codesTimer = null;
+    const t = now();
+    env.codes = env.codes.filter(x => t - x.at < CODE_MS);
+    if (!env.codes.length) return;
+    const next = Math.min(...env.codes.map(x => x.at + CODE_MS)) - t;
+    codesTimer = timers.setTimeout(() => { pruneCodes(); changed(); }, Math.max(1, next));
   }
   async function loadRecent() {
     if (!host.caps.recent) return;
@@ -701,6 +769,11 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
           await (e.file ? host.call('document.open', {id: e.id}) : host.call('document.page', {id: e.id, url: row?.kind === 'identifier' ? null : urlOf(e.id)})); return opened();
         case 'copy': await host.call('clipboard.copy', {text: String(e.value), sensitive: !!e.sensitive}); return copied(rowId);
         case 'copyRecent': await host.call('recent.copy', {id: e.id}); return copied(rowId);
+        // a one-time code: the host copies it from its own memory (sensitive); one it no longer holds is gone from the rows too
+        case 'copyCode':
+          try { await host.call('codes.copy', {id: e.id}); }
+          catch (err) { if (hostError(err).code === 'refused') { env.codes = env.codes.filter(x => x.id !== e.id); pruneCodes(); } throw err; }
+          return copied(rowId);
         case 'open': await host.call('url.open', {url: e.url}); return opened();
         case 'reveal': await host.call('recent.reveal', {id: e.id}); return opened();
         case 'map': await host.call('map.open', {by: e.by, value: String(e.value)}); return opened();
@@ -737,6 +810,8 @@ export function createController(host, {debounce = 250, copiedMs = 260, flashMs 
   // the host's events (CONTRACT.md, *Events*)
   host.on('actions.changed', () => track(loadActions().then(changed)));
   host.on('recent.changed', () => track(loadRecent().then(changed)));
+  // a one-time code came or expired (the desktops): the list with the event, else asked
+  host.on('codes.changed', d => { if (Array.isArray(d?.codes)) { setCodes(d.codes); changed(); } else track(loadCodes().then(changed)); });
   // a device enrolled or removed: the commands bar's targets without a restart
   host.on('targets.changed', d => { if (Array.isArray(d?.targets)) { setTargets(d); changed(); } else track(loadTargets().then(changed)); });
   // a pushed or hotkey transfer (the shell runs it): `busy` while it runs, then its outcome, its chip's flash, an item it brought
