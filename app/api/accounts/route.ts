@@ -8,14 +8,13 @@ export const dynamic = "force-dynamic";
 // no preflight; deck.wang.team is same-site, so the Lax session cookie rides along).
 // Exactly that origin, never a reflected one, on every answer this route gives
 // (a request with no session cookie at all is middleware's 401 and carries none).
-const DECK_ORIGIN = process.env.ALLOS_DECK_ORIGIN || "https://deck.wang.team";
-
 export async function GET(req: Request): Promise<Response> {
   const res = await accounts(req);
+  const origin = process.env.ALLOS_DECK_ORIGIN || "https://deck.wang.team";
   const headers = new Headers(res.headers);
   headers.append("Vary", "Origin");
-  if (req.headers.get("origin") === DECK_ORIGIN) {
-    headers.set("Access-Control-Allow-Origin", DECK_ORIGIN);
+  if (req.headers.get("origin") === origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Credentials", "true");
   }
   return new Response(res.body, { status: res.status, headers });
