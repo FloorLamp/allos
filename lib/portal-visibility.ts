@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, hoistedStatement } from "@/lib/db";
 import { profileIdsIn, type AuthorizedProfileIds } from "@/lib/cross-profile";
 import type {
   PendingIdentity,
@@ -479,4 +479,46 @@ export function listVisiblePortalRegistry(
     };
   });
   return { portals, accounts };
+}
+
+const PROFILE_PORTAL_ACCOUNTS = hoistedStatement(`
+  SELECT DISTINCT account_id AS id FROM portal_identities
+  WHERE profile_id = ? ORDER BY account_id
+`);
+const PORTAL_SUCCESS = hoistedStatement(`
+  SELECT MAX(at) AS at FROM integration_sync_events
+  WHERE profile_id = ? AND account_id = ? AND source_id = 'patient-portals' AND ok = 1
+`);
+const PORTAL_COVERAGE = hoistedStatement(`
+  SELECT COUNT(*) AS count, MIN(d.uploaded_at) AS "from", MAX(d.uploaded_at) AS "to"
+  FROM medical_documents d JOIN portal_identities i ON i.id = d.acquired_identity_id
+  WHERE d.profile_id = ? AND i.profile_id = ? AND i.account_id = ?
+    AND d.stored_path IS NOT NULL AND d.stored_path != ''
+`);
+
+// The portal logins bound to one data subject, without portal patient labels.
+export function portalAccountIdsForProfile(profileId: number): number[] {
+  return (PROFILE_PORTAL_ACCOUNTS.all(profileId) as { id: number }[]).map(
+    (row) => row.id
+  );
+}
+
+export function portalAccountCoverage(
+  profileId: number,
+  accountId: number
+): {
+  lastSuccess: string | null;
+  count: number;
+  from: string | null;
+  to: string | null;
+} {
+  const success = PORTAL_SUCCESS.get(profileId, accountId) as {
+    at: string | null;
+  };
+  const coverage = PORTAL_COVERAGE.get(profileId, profileId, accountId) as {
+    count: number;
+    from: string | null;
+    to: string | null;
+  };
+  return { lastSuccess: success.at, ...coverage };
 }
