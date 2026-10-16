@@ -8,6 +8,10 @@ import { MIGRATIONS } from "../lib/migrations/versions";
 
 async function main() {
   const input = path.resolve(process.argv[2] ?? "/app/data");
+  for (const entry of fs.readdirSync(input, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith(".allos-restore-"))
+      fs.rmSync(path.join(input, entry.name), { recursive: true, force: true });
+  }
   // Liftoff supplies a writable restore copy; keep database scratch off the bounded /tmp filesystem.
   const workspace = fs.mkdtempSync(path.join(input, ".allos-restore-"));
   const originalCwd = process.cwd();
@@ -95,7 +99,7 @@ async function main() {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
 }
-main().catch(() => {
-  console.error("Allos restore verification failed");
+main().catch((error: Error) => {
+  console.error("Allos restore verification failed:", error.message);
   process.exitCode = 1;
 });
