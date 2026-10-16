@@ -30,11 +30,10 @@ including an explicitly cleared key, take precedence. Light has no environment
 fallback of its own. [settings/ai-tiers.ts](../lib/settings/ai-tiers.ts) owns
 persistence and these precedence rules.
 
-AI requests go to the resolved provider. Heavy receives uploaded records; Light
-also receives profile context for its tasks. Configure both tiers, including the
-Light-to-Heavy fallback, when choosing where that data is processed. A local
-inference endpoint can serve either tier; the endpoint's own configuration
-controls any onward processing.
+Capcom tiers (keys starting `capcom_`) use named `allos/extraction` and
+`allos/insight` prompts, owned in Spaceport. Models and budgets apply; capcom receives outcomes. Direct providers retain
+local prompts. Heavy receives uploads; Light receives profile context. Capcom tokens retain `none`; keep `AI_LOG_PROMPTS=0`. Spaceport owns synthetic
+eval sets and their `/v1/evalsets` keep/rerun workflow.
 
 ## Features and limits
 

@@ -6,6 +6,7 @@ import Anthropic, {
   APIConnectionError,
   APIConnectionTimeoutError,
 } from "@anthropic-ai/sdk";
+import { runNamedPrompt } from "../ai-named-prompt";
 import { resolveTaskClient } from "../ai-resolve";
 import { createLogger } from "../log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "../ai-log";
@@ -185,7 +186,18 @@ export async function extractMedicalDocument(
     model: MODEL,
   });
 
+  let named: Awaited<ReturnType<typeof runNamedPrompt>> | undefined;
+  let effect: "changed" | "no-op" = "no-op";
   try {
+    if (resolved.namedPrompts) {
+      named = await runNamedPrompt(
+        resolved.namedPrompts,
+        "extraction",
+        MODEL,
+        MAX_TOKENS,
+        content
+      );
+    }
     // Stream the request (then await the assembled message). Extraction of a
     // large document can run for minutes; a non-streaming request sends no
     // bytes during generation, so the connection is prone to being dropped
@@ -193,16 +205,18 @@ export async function extractMedicalDocument(
     // the wire to hold the connection open. We don't consume the deltas — the
     // final message has the same shape as messages.create — so there's no
     // incremental parsing here.
-    const msg = await client.messages
-      .stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM,
-        tools: [TOOL],
-        tool_choice: { type: "tool", name: "save_medical_data" },
-        messages: [{ role: "user", content }],
-      })
-      .finalMessage();
+    const msg =
+      named?.message ??
+      (await client.messages
+        .stream({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: SYSTEM,
+          tools: [TOOL],
+          tool_choice: { type: "tool", name: "save_medical_data" },
+          messages: [{ role: "user", content }],
+        })
+        .finalMessage());
 
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
 
@@ -376,6 +390,7 @@ export async function extractMedicalDocument(
     });
     // Carry the source reconciliation on the result so import-shape can fold its
     // summary into the persisted ImportReport (surfaced in the import debugger).
+    effect = "changed";
     return { ...result, reconciliation };
   } catch (err) {
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
@@ -396,5 +411,7 @@ export async function extractMedicalDocument(
       error: message,
     });
     return { status: "failed", error: message };
+  } finally {
+    await named?.reportOutcome(effect);
   }
 }
