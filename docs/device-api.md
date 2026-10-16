@@ -1,12 +1,14 @@
 # Device API (`/v1`)
 
-Contract: spaceport `shared/backend/README.md`.
+Contract: spaceport `shared/backend/README.md`; Deck's op map: spaceport
+`deck/backends/allos.json`.
 
 ## Credential and scope
 
 `Authorization: Bearer dev_…` is verified by [device-credential](../lib/device-credential.ts)
 with Boarding (`BOARDING_URL`, default `http://boarding:9816`), then checked for
-`allos:read`, `allos:ask`, or `allos:log`. Each device links to ONE login (`npm run device-links -- link <device> <login>`; prod:
+`allos:read`, `allos:ask`, or `allos:log`. Each device links to one login
+(`npm run device-links -- link <device> <login>`; Docker:
 `docker exec allos node dist/device-links.cjs link …`); its role and grants decide profiles.
 
 Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
@@ -18,9 +20,12 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Routes
 
+[A test](../lib/__tests__/device-api-routes.test.ts) holds the table to
+`app/v1` and `/api` twins (none for `needs`).
+
 | Route                      | Scope  | Answer                                                                                                                                                                                                                                       |
 | -------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /healthz`             | none   | `{ok, status, reason?, needs}`; 200 while the database answers                                                                                                                                                                               |
+| `GET /healthz`             | none   | `{ok, status, reason?, needs}`; 200 while the database answers, else 503                                                                                                                                                                     |
 | `GET /v1/accounts`         | `read` | `{accounts, generated}`: granted profiles’ portal logins and integrations; ETag/304                                                                                                                                                          |
 | `GET /v1/needs`            | `read` | `{needs: []}`                                                                                                                                                                                                                                |
 | `GET /v1/me`               | `read` | `{login: {id, label}, owner, profiles: [{id, label}]}`: the linked login; `owner`: allos's admin role                                                                                                                                        |
@@ -36,19 +41,22 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Web twins and the Health place
 
-Except `needs`, `/api/<route>` twins use Allos's session cookie (missing: 401 `token`),
-login grants and active profile. Writes require same-origin JSON (403 `origin`,
+`/api/<route>` twins use Allos's session cookie (missing: 401 `token`), login grants and
+active profile. Writes require same-origin JSON (403 `origin`,
 415 `type`). Ask uses `POST /api/ask` `{q, profile?}` (GET: 405).
-`DECK_ORIGIN`: Accounts CORS. `CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
+`/api/accounts` allows credentialed CORS for exactly `DECK_ORIGIN`.
+`CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
 
 `/deck/health`: admin-only, bundle CSP. Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`;
 pin: `lib/deck-ui-pin.json`.
 
-Boarding's [browser renewal contract](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
-does not apply: Allos is not a Boarding member site; it authenticates its own
-sessions. Boarding verifies devices. Deck UI 0.1.165 loads
-`/boarding/client.js` through `mountShellBar`; Health uses `mountHealth` instead.
-Neither Health nor Allos layouts renew Boarding sessions. Guest invites and share authentication remain independent; no Caddy change.
+Boarding's [browser sessions](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
+do not apply: Allos signs in its own sessions; Boarding only verifies devices.
+Health mounts `mountHealth`, not `mountShellBar` (which loads
+`/boarding/client.js`); no Allos page renews Boarding sessions.
 
 `accounts_rover_origins` maps portal-account IDs to `rover:<login-id>` for Deck dedup;
 unmapped stay Allos's. `generated`: latest run/success, else epoch.
+
+`GET /metrics`: Prometheus text, operational aggregates only, on port 9830
+(compose binds loopback); `deploy/allos.alloy` scrapes it.

@@ -44,24 +44,23 @@ test:smoke` for frontend changes). Passing checks need no extra invented tests.
 
 State contracts and owners; update rules.
 
-`npm run docs:check` checks all Git-visible Markdown (including agent/skill docs).
-New and short files have a 1,500-word limit; existing oversized files cannot
-exceed their word count at the comparison base.
-This applies to generated Markdown too: keep generated reference data separate
-from growing prose. The total across all checked files must not exceed the total
-at the base, so new text displaces old; the summary line prints both totals and
-the delta. The check includes untracked files and fails if the comparison base is
-unavailable. Use `npm run docs:check -- --base <ref>` for an explicit base; the
-default is the merge base with `origin/main`.
+`npm run docs:check` checks all Git-visible Markdown, untracked and generated
+included (keep generated reference data apart from prose):
 
-The guard measures length, not usefulness. Do not compress code, split a single
-rule across arbitrary files, or remove important contracts just to pass it.
-Split by independently useful topics when needed. Review still checks that
-rewrites preserve behavior and remove duplication.
+- New and short files: at most 1,500 words; oversized files: at most their word
+  count at the base.
+- The total must not exceed the base's: new text displaces old.
+- Base: the merge base with `origin/main`, or `-- --base <ref>`; unavailable
+  fails.
 
-## Deploy
+The guard measures length, not usefulness. Do not compress code, split one rule
+across arbitrary files, or cut important contracts to pass it; split by
+independently useful topics. Review still checks rewrites preserve behavior.
 
-Sortie's `coordinator.json` must set `keep: ["node_modules"]` for allos.
-Jobs use `scripts/ci-install.sh`: reuse kept dependencies when the lockfile
-SHA-256 matches their stamp; otherwise run `npm ci` and stamp success.
-The builder needs `build-essential` (`make`) for native dependencies.
+## CI on Sortie
+
+Jobs: [sortie-jobs.json](../sortie-jobs.json). Spaceport `repos/allos.json` keeps
+`node_modules` between jobs (`sortie.keep`). Jobs use `scripts/ci-install.sh`:
+reuse kept dependencies when the lockfile SHA-256 matches their stamp; otherwise
+run `npm ci` and stamp success. The builder needs `build-essential` (`make`) for
+native dependencies.
