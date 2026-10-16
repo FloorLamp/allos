@@ -1,0 +1,95 @@
+[
+  {
+    "id": "search",
+    "label": "Search",
+    "origin": "deck",
+    "href": "/"
+  },
+  {
+    "id": "needs",
+    "label": "Needs",
+    "origin": "deck",
+    "href": "/flightplan#needs"
+  },
+  {
+    "id": "flightplan",
+    "label": "Flightplan",
+    "backend": "flightplan",
+    "origin": "deck",
+    "href": "/flightplan"
+  },
+  {
+    "id": "people",
+    "label": "People",
+    "origin": "deck",
+    "href": "/people"
+  },
+  {
+    "id": "projects",
+    "label": "Projects",
+    "origin": "deck",
+    "href": "/projects"
+  },
+  {
+    "id": "money",
+    "label": "Money",
+    "origin": "purser",
+    "href": "/"
+  },
+  {
+    "id": "accounts",
+    "label": "Sign-ins",
+    "origin": "deck",
+    "href": "/accounts"
+  },
+  {
+    "id": "health",
+    "label": "Health",
+    "backend": "allos",
+    "origin": "allos",
+    "href": "/deck/health"
+  },
+  {
+    "id": "house",
+    "label": "House",
+    "backend": "habitat",
+    "origin": "habitat",
+    "href": "/"
+  },
+  {
+    "id": "vehicles",
+    "label": "Vehicles",
+    "origin": "deck",
+    "href": "/vehicles"
+  },
+  {
+    "id": "properties",
+    "label": "Properties",
+    "origin": "deck",
+    "href": "/properties"
+  },
+  {
+    "id": "insurance",
+    "label": "Insurance",
+    "origin": "deck",
+    "href": "/insurance"
+  },
+  {
+    "id": "papers",
+    "label": "Papers",
+    "origin": "deck",
+    "href": "/papers"
+  },
+  {
+    "id": "taxes",
+    "label": "Taxes",
+    "origin": "deck",
+    "href": "/taxes"
+  },
+  {
+    "id": "things",
+    "label": "Things",
+    "origin": "deck",
+    "href": "/things"
+  }
+]

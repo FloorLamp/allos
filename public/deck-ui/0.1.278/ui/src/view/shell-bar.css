@@ -1,0 +1,32 @@
+.ds-bar { background: var(--panel); color: var(--text); border-bottom: 1px solid var(--edge); font: var(--font-sub); }
+.ds-in { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--gap-m); padding: var(--gap-s) var(--gutter); min-width: 0; }
+.ds-bar a { color: var(--soft); text-decoration: none; padding: var(--gap-xs) var(--gap-s); border-radius: var(--chip-radius); white-space: nowrap; }
+.ds-bar a:hover { color: var(--text); background: var(--hover); }
+.ds-bar a[aria-current="page"] { color: var(--accent); background: var(--hover); }
+.ds-brand { flex: none; display: inline-flex; align-items: center; gap: var(--gap-s); font: var(--font-title); }
+.ds-menu { display: contents; }
+.ds-toggle { display: none; }
+.ds-nav { display: flex; align-items: center; gap: var(--gap-xs); flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.ds-nav::-webkit-scrollbar { display: none; }
+.ds-nav a { flex: none; }
+.ds-verdict, .ds-signin, .ds-needs { flex: none; display: flex; align-items: center; gap: var(--gap-s); }
+.ds-count { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: var(--warn); color: var(--on-accent); font: var(--font-chip);
+  font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; margin-right: var(--gap-xs); }
+.ds-needs a { display: inline-flex; align-items: center; }
+@media (width < 600px) {
+  .ds-in { display: grid; grid-template-columns: auto 1fr auto auto; gap: var(--gap-s); padding: var(--gap-xs) var(--gap-s); }
+  .ds-menu { display: block; min-width: 0; }
+  .ds-toggle { display: block; cursor: pointer; padding: var(--gap-s); }
+  .ds-menu:not(.open) > .ds-nav { display: none; }
+  .ds-menu.open > .ds-nav { display: flex; }
+  .ds-nav { position: absolute; left: 0; right: 0; top: 100%; z-index: 100; box-sizing: border-box;
+    flex-direction: column; align-items: stretch; max-height: 75vh; overflow-y: auto; padding: var(--gap-s);
+    background: var(--panel); border-bottom: 1px solid var(--edge); }
+  .ds-bar { position: relative; }
+  .ds-nav a { padding: var(--gap-s); }
+  .ds-needs-label { display: none; }
+  .ds-count { margin-right: 0; }
+  .ds-verdict { grid-column: 1 / -1; }
+  .ds-signin { grid-column: 4; grid-row: 1; }
+  .ds-needs { grid-column: 3; grid-row: 1; }
+}
