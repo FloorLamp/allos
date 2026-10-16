@@ -67,7 +67,7 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // scope, same reason for being listed as its siblings: a bearer GET from a tool on the
   // user's own machine, which carries no cookie.
   "/api/documents/requests",
-  // The Deck backend contract's healthcheck (spaceport shared/BACKEND.md *Health*):
+  // The Deck backend contract's healthcheck (spaceport shared/backend/health.md):
   // unauthenticated and coarse, like /api/health.
   "/healthz",
 ]);

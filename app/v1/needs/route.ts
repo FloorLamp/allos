@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // What only the owner can fix to keep allos's data flowing (spaceport
-// shared/BACKEND.md *Needs*). allos has no source whose sign-in or pairing lapses
+// shared/backend/needs.md). allos has no source whose sign-in or pairing lapses
 // behind a device yet, so the list is empty; the route exists because every Deck
 // backend answers it.
 export async function GET(req: Request): Promise<Response> {

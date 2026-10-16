@@ -1,6 +1,6 @@
 # Device API (`/v1`)
 
-What Deck's devices rely on (spaceport `shared/BACKEND.md`). Additive changes only.
+What Deck's devices rely on (spaceport `shared/backend/README.md`). Additive changes only.
 
 ## Credential and scope
 
