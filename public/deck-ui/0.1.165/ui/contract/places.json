@@ -10,6 +10,11 @@
     "href": "https://deck.wang.team/attention"
   },
   {
+    "id": "people",
+    "label": "People",
+    "href": "https://deck.wang.team/?q=people"
+  },
+  {
     "id": "projects",
     "label": "Projects",
     "href": "https://deck.wang.team/projects"
@@ -31,7 +36,7 @@
   },
   {
     "id": "accounts",
-    "label": "Accounts",
+    "label": "Sign-ins",
     "href": "https://deck.wang.team/accounts"
   },
   {

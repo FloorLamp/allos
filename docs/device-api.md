@@ -7,10 +7,8 @@ Contract: spaceport `shared/backend/README.md`.
 `Authorization: Bearer dev_…`, boarding credential,
 verified with boarding ([device-credential](../lib/device-credential.ts);
 `BOARDING_URL`, default `http://boarding:9816`), then the route's scope:
-`allos:read`, `allos:ask`, `allos:log`. Then allos's grants: the owner links the
-device to ONE login (`npm run device-links -- link <device> <login>`; on prod
-`docker exec allos node dist/device-links.cjs link …`; never by name); that
-login's role and grants decide the profiles, as for a session.
+`allos:read`, `allos:ask`, `allos:log`. The owner links each device to ONE login (`npm run device-links -- link <device> <login>`; on prod
+`docker exec allos node dist/device-links.cjs link …`; never by name); its role and grants decide profiles.
 
 Refusals, `{error}`: 401 `token` (none, unknown, revoked, expired); 403 `scope`;
 403 `device` (verified, not linked); 403 `profile` (none reachable, or not the one
@@ -40,15 +38,17 @@ first. Profile answers carry `profile`. Days are profile-local; `at` an instant.
 
 ## Web twins and the Health place
 
-Web: each route but `needs` as `/api/<route>`, same handler, the session cookie (none:
+Web: routes except `needs` use `/api/<route>`, same handlers, and the session cookie (none:
 401 `token`); grants decide profiles and writes; default profile the session's active
 one. Writes are same-origin JSON (else 403 `origin`, 415 `type`); `ask` is `POST
 /api/ask` `{q, profile?}` there (GET 405).
 
 `/deck/health`: deck-ui's Health views, vendored by `node scripts/deck-ui.mjs <version>`
-into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under the bundle's CSP. Admin only;
+into `public/deck-ui/` (pin `lib/deck-ui-pin.json`), under its CSP. Admin only;
 others 404.
 
 Portal relays: setting `accounts_rover_origins` maps allos portal-account IDs to
 `rover:<login-id>` for Deck deduplication. Unmapped connections remain allos-owned.
-`generated` is the latest reported run/success, or Unix epoch before any run.
+`generated`: latest run/success, else Unix epoch.
+
+Only `GET /api/accounts` allows credentialed CORS from `ALLOS_DECK_ORIGIN` (default `https://deck.wang.team`); always `Vary: Origin`.

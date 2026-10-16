@@ -2,7 +2,7 @@
 // hint line. Pure: no I/O. Windows (desktop/windows), the Mac (desktop/mac) and Android implement the same and pass cases.json; this
 // one passes it in npm test (test/palette.test.mjs).
 
-export const MAX = {found: 8, recent: 5, commands: 4, actions: 5};
+export const MAX = {found: 8, recent: 5, commands: 4, actions: 5, codes: 5};
 
 export const isQuestion = q => { const t = q.trim(); return t.length > 1 && t.endsWith('?'); };
 const words = q => q.toLowerCase().split(/\s+/).map(w => w.replace(/[?!.,;:]+$/, '')).filter(Boolean);
@@ -150,11 +150,15 @@ function actionRow(a) {
 const houseRow = n => ({kind: 'house', id: 'house', count: n});
 
 /** The Needs you row: what only the owner can fix to keep the backends' data flowing (env.needs: each backend's `GET /v1/needs`, spaceport
- *  shared/BACKEND.md), `count` of them, first on the empty query while there are any; it opens them as the Needs you group (Tab, →,
+ *  shared/backend/README.md), `count` of them, first on the empty query while there are any; it opens them as the Needs you group (Tab, →,
  *  Enter). A need as a row, its id `need:<need id>`. */
 const needsRow = n => ({kind: 'needs', id: 'needs', count: n});
 const needRow = n => ({kind: 'need', id: `need:${n.backend && n.backend !== 'bridge' ? `${n.backend}/` : ''}${n.id}`, need: n});
 const needText = n => [n.title, n.detail, n.backend, n.source, n.action?.label, n.action?.command].filter(Boolean).join(' ');
+
+/** A one-time code as a row (env.codes: the desktops' codes.list, the last 15 minutes' codes, newest first; SPEC.md, *Codes*), its id
+ *  `code:<code id>`; the empty query's first rows, at most MAX.codes. Enter copies it (effect `copyCode`), nothing opens or views it. */
+const codeRow = c => ({kind: 'code', id: `code:${c.id}`, code: c});
 
 /** What a recent item is searched by: its preview, name, link and peers. */
 const recentText = i => [i.preview, i.name, i.link, ...(i.peers ?? [])].filter(Boolean).join(' ').toLowerCase();
@@ -238,19 +242,24 @@ function scopeRows(scope, query, env) {
   return byPicks(all.filter(r => textMatch(ws, memberText(r))), env.picks);
 }
 
-/** The rows for a state: an open group's; else the Needs you row, Recent and the House row when the query is empty (no action is
- *  one key from running); else Ask, commands, actions, found, Recent's matches (SPEC.md, *Rows*). */
+/** The rows for a state: an open group's; else the codes, the Needs you row, Recent and the House row when the query is empty (no
+ *  action is one key from running); else Ask, commands, actions, found, Recent's matches (SPEC.md, *Rows*). */
 export function rows(state, env) {
   const scope = state.scopes?.at(-1);
   if (scope) return scopeRows(scope, state.query, env);
   if (state.answer) return (state.answer.citations ?? []).map(c => ({kind: 'citation', id: `citation:${c.id}`, citation: c}));
   const q = state.query.trim(), ws = words(q);
-  if (!q) return [...(env.needs?.length ? [needsRow(env.needs.length)] : []), ...(env.recent ?? []).map(recentRow), ...(env.actions?.length ? [houseRow(env.actions.length)] : [])];
+  if (!q) return [...(env.codes ?? []).slice(0, MAX.codes).map(codeRow), ...(env.needs?.length ? [needsRow(env.needs.length)] : []), ...(env.recent ?? []).map(recentRow), ...(env.actions?.length ? [houseRow(env.actions.length)] : [])];
+  if (/^people(?:\s|:|$)/i.test(q)) return (env.found?.[q] ?? []).map(foundRow);
   // a query of punctuation alone (`?`) has no words: nothing to match but Ask and found
   const cmds = !ws.length || env.commands === false ? [] : byPicks(commands(env.targets ?? []).filter(c => ws.every(w => words(c.title).some(t => near(t, w)))), env.picks).slice(0, MAX.commands);
   const lead = cmds.some(c => near(words(c.title)[0], ws[0]));
   const actions = !ws.length ? [] : (env.actions ?? []).filter(a => actionMatch(ws, a)).slice(0, MAX.actions).map(actionRow);
-  const found = byPicks(collapse(env.found?.[q] ?? []).slice(0, MAX.found).map(foundRow), env.picks);
+  const order = env.foundOrder?.[q];
+  const results = collapse(env.found?.[q] ?? []);
+  let found = byPicks((order ? results : results.slice(0, MAX.found)).map(foundRow), env.picks);
+  if (order) found.sort((a, b) => (order.indexOf(a.id) < 0 ? order.length : order.indexOf(a.id)) - (order.indexOf(b.id) < 0 ? order.length : order.indexOf(b.id)));
+  found = found.slice(0, MAX.found);
   const recent = !ws.length ? [] : (env.recent ?? []).filter(i => textMatch(ws, recentText(i))).slice(0, MAX.recent).map(recentRow);
   return [
     ...(isQuestion(q) ? [{kind: 'ask', id: 'ask', query: q}] : []),
@@ -385,6 +394,8 @@ function primary(row, state) {
     case 'link': return {type: 'copy', value: row.result.value, sensitive: false};
     case 'recent': return viewable(row) ? view_(row, state) : {type: 'copyRecent', id: row.item.id};
     case 'need': return needEffect(row.need);
+    // the host puts the code on the clipboard from its own memory (codes.copy), kept out of clipboard history
+    case 'code': return {type: 'copyCode', id: row.code.id};
   }
   return null;
 }
@@ -437,6 +448,7 @@ function labels(row, state) {
     case 'area': case 'trips': case 'day': return ['Show all', null];
     case 'house': case 'needs': return ['Show all', null];
     case 'need': { const a = row.need.action; return [needEffect(row.need) ? a.label || {url: 'Open', op: 'Run', command: 'Copy'}[a.kind] : null, null]; }
+    case 'code': return ['Copy', null];
     case 'ask': return ['Ask', null];
     case 'command': case 'action': return ['Run', null];
     case 'identifier': return ['Copy', row.result.document ? openIn(row.result.document.source) : null];

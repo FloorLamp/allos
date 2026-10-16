@@ -601,10 +601,64 @@ describe("/v1/accounts", () => {
     const { token } = createSession(login);
     const res = await webAccounts(
       new Request("http://allos.test/api/accounts", {
-        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+        headers: {
+          cookie: `${SESSION_COOKIE}=${token}`,
+          origin: "https://deck.wang.team",
+        },
       })
     );
     expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://deck.wang.team"
+    );
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("vary")).toBe("Origin");
+    for (const [origin, allowed] of [
+      ["https://evil.wang.team", null],
+      ["", null],
+    ] as const) {
+      const other = await webAccounts(
+        new Request("http://allos.test/api/accounts", {
+          headers: { cookie: `${SESSION_COOKIE}=${token}`, origin },
+        })
+      );
+      expect(other.status).toBe(200);
+      expect(other.headers.get("access-control-allow-origin")).toBe(allowed);
+      expect(other.headers.get("vary")).toBe("Origin");
+    }
+    for (const [headers, status] of [
+      [
+        {
+          "if-none-match": res.headers.get("etag")!,
+          cookie: `${SESSION_COOKIE}=${token}`,
+        },
+        304,
+      ],
+      [{}, 401],
+      [
+        {
+          cookie: `${SESSION_COOKIE}=${token}`,
+        },
+        403,
+      ],
+    ] as const) {
+      const response = await webAccounts(
+        new Request(
+          `http://allos.test/api/accounts${status === 403 ? "?profile=999999" : ""}`,
+          {
+            headers: { ...headers, origin: "https://deck.wang.team" },
+          }
+        )
+      );
+      expect(response.status).toBe(status);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://deck.wang.team"
+      );
+      expect(response.headers.get("access-control-allow-credentials")).toBe(
+        "true"
+      );
+      expect(response.headers.get("vary")).toBe("Origin");
+    }
     expect((await res.json()).accounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ institution: "Strava", person: "Cloris" }),
@@ -621,6 +675,23 @@ describe("/v1/accounts", () => {
     expect(
       (await webAccounts(new Request("http://allos.test/api/accounts"))).status
     ).toBe(401);
+  });
+
+  it("uses the configured Deck origin instead of the default", async () => {
+    vi.stubEnv("ALLOS_DECK_ORIGIN", "https://deck.example");
+    try {
+      for (const origin of ["https://deck.example", "https://deck.wang.team"]) {
+        const res = await webAccounts(
+          new Request("http://allos.test/api/accounts", { headers: { origin } })
+        );
+        expect(res.status).toBe(401);
+        expect(res.headers.get("access-control-allow-origin")).toBe(
+          origin === "https://deck.example" ? origin : null
+        );
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   // allos's own standing decides `state` (lib/integrations/source-state.ts): a feed
