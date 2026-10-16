@@ -14,7 +14,11 @@ import {
   isDeckPlacePath,
   isSelfFramedPath,
 } from "./lib/csp";
-import { isPublicPath } from "./lib/public-paths";
+import {
+  deckBasePath,
+  deckDestination,
+  isPublicPath,
+} from "./lib/public-paths";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
 // this only checks for the *presence* of a session cookie: it bounces obviously
@@ -87,7 +91,17 @@ function withSlidingCookie(res: NextResponse, token: string): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
+  const { pathname: externalPath, search } = req.nextUrl;
+  if (externalPath === "/deck/health") {
+    const target = new URL(
+      deckBasePath() || "/",
+      process.env.DECK_ORIGIN || req.nextUrl.origin
+    );
+    target.search = search;
+    return NextResponse.redirect(target, 301);
+  }
+  const destination = deckDestination(externalPath);
+  const pathname = destination ?? externalPath;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   // See withSlidingCookie: sliding the cookie on a POST makes that Server Action
   // response a page-refreshing one, so a non-navigation only slides once the
@@ -157,11 +171,15 @@ export function middleware(req: NextRequest) {
     const health = isDeckPlacePath(pathname);
     url.pathname = health ? "/boarding/sign-in" : "/login";
     url.search = "";
-    url.searchParams.set(health ? "to" : "next", pathname + search);
+    url.searchParams.set(health ? "to" : "next", externalPath + search);
     return withCsp(NextResponse.redirect(url));
   }
 
-  const res = NextResponse.next(passNonce);
+  const target = req.nextUrl.clone();
+  target.pathname = pathname;
+  const res = destination
+    ? NextResponse.rewrite(target, passNonce)
+    : NextResponse.next(passNonce);
   const out = token && slides ? withSlidingCookie(res, token) : res;
   return isDeckPlacePath(pathname) ? out : withCsp(out);
 }

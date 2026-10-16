@@ -42,23 +42,22 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Web twins and the Health place
 
-`/api/<route>` twins accept Allos or Boarding sessions (missing: 401 `token`), login
-grants and profile. Writes require same-origin JSON (403 `origin`,
-415 `type`). Ask: `POST /api/ask` `{q, profile?}` (GET: 405).
-`/api/accounts`: credentialed CORS: `DECK_ORIGIN` only.
+`/api/<route>` twins use Allos/Boarding sessions (401 `token`), grants and profile. Writes: same-origin JSON (403 `origin`, 415 `type`).
+`POST /api/ask` `{q, profile?}`; GET: 405. `/api/accounts` CORS: `DECK_ORIGIN` only.
 `CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
 
-`/deck/health`: admin-only, bundle CSP. Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`;
-pin: `lib/deck-ui-pin.json`.
+`/health`: admin-only deck-ui mount/CSP. `DECK_BASE_PATH`:
+Deck page/module/assets/API (empty: `/`). `/deck/health` 301s to
+`DECK_ORIGIN` + mount; caregiver/public/device routes stay.
+Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`; pin: `lib/deck-ui-pin.json`.
 
-[Boarding sessions](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md):
-`/owner` maps the verified host cookie to Allos's sole admin and own/first profile.
-Ambiguous mappings/failures deny access.
-Allos caregiver sessions take precedence. Load `/boarding/client.js`;
-route `/boarding/*` to Boarding.
+[Boarding](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
+`/owner` maps the host cookie to the sole admin’s own/first profile;
+ambiguity/failure denies. Caregiver sessions win.
+`/boarding/client.js` loads; `/boarding/*` proxies to Boarding.
 
 `accounts_rover_origins` maps portal-account IDs to `rover:<login-id>` for Deck dedup;
-unmapped stay Allos's. `generated`: latest run/success, else epoch.
+unmapped stay Allos's. `generated`: latest run/success or epoch.
 
 `GET /metrics`: Prometheus text, operational aggregates only, on port 9830
 (compose binds loopback); `deploy/allos.alloy` scrapes it.

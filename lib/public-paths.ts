@@ -91,3 +91,31 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/v1/")) return true;
   return false;
 }
+
+// Deck alone is mounted here. Allos pages and device/public APIs keep their URLs.
+export function deckBasePath(): string {
+  const base = process.env.DECK_BASE_PATH ?? "/health";
+  if (base !== "" && !/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(base))
+    throw new Error(
+      "DECK_BASE_PATH must be empty or a path without a trailing slash"
+    );
+  return base;
+}
+
+export function deckDestination(pathname: string): string | null {
+  const base = deckBasePath();
+  if (pathname === (base || "/") || (base && pathname === `${base}/`))
+    return "/deck/health";
+  if (base && !pathname.startsWith(`${base}/`)) return null;
+  const path = pathname.slice(base.length);
+  if (path === "/health.js") return "/deck/health.js";
+  if (path.startsWith("/deck-ui/")) return path;
+  // Only the Deck session twins, never arbitrary Allos handlers.
+  if (
+    /^\/api\/(?:accounts|me|profiles|find|record|ask|readings|labs|board(?:\/[A-Za-z0-9_-]+)?)$/.test(
+      path
+    )
+  )
+    return path;
+  return null;
+}
