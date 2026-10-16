@@ -584,7 +584,7 @@ describe("/v1/accounts", () => {
     expect(changed.headers.get("etag")).not.toBe(res.headers.get("etag"));
   });
 
-  it("uses session grants across profiles and labels only the admin's own profile as owner", async () => {
+  it("uses session grants across profiles; the admin's own profile is owner whoever asks", async () => {
     const login = makeLogin("accounts-session", "member");
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
@@ -595,6 +595,9 @@ describe("/v1/accounts", () => {
     db.prepare("UPDATE profiles SET name = 'Cloris Family' WHERE id = ?").run(
       theirs.profileId
     );
+    db.prepare(
+      "UPDATE logins SET own_profile_id = ? WHERE username = 'device-owner'"
+    ).run(mine.profileId);
     const { token } = createSession(login);
     const res = await webAccounts(
       new Request("http://allos.test/api/accounts", {
@@ -605,15 +608,9 @@ describe("/v1/accounts", () => {
     expect((await res.json()).accounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ institution: "Strava", person: "Cloris" }),
-        expect.objectContaining({
-          institution: "Oura Ring",
-          person: "DevMine",
-        }),
+        expect.objectContaining({ institution: "Oura Ring", person: "owner" }),
       ])
     );
-    db.prepare(
-      "UPDATE logins SET own_profile_id = ? WHERE username = 'device-owner'"
-    ).run(mine.profileId);
     const owner = await accounts(req("/v1/accounts", ownerDesk));
     expect((await owner.json()).accounts).toEqual(
       expect.arrayContaining([
@@ -624,6 +621,30 @@ describe("/v1/accounts", () => {
     expect(
       (await webAccounts(new Request("http://allos.test/api/accounts"))).status
     ).toBe(401);
+  });
+
+  // allos's own standing decides `state` (lib/integrations/source-state.ts): a feed
+  // silent past its tolerance is failing, as on its Integrations page, never a
+  // stale "ok" from the last event.
+  it("reads a source silent past its tolerance as failing", async () => {
+    upsertConnection(mine.profileId, "oura", { status: "connected" });
+    recordSyncEvent(mine.profileId, "oura", { ok: true, written: 1 });
+    const oura = async () =>
+      (
+        (await (await accounts(req("/v1/accounts", phone))).json())
+          .accounts as {
+          institution: string;
+          state: string;
+        }[]
+      ).find((a) => a.institution === "Oura Ring")?.state;
+    expect(await oura()).toBe("ok");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 30 * 86_400_000);
+      expect(await oura()).toBe("failing");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refuses a credential without allos:read", async () => {

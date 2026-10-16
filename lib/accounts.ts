@@ -1,4 +1,5 @@
 import { getSetting } from "./settings";
+import { hoistedStatement } from "./db";
 import { createHash } from "node:crypto";
 import type { SessionProfile } from "./auth";
 import { isRealIsoDate, toUtcInstant } from "./date";
@@ -6,9 +7,11 @@ import { listConnectionMetadata } from "./integrations/connections";
 import { INTEGRATIONS } from "./integrations/registry";
 import { integrationDetailHref } from "./hrefs";
 import {
+  getIntegrationState,
   getLatestSyncEvent,
   getLastSuccessfulSyncAt,
 } from "./queries/integrations";
+import type { SourceStanding } from "./integrations/source-state";
 import {
   listPortals,
   listPortalAccounts,
@@ -163,16 +166,12 @@ export function accountsForProfile(
           ? { at, outcome: latest.ok === 1 ? "success" : "failed" }
           : null,
       lastSuccess: successAt ? { at: successAt } : null,
-      state:
-        c.status === "disconnected"
-          ? "paused"
-          : c.status === "needs_reauth"
-            ? "failing"
-            : latest && at
-              ? latest.ok === 1
-                ? "ok"
-                : "failing"
-              : "unknown",
+      // allos's own verdict (lib/integrations/source-state.ts: silence tolerance,
+      // flapping), never re-derived from the last event: a source silent past its
+      // tolerance is failing here exactly as on its Integrations page.
+      state: accountState(
+        getIntegrationState(profileId, c.source_id)?.standing ?? null
+      ),
       ...(latest &&
       (from || to || (latest.written !== null && latest.written > 0))
         ? {
@@ -192,11 +191,39 @@ export function accountsForProfile(
   return rows;
 }
 
+const STATE: Record<SourceStanding, Account["state"]> = {
+  healthy: "ok",
+  partial: "ok",
+  intermittent: "ok",
+  imported: "ok",
+  "feed-enabled": "ok",
+  failing: "failing",
+  dropping: "failing",
+  "needs-reauth": "failing",
+  "attempt-failed": "failing",
+  "not-connected": "paused",
+  "not-set-up": "paused",
+  "feed-off": "paused",
+  "never-synced": "unknown",
+  "never-imported": "unknown",
+};
+const accountState = (standing: SourceStanding | null): Account["state"] =>
+  standing ? STATE[standing] : "unknown";
+
+// The household's `owner`: any admin login's own profile (allos's admin role, as
+// /v1/me's `owner`). The same label whichever login asks.
+const OWNER_PROFILES_STMT = hoistedStatement(
+  "SELECT own_profile_id AS id FROM logins WHERE role = 'admin' AND own_profile_id IS NOT NULL"
+);
+export function ownerProfileIds(): Set<number> {
+  return new Set(
+    (OWNER_PROFILES_STMT.all() as { id: number }[]).map((r) => r.id)
+  );
+}
+
 export function accountPerson(
   profile: SessionProfile,
-  ownerProfileId: number | null
+  owners: Set<number>
 ): string {
-  return profile.id === ownerProfileId
-    ? "owner"
-    : profile.name.trim().split(/\s+/)[0];
+  return owners.has(profile.id) ? "owner" : profile.name.trim().split(/\s+/)[0];
 }

@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { authenticateDevice, refuse } from "@/lib/device-logins";
-import { ownProfileForLogin } from "@/lib/auth";
-import { accountPerson, accountsForProfile } from "@/lib/accounts";
+import {
+  accountPerson,
+  accountsForProfile,
+  ownerProfileIds,
+} from "@/lib/accounts";
 import { getPublicUrl } from "@/lib/settings";
 import { resolveExternalBaseUrl } from "@/lib/external-url";
 
@@ -14,10 +17,9 @@ export async function GET(req: Request): Promise<Response> {
   const origin = resolveExternalBaseUrl(getPublicUrl(), (name) =>
     req.headers.get(name)
   );
-  const own =
-    auth.login.role === "admin" ? ownProfileForLogin(auth.login.id) : null;
+  const owners = ownerProfileIds();
   const accounts = auth.profiles.flatMap((p) =>
-    accountsForProfile(p.id, accountPerson(p, own), origin)
+    accountsForProfile(p.id, accountPerson(p, owners), origin)
   );
   // A stable snapshot time makes unchanged bodies revalidatable without a response cache.
   const generated =
