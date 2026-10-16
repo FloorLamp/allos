@@ -48,6 +48,7 @@ import { POST as boardDose } from "@/app/api/board/[doseId]/route";
 import * as askRoute from "@/app/api/ask/route";
 import { GET as page } from "@/app/deck/health/route";
 import { deckHealthScript } from "@/lib/deck-ui";
+import pin from "@/lib/deck-ui-pin.json";
 import { GET as script } from "@/app/deck/health.js/route";
 
 function makeLogin(username: string, role: "admin" | "member"): number {
@@ -370,6 +371,16 @@ describe("the Health place — the owner's alone", () => {
         return { backends: ["allos"] };
       });
       try {
+        const entry = deckHealthScript();
+        expect(
+          [...entry.matchAll(/^import .* from "([^"]+)";/gm)].map(
+            (match) => match[1]
+          )
+        ).toEqual([
+          `${base}/deck-ui/${pin.version}/ui/src/mount.js`,
+          `${base}/deck-ui/${pin.version}/ui/src/host/web.js`,
+          `${base}/deck-ui/${pin.version}/ui/src/host/backends.js`,
+        ]);
         // Execute the actual entry module with synthetic browser and mount boundaries.
         const execute = new Function(
           "mountHealth",
@@ -382,7 +393,7 @@ describe("the Health place — the owner's alone", () => {
           "WebSocket",
           "fetch",
           "document",
-          `return (async () => {${deckHealthScript().replace(/^import .*;$/gm, "")} })()`
+          `return (async () => {${entry.replace(/^import .*;$/gm, "")} })()`
         );
         await execute(
           mount,
@@ -397,9 +408,7 @@ describe("the Health place — the owner's alone", () => {
           { getElementById: () => "mount" }
         );
         expect(calls).toEqual([
-          expect.stringMatching(
-            new RegExp(`^${base}/deck-ui/[^/]+/ui/contract/places.json$`)
-          ),
+          `${base}/deck-ui/${pin.version}/ui/contract/places.json`,
           `https://deck.test${base}/api/board?profile=7`,
         ]);
         expect(mount).toHaveBeenCalledWith(

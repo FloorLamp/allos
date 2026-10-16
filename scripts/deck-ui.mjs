@@ -2,7 +2,7 @@
 // `manifest-<version>.json` and every file by its sha256; each download is checked against both (the index's sha256 and the
 // manifest's), then written to public/deck-ui/<version>/ (the other versions removed) and pinned in lib/deck-ui-pin.json.
 // Never fetched at runtime: a bump is a PR.
-//   node scripts/deck-ui.mjs <version>
+//   node scripts/deck-ui.mjs <version> [--allow-host-api-mismatch]
 import { createHash } from "node:crypto";
 import {
   mkdirSync,
@@ -26,6 +26,7 @@ export async function vendor(
     root = fileURLToPath(new URL("..", import.meta.url)),
     channel = CHANNEL,
     fetch = globalThis.fetch,
+    allowHostApiMismatch = false,
   } = {}
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(version ?? ""))
@@ -55,7 +56,7 @@ export async function vendor(
     throw new Error(
       `deck-ui: the manifest is ${manifest.version}, not ${version}`
     );
-  if (manifest.hostApi !== HOST_API)
+  if (manifest.hostApi !== HOST_API && !allowHostApiMismatch)
     throw new Error(
       `deck-ui: ${version} needs host API ${manifest.hostApi}; this app serves ${HOST_API}`
     );
@@ -94,7 +95,11 @@ export async function vendor(
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  vendor(process.argv[2]).then(
+  vendor(process.argv[2], {
+    allowHostApiMismatch: process.argv
+      .slice(3)
+      .includes("--allow-host-api-mismatch"),
+  }).then(
     (pin) =>
       console.log(
         `deck-ui ${pin.version} (${pin.revision.slice(0, 7)}) vendored: public/deck-ui/${pin.version}/`
