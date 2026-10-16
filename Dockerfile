@@ -116,6 +116,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-notify.sh
 RUN mkdir -p /app/data && chown -R node:node /app
 
 COPY deploy/steps /liftoff/deploy/steps
+COPY deploy/files /liftoff/deploy/files
 COPY deploy/allos.alloy /liftoff/deploy/allos.alloy
 
 EXPOSE 3000 9830
