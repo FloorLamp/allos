@@ -66,6 +66,11 @@ export function dateStrInTz(tz: string, d: Date = new Date()): LocalDay {
   return day as LocalDay;
 }
 
+// Bucket epoch milliseconds into calendar days in an explicit zone.
+export function dayIn(tz: string): (epochMs: number) => LocalDay {
+  return (epochMs) => dateStrInTz(tz, new Date(epochMs));
+}
+
 // Shift a YYYY-MM-DD calendar date by N days. Anchored at UTC midnight so it never
 // crosses a DST boundary — pure calendar arithmetic, independent of any timezone.
 // Constructs through Date, and `toISOString` throws on an unparseable input, so the
@@ -225,7 +230,8 @@ const WALL_HHMM = /^(\d{1,2}):(\d{2})$/;
 export function zonedWallTimeToUtc(
   tz: string,
   dateStr: string,
-  hhmm: string
+  hhmm: string,
+  { gap = "back" }: { gap?: "back" | "forward" } = {}
 ): Date | null {
   const m = WALL_HHMM.exec(String(hhmm).trim());
   if (!m) return null;
@@ -235,8 +241,21 @@ export function zonedWallTimeToUtc(
   if (hour > 23 || minute > 59) return null;
   if (!isRealIsoDate(dateStr)) return null;
   const [y, mo, d] = dateStr.split("-").map(Number);
-  const inst = settleWallUtc(Date.UTC(y, mo - 1, d, hour, minute, 0), tz);
-  return Number.isNaN(inst.getTime()) ? null : inst;
+  const naiveUtc = Date.UTC(y, mo - 1, d, hour, minute, 0);
+  const inst = settleWallUtc(naiveUtc, tz);
+  if (Number.isNaN(inst.getTime())) return null;
+  if (gap === "forward") {
+    const wall = zonedDateParts(tz, inst);
+    // A skipped clock settles before the gap by default; use that offset to
+    // move it forward by the gap instead, matching Spaceport shared/zoned.mjs.
+    if (
+      wall.date !== dateStr ||
+      wall.hhmm !== hhmmFromMinutes(hour * 60 + minute)
+    ) {
+      return new Date(naiveUtc - tzOffsetMs(tz, inst));
+    }
+  }
+  return inst;
 }
 
 // How many minutes long a profile-local calendar day actually is in `tz` — 1440 on

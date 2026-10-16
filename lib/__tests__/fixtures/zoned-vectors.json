@@ -1,0 +1,60 @@
+[
+  {
+    "fn": "dayIn",
+    "args": ["America/New_York", 1782613800000],
+    "expected": "2026-06-27"
+  },
+  {
+    "fn": "tzOffsetMs",
+    "args": ["Asia/Kathmandu", "2026-07-15T12:00:00Z"],
+    "expected": 20700000
+  },
+  {
+    "fn": "tzOffsetMs",
+    "args": ["America/New_York", "2026-12-15T12:00:00Z"],
+    "expected": -18000000
+  },
+  {
+    "fn": "zonedDateParts",
+    "args": ["America/New_York", "2026-06-16T04:00:00Z"],
+    "expected": { "date": "2026-06-16", "hhmm": "00:00" }
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["America/New_York", "2027-03-14", "02:30"],
+    "expected": "2027-03-14T06:30:00.000Z"
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["America/New_York", "2027-03-14", "02:30", { "gap": "forward" }],
+    "expected": "2027-03-14T07:30:00.000Z"
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["America/New_York", "2026-11-01", "01:30", { "gap": "forward" }],
+    "expected": "2026-11-01T05:30:00.000Z"
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["Asia/Kathmandu", "2026-07-15", "09:30"],
+    "expected": "2026-07-15T03:45:00.000Z"
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["UTC", "2026-02-30", "09:30"],
+    "expected": null
+  },
+  {
+    "fn": "zonedWallTimeToUtc",
+    "args": ["UTC", "2026-07-15", "2026-07-15T09:30:00Z"],
+    "expected": null
+  },
+  { "fn": "isRealIsoDate", "args": ["2024-02-29"], "expected": true },
+  { "fn": "isRealIsoDate", "args": ["2026-02-29"], "expected": false },
+  {
+    "fn": "shiftDateStr",
+    "args": ["2024-03-01", -1],
+    "expected": "2024-02-29"
+  },
+  { "fn": "hhmmFromMinutes", "args": [-30], "expected": "23:30" }
+]
