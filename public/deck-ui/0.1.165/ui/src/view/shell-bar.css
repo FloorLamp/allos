@@ -1,0 +1,16 @@
+/* The same shell on each backend: one line everywhere. On a phone the places scroll sideways inside the bar, and the needs and
+   sign-in slots stay put at its right, reachable. */
+.ds-bar { background: var(--panel); color: var(--text); border-bottom: 1px solid var(--edge); font: var(--font-sub); }
+.ds-in { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--gap-m); padding: var(--gap-s) var(--gutter); min-width: 0; }
+.ds-bar a { color: var(--soft); text-decoration: none; padding: var(--gap-xs) var(--gap-s); border-radius: var(--chip-radius); white-space: nowrap; }
+.ds-bar a:hover { color: var(--text); background: var(--hover); }
+.ds-bar a[aria-current="page"] { color: var(--accent); background: var(--hover); }
+.ds-brand { flex: none; display: inline-flex; align-items: center; gap: var(--gap-s); font: var(--font-title); }
+.ds-places { display: flex; align-items: center; gap: var(--gap-xs); flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.ds-places::-webkit-scrollbar { display: none; }
+.ds-places a { flex: none; }
+.ds-verdict, .ds-signin, .ds-needs { flex: none; display: flex; align-items: center; gap: var(--gap-s); }
+.ds-count { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: var(--warn); color: var(--on-accent); font: var(--font-chip);
+  font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; margin-right: var(--gap-xs); }
+.ds-needs a { display: inline-flex; align-items: center; }
+@media (max-width: 600px) { .ds-in { gap: var(--gap-s); padding: var(--gap-xs) var(--gap-s); } .ds-needs-label { display: none; } .ds-count { margin-right: 0; } }

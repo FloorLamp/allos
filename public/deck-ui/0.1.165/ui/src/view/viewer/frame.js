@@ -130,7 +130,7 @@ function Frame({v, e, env}) {
       case 'N': case 'Shift+N': return done(step(k === 'N' ? 1 : -1));
       case 'Mod+F': case '/': if (canFind) { done(); setFind(f => f ?? {q: ''}); } return;
       case 'Mod+G': if (ready && e.kind === 'conversation') { done(); setDateOpen(true); } return;
-      case 'Space': return done();
+      case 'Space': if (!ev.repeat && !v.embedded) v.back(); return done();
     }
   }
 

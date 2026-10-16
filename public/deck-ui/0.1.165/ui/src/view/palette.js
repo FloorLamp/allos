@@ -207,7 +207,7 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
   // a native drag session (drag.start) swallows the mouseup: clicks wait until it settles, then the pointer starts afresh
   const dragging = useRef(false);
   const act = {
-    select: id => { if (dragging.current) return; c.select(id); if (box) input.current?.focus({preventScroll: true}); },
+    select: id => { if (dragging.current) return; if (c.people()) c.openRow(id); else c.select(id); if (box) input.current?.focus({preventScroll: true}); },
     open: id => { if (!dragging.current) c.openRow(id); },
     group: id => c.openGroupOf(id),
     chip: (id, i, o) => c.chip(id, i, o),
@@ -257,7 +257,7 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
     if (name === 'FOUND') foundShown = true;
     if (name && name !== section) {
       const more = c.sectionMore(row.kind);
-      out.push(html`<${Label} key=${`label:${name}:${i}`} text=${name === 'FOUND' && c.find.busy ? 'FOUND · searching…' : name}
+      out.push(html`<${Label} key=${`label:${name}:${i}`} text=${name === 'FOUND' && busyFound ? 'FOUND · searching…' : name}
         all=${more ? `All ${more} ›` : null} onAll=${() => c.openGroupOf(row.id)}
         clear=${row.kind === 'recent' && host.caps.recent} onClear=${() => c.clearRecent()} />`);
     }
@@ -275,7 +275,8 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
   const selAt = rows.findIndex(r => r.id === v.selected);
   // the focused row's media beside it (SPEC.md, *Preview*); none while the viewer shows
   const peekPath = !c.viewer && selAt >= 0 ? mediaOf(rows[selAt], host.caps) : null;
-  const bar = c.find.busy || !!c.asking || loading === 'group';
+  const neighbours = [rows[selAt - 1], rows[selAt + 1]].map(r => mediaOf(r, host.caps));
+  const bar = loading === 'found' && !c.find.partial || !!c.asking || loading === 'group';
   // nothing closes on a page without a window (the site): no `Esc Close`
   const hints = hint ? v.hint.filter(([k, l]) => host.caps.window || !(k === 'Esc' && l === 'Close')) : [];
   const said = box ? announcement(c, rows, block) : '';
@@ -299,10 +300,11 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
   const liveEl = box ? html`<div class="dk-sr" id="dp-live" role="status" aria-live="polite" aria-atomic="true">${said}</div>` : null;
   const hintEl = hints.length ? html`<div class="dp-hint" id="dp-hint" data-hint=${JSON.stringify(v.hint)}>${hints.map(([k, label]) => html`<span key=${k}><kbd class="dk-key">${keycap(k, mod)}</kbd> ${label}</span>`)}</div>` : null;
 
-  return html`<div class=${`dp ${layout}${chrome ? ' chrome' : ''}`} ref=${root} onMouseDown=${box ? keepFocus : null} data-query=${st.query} data-selected=${v.selected ?? ''} data-confirm=${st.confirm?.what ?? ''}
+  return html`<div class=${`dp ${layout}${c.people() ? ' people' : ''}${chrome ? ' chrome' : ''}`} ref=${root} onMouseDown=${box ? keepFocus : null} data-query=${st.query} data-selected=${v.selected ?? ''} data-confirm=${st.confirm?.what ?? ''}
     data-answer=${answer ? 'true' : 'false'} data-scope=${v.scope ? JSON.stringify(v.scope) : ''} data-busy=${c.find.busy ? 'true' : 'false'}>
     ${chrome && host?.caps?.window ? html`<${Header} c=${c} mod=${mod} />` : null}
     ${boxEl}
+    ${c.people() ? html`<label class="dp-filters">Relation <select class="dk-field dp-filter" aria-label="Relation filter" value=${c.peopleRelation} onChange=${e => c.relation(e.currentTarget.value)}><option value="">All relations</option>${[...new Set([...c.peopleRelations, c.peopleRelation].filter(Boolean))].map(r => html`<option value=${r}>${r}</option>`)}</select></label>` : null}
     ${c.browsing() && c.facets ? html`<${Filters} c=${c} f=${c.browsing()} />` : null}
     ${layout === 'page' ? hintEl : null}
     ${layout === 'page' ? statusEl : null}
@@ -311,8 +313,9 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
       <p class="dp-asking">Asking…</p></section>` : null}
     ${answer ? html`<${Answer} a=${answer} c=${c} />` : null}
     ${chart?.data?.points?.length ? html`<${Chart} key=${`chart:${top.key}`} data=${chart.data} label=${chart.data.title} onOpen=${ref => c.viewRef(ref)} />` : null}
+    <${Peek} path=${peekPath} neighbours=${neighbours} host=${host} onOpen=${() => selAt >= 0 && act.open(rows[selAt].id)} />
     <div class=${`dp-rows ${slide.current ? `slide-${slide.current}` : ''}`} key=${`list:${top?.key ?? ''}`} id="dp-list" role="listbox" aria-label=${top ? top.title : 'Results'}
-      ref=${list}>${out}<${Peek} path=${peekPath} host=${host} list=${list} rowsKey=${rows.map(r => r.id).join('\n')} onOpen=${() => selAt >= 0 && act.open(rows[selAt].id)} /></div>
+      ref=${list}>${out}</div>
     ${block ? html`<${Block} b=${block} live=${!box} onAction=${() => c.blockAction()} />` : null}
     ${chrome && c.commandsBar() ? html`<${Commands} c=${c} mod=${mod} held=${held} />` : null}
     ${layout === 'panel' ? statusEl : null}
@@ -322,35 +325,31 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
   </div>`;
 }
 
-/** The focused row's preview (SPEC.md, *Preview*): its media in a card over the list's right side, under the row (above it when the
- *  list's view has no room below), so no row moves; a list too short for it keeps room under its rows for as long as it shows the same
- *  rows (the panel grows once, never back and forth). Loads after the selection rests (peek.js `peeker`), a stale one dropped; a click
- *  is Enter on the row. */
-function Peek({path, host, list, rowsKey, onOpen}) {
-  const [shown, setShown] = useState(null);
-  const card = useRef(null), loads = useRef(null), room = useRef({key: null, px: 0});
-  loads.current ??= peeker({resource: p => host.resource(p), load: loadImage, onShow: setShown});
+/** A shell draws the preview in a separate non-activating window; other hosts keep it above the list. */
+function Peek({path, neighbours, host, onOpen}) {
+  const [shown, setShown] = useState(null), [outside, setOutside] = useState(null);
+  const loads = useRef(null), serial = useRef(0), current = useRef(path), adjacent = useRef(neighbours);
+  current.current = path;
+  adjacent.current = neighbours.filter(Boolean);
+  loads.current ??= peeker({resource: p => host.resource(p), load: loadImage, onShow: picture => {
+    setShown(picture);
+    const n = ++serial.current;
+    setOutside(null);
+    if (host.caps.window) host.call('window.preview', {path: picture?.path ?? null, neighbours: picture ? adjacent.current : []}).then(ok => {
+      if (serial.current === n) setOutside(ok === true);
+    }, () => { if (serial.current === n) setOutside(false); });
+  }});
   useEffect(() => { loads.current.want(path); }, [path]);
-  useEffect(() => () => loads.current.stop(), []);
-  useLayoutEffect(() => {
-    const box = list.current, el = card.current;
-    if (!box) return;
-    if (room.current.key !== rowsKey) room.current = {key: rowsKey, px: 0};
-    const sel = el && box.querySelector('.dp-row.sel');
-    if (sel) {
-      const gap = 4, h = el.offsetHeight, top = sel.offsetTop, bottom = top + sel.offsetHeight, from = box.scrollTop, to = from + box.clientHeight;
-      let at = bottom + gap;
-      if (at + h > to) {
-        if (top - gap - h >= from) at = top - gap - h;
-        else room.current.px = Math.max(room.current.px, at + h + 2 * gap);
-      }
-      el.style.top = `${at}px`;
-    }
-    box.style.minHeight = room.current.px ? `${room.current.px}px` : '';
-  });
-  if (!shown || shown.path !== path) return null;
-  const ratio = shown.w && shown.h ? `${shown.w} / ${shown.h}` : '4 / 3';
-  return html`<div class="dp-peek" ref=${card} aria-hidden="true" data-path=${shown.path} style=${`aspect-ratio:${ratio}`} onClick=${onOpen}>
+  useEffect(() => {
+    if (shown?.path === path) loads.current.prefetch(neighbours);
+  }, [shown, path, neighbours.join('|')]);
+  useEffect(() => {
+    const hide = () => { loads.current.want(null); };
+    const offHide = host.on('hide', hide), offShow = host.on('show', () => loads.current.want(current.current));
+    return () => { offHide(); offShow(); hide(); loads.current.stop(); };
+  }, [host]);
+  if (!shown || shown.path !== path || (host.caps.window && outside !== false)) return null;
+  return html`<div class="dp-peek" aria-hidden="true" data-path=${shown.path} onClick=${onOpen}>
     <img src=${shown.url} alt="" draggable="false" /></div>`;
 }
 

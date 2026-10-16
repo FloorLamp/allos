@@ -121,7 +121,7 @@ export function createHouse(host, {clock = Date.now, admin = false, chart, confi
     },
     confirmed() { const c = h.confirm; h.confirm = null; changed(); return c ? run(c) : null; },
     cancel() { if (h.confirm) { h.confirm = null; changed(); } },
-    /** A need's `op` action (BACKEND.md *Needs*), run by Habitat. */
+    /** A need's `op` action (backend/README.md *Needs*), run by Habitat. */
     async need(id) {
       try {
         const r = await host.call('habitat.need', {body: {id}});
