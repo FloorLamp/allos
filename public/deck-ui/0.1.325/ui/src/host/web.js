@@ -50,6 +50,8 @@ export const ROUTES = {
   'bridge.pages': a => ['GET', `/api${docPath(a)}/pages${qs({q: a.q})}`],
   'bridge.conversation': a => ['GET', `/api/doc/${a.id}/conversation${qs({cursor: a.cursor, dir: a.dir})}`],
   'bridge.related': a => ['GET', `/api/related/${a.id}${qs({kinds: a.kinds, limit: a.limit})}`],
+  'bridge.clusters': a => ['GET', `/api/clusters${qs({all: a.all ? 1 : undefined})}`],
+  'bridge.clusterEdit': a => { const {id, action, ...body} = a; return ['POST', `/api/cluster/${encodeURIComponent(id)}/${action}`, body]; },
   'bridge.cluster': a => ['GET', `/api/cluster/${encodeURIComponent(a.id)}`],
   'bridge.day': a => ['GET', `/api/day/${encodeURIComponent(a.date)}`],
   'bridge.subject': a => ['GET', `/api/subject${qs({name: a.name})}`],
@@ -197,7 +199,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
     },
     /** The registry's backend names (the nav this host can offer). */
     backends: Object.keys(backends),
-    caps: {recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false, money: true},
+    caps: {projects: true, recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false, money: true},
     async call(op, args = {}, {signal} = {}) {
       if (signal?.aborted) throw new HostError('cancelled');
       if (op.startsWith('money.')) {
