@@ -3,14 +3,16 @@
 The owner's todos and the fleet's work, from [flightplan](../../../flightplan/CONTRACT.md) through the backend registry
 (`deck/backends/flightplan.json`; [Backends](backends.md)). Flightplan in the nav is its own page, `/flightplan`
 (`mountCollectionPage`: the page's shell bar, no palette or found rows; the collection routes in [README](../README.md)); the nav's
-Needs opens `/flightplan#needs`, which scrolls to Needs you; `#board` opens the Board. `?q=flightplan` (also `todos`) still draws it in the palette.
+Needs opens `/flightplan#needs`, which scrolls to Needs you; `#board` opens the Board; `/flightplan?epic=<id>#board` filters it to that epic. `?q=flightplan` (also `todos`) still draws it in the palette.
 `mountFlightplan(el, host, {brand?, nav?, current?, tab?, clock?})` draws it into any element and returns
 `{flightplan, refresh(), unmount()}`; its layout is its own, whatever page or panel mounts it. Fetched on open and on `refresh()`; no timer.
 
 | Op | Route | Scope |
 | --- | --- | --- |
 | `flightplan.today`, `.upcoming` (`{query: {days: 14}}`), `.needs-you`, `.lists`; the views `{query: {repo}}` | `GET /v1/today`, `/v1/upcoming`, `/v1/needs-you`, `/v1/lists` | `flightplan:read` |
+| `flightplan.projects` (`{query: {repo}}`): each active project's status (flightplan CONTRACT.md *Projects*) | `GET /v1/projects` | `flightplan:read` |
 | `flightplan.items` (`{query: {list, status, kind, repo, q, updatedSince, limit, cursor}}`) | `GET /v1/items` | `flightplan:read` |
+| `flightplan.timeline` (`{query: {id}}`) | `GET /v1/items/{id}/timeline` | `flightplan:read` |
 | `flightplan.events` (`{query: {id}}`) | `GET /v1/items/{id}/events` | `flightplan:read` |
 | `flightplan.needs` | `GET /v1/needs` (flightplan's own, in the Needs you row) | `flightplan:read` |
 | `flightplan.parse` (`{body: {text}}`) | `POST /v1/parse` (a read; typing is its gesture) | `flightplan:read` |
@@ -66,11 +68,11 @@ other work (a `repo`) are the Board's.
 ## Board view
 
 Work: items with a `repo` (`repo=any`; an imported issue waiting on the owner in Needs you) and every `kind=epic` item (open and done).
-On a desktop it fits the window and each column scrolls inside itself. Columns left to right: Needs you, Stuck, In progress (in full),
-Ready and Backlog (their top 5 by priority, then *Show all N*), Done (its count until *Show N done*). Epics: done of total over their tasks (`parent`), a status bar whose
+On a desktop the page scrolls past the epics; only the columns fit the remaining viewport, growing to fill it below the shell bar. Each column scrolls inside itself. Columns left to right: Needs you, Stuck, In progress (in full),
+Ready and Backlog (their top 5 by priority, then *Show all N*), Done (its count until *Show N done*). Epics: open ones in at most two rows, with *Show all N epics*. Done epics and epics whose parts are all done are behind one *N done* toggle. Unsplit epics say *Not split yet*. Others show done of total over their tasks (`parent`), a status bar whose
 segments filter to the epic and pick that column on a phone, what is stuck, needs you or in progress; a click on its title filters
 to it. Area chips. The six columns one at a time below 1100 px or without a mouse (Needs you first); a drag between them on a desktop. Cards: the reference (the issue link, else the `github:` key, else `#id`), the epic's short name while no epic
-filters, the title, and at most one chip: why it is stuck, else an open blocker, else its PR. A card opens the drawer: a status select, its facts and links, its history
+filters, the title, and at most one chip: why it is stuck (latest timeline detail, else “stuck”; never the issue body), else an open blocker, else its PR. A card opens the drawer: a status select, its facts and links, its history
 (`/v1/items/<id>/events`). A move is the owner's (`PATCH {status}`), which flightplan keeps over a rule's.
 
 ## In the palette's find

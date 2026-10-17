@@ -445,6 +445,9 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
       try {
         const status = [...OPEN, 'done'].join(',');
         const [epics, work] = await Promise.all([all({kind: 'epic', status}), all({repo: 'any', status})]);
+        await Promise.all(work.filter(t => t.status === 'stuck').map(async t => {
+          try { t.timeline = (await call('timeline', id(t)))?.timeline ?? []; } catch { t.timeline = []; }
+        }));
         if (stopped || gen !== boardGen) return;
         fp.board = {epics, tasks: work.filter(t => t.kind !== 'epic'), loading: false, loaded: true, error: null};
       } catch (e) {
@@ -474,7 +477,7 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     toggleColumn(k) { if (fp.expanded.has(k)) fp.expanded.delete(k); else fp.expanded.add(k); changed(); },
     /** A card's one chip, if any: why it is stuck, else an open blocker, else its PR. */
     chips(task) {
-      if (task.status === 'stuck') return [{kind: 'stuck', text: oneLine(task.notes, 100) || 'stuck'}];
+      if (task.status === 'stuck') return [{kind: 'stuck', text: oneLine(task.timeline?.filter(e => e.detail).sort((a, b) => b.at.localeCompare(a.at))[0]?.detail, 100) || 'stuck'}];
       const byId = new Map(fp.board.tasks.map(t => [t.id, t]));
       const b = (task.blockedBy ?? []).find(id => byId.get(id)?.status !== 'done');
       if (b != null) return [{kind: 'blocked', text: `blocked by ${byId.get(b) ? refOf(byId.get(b)) : `#${b}`}`}];

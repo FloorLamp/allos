@@ -90,6 +90,11 @@ export const backendDefinitions = {
         "path": "/v1/needs-you",
         "scope": "flightplan:read"
       },
+      "projects": {
+        "method": "GET",
+        "path": "/v1/projects",
+        "scope": "flightplan:read"
+      },
       "items": {
         "method": "GET",
         "path": "/v1/items",
@@ -98,6 +103,11 @@ export const backendDefinitions = {
       "lists": {
         "method": "GET",
         "path": "/v1/lists",
+        "scope": "flightplan:read"
+      },
+      "timeline": {
+        "method": "GET",
+        "path": "/v1/items/{id}/timeline",
         "scope": "flightplan:read"
       },
       "events": {

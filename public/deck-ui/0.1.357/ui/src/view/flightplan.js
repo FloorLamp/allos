@@ -157,41 +157,66 @@ function Epic({fp, e}) {
   const attention = ATTENTION.filter(([k]) => e.counts[k]);
   return html`<div class=${`df-epic${on ? ' on' : ''}`} data-epic=${e.epic.id}>
     <button type="button" class="df-epic-t" aria-pressed=${String(on)} onClick=${() => fp.setEpic(e.epic.id)}><b>${e.epic.title}</b><span class="df-ref">${e.ref}</span></button>
-    <div class="df-frac">${e.done} of ${e.total} done <span>· ${pct}%</span></div>
+    ${!e.total ? html`<div class="df-legend">Not split yet</div>` : html`<div class="df-frac">${e.done} of ${e.total} done <span>· ${pct}%</span></div>
     <div class="df-seg" role="group" aria-label=${`${e.epic.title} by status`}>${STATUSES.slice().reverse().filter(s => e.counts[s.k]).map(s => html`
       <button type="button" class=${`dot-${s.tone}`} style=${`flex-grow:${e.counts[s.k]}`} title=${`${s.label}: ${e.counts[s.k]}`} aria-label=${`${s.label}: ${e.counts[s.k]}`}
         onClick=${() => fp.setEpic(e.epic.id, s.k)}></button>`)}</div>
-    <div class="df-legend">${attention.length ? attention.map(([k, tone, label]) => html`<span><span class=${`dp-dot dot-${tone}`} aria-hidden="true"></span>${e.counts[k]} ${label}</span>`) : html`<span>Nothing in flight</span>`}</div>
+    <div class="df-legend">${attention.length ? attention.map(([k, tone, label]) => html`<span><span class=${`dp-dot dot-${tone}`} aria-hidden="true"></span>${e.counts[k]} ${label}</span>`) : html`<span>Nothing in flight</span>`}</div>`}
   </div>`;
 }
 
-/** The board fits the window below where it starts, whatever mounts it: its top as `--df-top` (its columns scroll inside). */
+/** Only the columns fit the viewport below the shell bar; epics remain in document flow. */
 function useFit() {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
-    const fit = () => el.style.setProperty('--df-top', `${Math.round(el.getBoundingClientRect().top + globalThis.scrollY)}px`);
+    const fit = () => {
+      const bar = document.querySelector('.ds-bar');
+      const barHeight = Math.max(0, bar?.getBoundingClientRect().height ?? 0);
+      const top = Math.max(barHeight, el.getBoundingClientRect().top);
+      el.style.setProperty('--df-bar', `${barHeight}px`);
+      el.style.scrollMarginTop = `${barHeight}px`;
+      el.style.setProperty('--df-top', `${Math.max(0, Math.round(top))}px`);
+    };
     fit();
     globalThis.addEventListener('resize', fit);
-    return () => globalThis.removeEventListener('resize', fit);
+    globalThis.addEventListener('scroll', fit, {passive: true});
+    return () => { globalThis.removeEventListener('resize', fit); globalThis.removeEventListener('scroll', fit); };
   });
   return ref;
 }
 
 function Board({fp, host, wide}) {
   const b = fp.board, fit = useFit();
+  const [allEpics, setAllEpics] = useState(false), [doneEpics, setDoneEpics] = useState(false);
+  const [epicLimit, setEpicLimit] = useState(10);
+  useEffect(() => {
+    const el = fit.current;
+    if (!el) return undefined;
+    const measure = () => setEpicLimit(Math.max(1, Math.floor((el.clientWidth + 10) / 250)) * 2);
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    measure();
+    return () => observer.disconnect();
+  }, [b.loaded]);
   if (b.error) return html`<${Failure} backend="flightplan" error=${b.error} retry=${() => fp.refreshBoard()} host=${host} />`;
   if (b.loading && !b.loaded) return html`<div aria-busy="true" class="dp-rows"><${Placeholders} n=${4} /></div>`;
-  const cols = fp.columns(), epics = fp.epics();
+  const cols = fp.columns(), progress = fp.epics();
+  const complete = e => e.epic.status === 'done' || e.total > 0 && e.done === e.total;
+  const finished = progress.filter(complete), epics = progress.filter(e => !complete(e) || doneEpics);
   const drop = k => ev => { ev.preventDefault(); fp.setOver(null); const t = b.tasks.find(x => String(x.id) === ev.dataTransfer.getData('text/plain')); fp.move(t, k); };
-  return html`<div class="df-board" ref=${fit}>
+  return html`<div class="df-board">
     <div class="df-board-h"><h2 class="dk-sr">Board</h2><div class="df-filters" role="group" aria-label="Area">${fp.areas().map(a => html`<button type="button" key=${a}
       class=${`dk-chip${fp.area === a ? ' on' : ''}`} aria-pressed=${String(fp.area === a)} onClick=${() => fp.setArea(a)}><span>${a}</span></button>`)}</div></div>
-    ${epics.length ? html`<div class="df-epics">${epics.map(e => html`<${Epic} key=${e.epic.id} fp=${fp} e=${e} />`)}</div>` : null}
+    ${epics.length ? html`<div class="df-epics">${(allEpics ? epics : epics.slice(0, epicLimit)).map(e => html`<${Epic} key=${e.epic.id} fp=${fp} e=${e} />`)}</div>` : null}
+    <div class="df-epic-controls">
+      ${epics.length > epicLimit ? html`<button type="button" class="dk-btn text" aria-expanded=${String(allEpics)} onClick=${() => setAllEpics(!allEpics)}>${allEpics ? 'Show fewer epics' : `Show all ${epics.length} epics`}</button>` : null}
+      ${finished.length ? html`<button type="button" class="dk-btn text" aria-expanded=${String(doneEpics)} onClick=${() => { setDoneEpics(!doneEpics); setAllEpics(true); }}>${finished.length} done</button>` : null}
+    </div>
     <div class="df-colpick" role="group" aria-label="Column">${cols.map(c => html`<button type="button" key=${c.k} class=${`dk-chip${fp.column === c.k ? ' on' : ''}`}
       aria-pressed=${String(fp.column === c.k)} onClick=${() => fp.setColumn(c.k)}><span class=${`dp-dot dot-${c.tone}`} aria-hidden="true"></span><span>${c.label}</span><span class="df-n">${c.all.length}</span></button>`)}</div>
-    <div class="df-cols">${cols.map(c => html`<div key=${c.k} class=${`df-bcol${fp.column === c.k ? ' shown' : ''}${fp.over === c.k ? ' over' : ''}`} data-status=${c.k} aria-label=${c.label}
+    <div class="df-cols" ref=${fit}>${cols.map(c => html`<div key=${c.k} class=${`df-bcol${fp.column === c.k ? ' shown' : ''}${fp.over === c.k ? ' over' : ''}`} data-status=${c.k} aria-label=${c.label}
       onDragOver=${wide ? ev => { ev.preventDefault(); fp.setOver(c.k); } : null} onDragLeave=${wide ? ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) fp.setOver(null); } : null} onDrop=${wide ? drop(c.k) : null}>
       <div class="df-bcol-h"><span class=${`dp-dot dot-${c.tone}`} aria-hidden="true"></span><span class="dk-label">${c.label}</span><span class="df-n">${c.all.length}</span></div>
       <div class="df-bcards">${c.cards.map(t => html`<${Card} key=${t.id} fp=${fp} task=${t} draggable=${wide} />`)}
