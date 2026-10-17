@@ -157,41 +157,66 @@ function Epic({fp, e}) {
   const attention = ATTENTION.filter(([k]) => e.counts[k]);
   return html`<div class=${`df-epic${on ? ' on' : ''}`} data-epic=${e.epic.id}>
     <button type="button" class="df-epic-t" aria-pressed=${String(on)} onClick=${() => fp.setEpic(e.epic.id)}><b>${e.epic.title}</b><span class="df-ref">${e.ref}</span></button>
-    <div class="df-frac">${e.done} of ${e.total} done <span>· ${pct}%</span></div>
+    ${!e.total ? html`<div class="df-legend">Not split yet</div>` : html`<div class="df-frac">${e.done} of ${e.total} done <span>· ${pct}%</span></div>
     <div class="df-seg" role="group" aria-label=${`${e.epic.title} by status`}>${STATUSES.slice().reverse().filter(s => e.counts[s.k]).map(s => html`
       <button type="button" class=${`dot-${s.tone}`} style=${`flex-grow:${e.counts[s.k]}`} title=${`${s.label}: ${e.counts[s.k]}`} aria-label=${`${s.label}: ${e.counts[s.k]}`}
         onClick=${() => fp.setEpic(e.epic.id, s.k)}></button>`)}</div>
-    <div class="df-legend">${attention.length ? attention.map(([k, tone, label]) => html`<span><span class=${`dp-dot dot-${tone}`} aria-hidden="true"></span>${e.counts[k]} ${label}</span>`) : html`<span>Nothing in flight</span>`}</div>
+    <div class="df-legend">${attention.length ? attention.map(([k, tone, label]) => html`<span><span class=${`dp-dot dot-${tone}`} aria-hidden="true"></span>${e.counts[k]} ${label}</span>`) : html`<span>Nothing in flight</span>`}</div>`}
   </div>`;
 }
 
-/** The board fits the window below where it starts, whatever mounts it: its top as `--df-top` (its columns scroll inside). */
+/** Only the columns fit the viewport below the shell bar; epics remain in document flow. */
 function useFit() {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
-    const fit = () => el.style.setProperty('--df-top', `${Math.round(el.getBoundingClientRect().top + globalThis.scrollY)}px`);
+    const fit = () => {
+      const bar = document.querySelector('.ds-bar');
+      const barHeight = Math.max(0, bar?.getBoundingClientRect().height ?? 0);
+      const top = Math.max(barHeight, el.getBoundingClientRect().top);
+      el.style.setProperty('--df-bar', `${barHeight}px`);
+      el.style.scrollMarginTop = `${barHeight}px`;
+      el.style.setProperty('--df-top', `${Math.max(0, Math.round(top))}px`);
+    };
     fit();
     globalThis.addEventListener('resize', fit);
-    return () => globalThis.removeEventListener('resize', fit);
+    globalThis.addEventListener('scroll', fit, {passive: true});
+    return () => { globalThis.removeEventListener('resize', fit); globalThis.removeEventListener('scroll', fit); };
   });
   return ref;
 }
 
 function Board({fp, host, wide}) {
   const b = fp.board, fit = useFit();
+  const [allEpics, setAllEpics] = useState(false), [doneEpics, setDoneEpics] = useState(false);
+  const [epicLimit, setEpicLimit] = useState(10);
+  useEffect(() => {
+    const el = fit.current;
+    if (!el) return undefined;
+    const measure = () => setEpicLimit(Math.max(1, Math.floor((el.clientWidth + 10) / 250)) * 2);
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    measure();
+    return () => observer.disconnect();
+  }, [b.loaded]);
   if (b.error) return html`<${Failure} backend="flightplan" error=${b.error} retry=${() => fp.refreshBoard()} host=${host} />`;
   if (b.loading && !b.loaded) return html`<div aria-busy="true" class="dp-rows"><${Placeholders} n=${4} /></div>`;
-  const cols = fp.columns(), epics = fp.epics();
+  const cols = fp.columns(), progress = fp.epics();
+  const complete = e => e.epic.status === 'done' || e.total > 0 && e.done === e.total;
+  const finished = progress.filter(complete), epics = progress.filter(e => !complete(e) || doneEpics);
   const drop = k => ev => { ev.preventDefault(); fp.setOver(null); const t = b.tasks.find(x => String(x.id) === ev.dataTransfer.getData('text/plain')); fp.move(t, k); };
-  return html`<div class="df-board" ref=${fit}>
+  return html`<div class="df-board">
     <div class="df-board-h"><h2 class="dk-sr">Board</h2><div class="df-filters" role="group" aria-label="Area">${fp.areas().map(a => html`<button type="button" key=${a}
       class=${`dk-chip${fp.area === a ? ' on' : ''}`} aria-pressed=${String(fp.area === a)} onClick=${() => fp.setArea(a)}><span>${a}</span></button>`)}</div></div>
-    ${epics.length ? html`<div class="df-epics">${epics.map(e => html`<${Epic} key=${e.epic.id} fp=${fp} e=${e} />`)}</div>` : null}
+    ${epics.length ? html`<div class="df-epics">${(allEpics ? epics : epics.slice(0, epicLimit)).map(e => html`<${Epic} key=${e.epic.id} fp=${fp} e=${e} />`)}</div>` : null}
+    <div class="df-epic-controls">
+      ${epics.length > epicLimit ? html`<button type="button" class="dk-btn text" aria-expanded=${String(allEpics)} onClick=${() => setAllEpics(!allEpics)}>${allEpics ? 'Show fewer epics' : `Show all ${epics.length} epics`}</button>` : null}
+      ${finished.length ? html`<button type="button" class="dk-btn text" aria-expanded=${String(doneEpics)} onClick=${() => { setDoneEpics(!doneEpics); setAllEpics(true); }}>${finished.length} done</button>` : null}
+    </div>
     <div class="df-colpick" role="group" aria-label="Column">${cols.map(c => html`<button type="button" key=${c.k} class=${`dk-chip${fp.column === c.k ? ' on' : ''}`}
       aria-pressed=${String(fp.column === c.k)} onClick=${() => fp.setColumn(c.k)}><span class=${`dp-dot dot-${c.tone}`} aria-hidden="true"></span><span>${c.label}</span><span class="df-n">${c.all.length}</span></button>`)}</div>
-    <div class="df-cols">${cols.map(c => html`<div key=${c.k} class=${`df-bcol${fp.column === c.k ? ' shown' : ''}${fp.over === c.k ? ' over' : ''}`} data-status=${c.k} aria-label=${c.label}
+    <div class="df-cols" ref=${fit}>${cols.map(c => html`<div key=${c.k} class=${`df-bcol${fp.column === c.k ? ' shown' : ''}${fp.over === c.k ? ' over' : ''}`} data-status=${c.k} aria-label=${c.label}
       onDragOver=${wide ? ev => { ev.preventDefault(); fp.setOver(c.k); } : null} onDragLeave=${wide ? ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) fp.setOver(null); } : null} onDrop=${wide ? drop(c.k) : null}>
       <div class="df-bcol-h"><span class=${`dp-dot dot-${c.tone}`} aria-hidden="true"></span><span class="dk-label">${c.label}</span><span class="df-n">${c.all.length}</span></div>
       <div class="df-bcards">${c.cards.map(t => html`<${Card} key=${t.id} fp=${fp} task=${t} draggable=${wide} />`)}
@@ -202,37 +227,52 @@ function Board({fp, host, wide}) {
   </div>`;
 }
 
-/** An item's notes in the drawer: clamped to a few lines, More shows the rest. */
-function Notes({text, label}) {
-  const [all, setAll] = useState(false), long = text.length > 280 || text.split('\n').length > 5;
-  useEffect(() => setAll(false), [text]);
+/** Full notes, retaining newlines and linking repository file references. */
+function Notes({text, label, repo, host}) {
+  const parts = text.split(/((?:[\w.-]+\/)*[\w.-]+\.[\w]+:\d+)/g);
   return html`<section class="df-notes" aria-label=${label}><h3 class="dk-label">${label}</h3>
-    <p class=${`df-notes-t${long && !all ? ' clamp' : ''}`}>${text}</p>
-    ${long ? html`<button type="button" class="dk-btn text df-more" aria-expanded=${String(all)} onClick=${() => setAll(!all)}>${all ? 'Less' : 'More'}</button>` : null}</section>`;
+    <p class="df-notes-t">${parts.map(part => {
+      const m = /^((?:[\w.-]+\/)*[\w.-]+\.[\w]+):(\d+)$/.exec(part);
+      const url = m && repo ? `https://github.com/${repo}/blob/main/${m[1]}#L${m[2]}` : null;
+      return url ? html`<a href=${url} onClick=${open(host, url)}>${part}</a>` : part;
+    })}</p></section>`;
 }
+const relative = iso => {
+  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
+  return minutes < 1 ? 'Just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
+};
+const itemLink = l => l.url ?? (l.type === 'pr' ? prUrl(l) : l.type === 'issue' ? refUrl({links: [l]}) : l.type === 'sortie' ? `https://sortie.wang.team/v1/jobs/${l.ref.replace(/^sortie:/, '')}` : null);
 
 function Detail({fp, host}) {
-  const d = fp.drawer, t = d?.item, epic = t ? fp.epicOf(t) : null, ref = t ? refUrl(t) : null;
+  const d = fp.drawer, t = d?.item, epic = t ? fp.epicOf(t) : null;
   const link = (url, text) => url ? html`<a href=${url} onClick=${open(host, url)}>${text}</a>` : text;
   const byId = new Map(fp.board.tasks.map(x => [x.id, x]));
-  return html`<${Drawer} open=${!!t} title=${t?.title ?? ''} sub=${t ? `${refOf(t)} · ${statusLabel(t.status)}` : null} onClose=${() => fp.close()} label=${t?.title ?? 'Item'}>
+  return html`<${Drawer} open=${!!t} title=${t ? html`<span class="df-detail-title" title=${t.title}>${t.title}</span>` : ''} sub=${t ? `${refOf(t)} · ${statusLabel(t.status)}` : null} onClose=${() => fp.close()} label=${t?.title ?? 'Item'}>
     ${t ? html`<div class="df-detail">
+      <div class="df-detail-actions">
+        <button class="dk-btn" type="button" onClick=${() => fp.done(t)}>Done</button>
+        <button class="dk-btn df-snz" type="button" onClick=${() => fp.openSnooze(t)}>Snooze</button>
+        ${fp.snoozing === t.id ? html`<${SnoozeMenu} fp=${fp} item=${t} clock=${Date.now} />` : null}
+        ${(t.links ?? []).filter(l => ['pr', 'issue'].includes(l.type)).map(l => link(itemLink(l), `Open ${l.type === 'pr' ? 'PR' : 'issue'}`))}
+        <button class="dk-btn" type="button" onClick=${() => fp.copy(t)}>Copy flightplan show ${t.id}</button>
+      </div>
+      ${[['Priority', 'priority', ['', 'None'], ...['P0', 'P1', 'P2', 'P3'].map(p => [p, p])],
+         ['List', 'list', ...fp.lists.map(l => [l.slug, l.title])]].map(([label, field, ...choices]) => html`<label class="df-field"><span>${label}</span><select class="dk-field" aria-label=${label} value=${t[field] ?? ''} onChange=${ev => fp.edit(t, {[field]: ev.currentTarget.value || null})}>${choices.map(([value, text]) => html`<option value=${value} selected=${value === (t[field] ?? '')}>${text}</option>`)}</select></label>`)}
       <label class="df-field"><span>Status</span><select class="dk-field" aria-label="Status" value=${t.status} onChange=${ev => fp.move(t, ev.currentTarget.value)}>
         ${STATUSES.map(s => html`<option value=${s.k} selected=${s.k === t.status}>${s.label}</option>`)}</select></label>
       <${Facts} facts=${[
         ...(t.due ? [{label: 'Due', value: dueText(t.due, fp.date)}] : []),
         ...(t.repeat ? [{label: 'Repeats', value: describeRepeat(t.repeat)}] : []),
-        ...(t.priority ? [{label: 'Priority', value: t.priority}] : []),
-        ...(t.list ? [{label: 'List', value: fp.lists.find(l => l.slug === t.list)?.title ?? t.list}] : []),
-        ...(epic ? [{label: 'Epic', value: `${epic.title} · ${refOf(epic)}`}] : []),
+        {label: 'Kind', value: t.kind},
+        ...['createdAt', 'updatedAt'].filter(k => t[k]).map(k => ({label: k === 'createdAt' ? 'Created' : 'Updated', value: html`<span title=${whenText(t[k])}>${relative(t[k])}</span>`})),
+        ...(epic ? [{label: 'Epic', value: html`<button type="button" class="dk-btn text" onClick=${() => fp.open(epic)}>${epic.title} · ${refOf(epic)}</button>`}] : []),
         ...(t.area ? [{label: 'Area', value: t.area}] : []),
         ...(t.repo ? [{label: 'Repo', value: t.repo}] : []),
         ...(t.labels?.length ? [{label: 'Labels', value: t.labels.join(', ')}] : []),
-        ...(ref ? [{label: 'Link', value: link(ref, refOf(t))}] : []),
-        ...(t.links ?? []).filter(l => l.type === 'pr').map(l => ({label: 'PR', value: link(prUrl(l), l.ref)})),
+        ...(t.links ?? []).map(l => ({label: l.type === 'pr' ? 'PR' : l.type === 'sortie' ? 'Agent session' : l.type, value: link(itemLink(l), `${l.ref}${l.type === 'pr' ? ` · ${l.state ?? 'state unavailable'}` : ''}`)})),
         ...(t.blockedBy ?? []).map(b => ({label: 'Blocked by', value: byId.get(b) ? `${refOf(byId.get(b))} (${byId.get(b).status === 'done' ? 'done' : 'open'})` : `#${b}`})),
       ]} />
-      ${t.notes ? html`<${Notes} text=${t.notes} label=${t.status === 'stuck' ? 'Why stuck' : t.status === 'needs-you' ? 'What to do' : 'Notes'} />` : null}
+      ${t.notes ? html`<${Notes} repo=${t.repo} host=${host} text=${t.notes} label=${t.status === 'stuck' ? 'Why stuck' : t.status === 'needs-you' ? 'What to do' : 'Notes'} />` : null}
       <h3 class="dk-label df-hist">History</h3>
       ${d.error ? html`<${Failure} backend="flightplan" error=${d.error} retry=${() => fp.open(t)} host=${host} />`
         : !d.events ? html`<p class="df-muted" role="status">Loading history…</p>`
