@@ -25,14 +25,14 @@ export function hostError(e) {
   return new HostError('unreachable', String(e?.message ?? e));
 }
 
-/** `projects` enables the owner web-session Clusters list and edits; native hosts leave it off.
+/** `clusters` enables the owner web-session Clusters list and edits; native hosts leave it off.
  * Caps (contract/README.md); `browse` is the site's filtered browse (bridge.facets, bridge.browse), `usage` a series' chart (bridge.usage),
  *  `corrections` the owner's corrections in the document pane (bridge.correct, bridge.matches), `texts` the Texts list (bridge.texts,
  *  bridge.textsPages, bridge.textsConversation) and `needs` what only the owner can fix (bridge.needs, bridge.need), each off on the
  *  shells unless env.get says; `money` is Purser’s read-only Money surface, also off until env.get enables it; the site supports `texts`. `codes` is the desktops' one-time codes (codes.list, codes.copy; SPEC.md
  *  *Codes*): never the site's. */
-export const CAPS = ['projects', 'recent', 'transfers', 'actions', 'clipboard', 'files', 'drag', 'menus', 'window', 'telemetry', 'picks', 'browse', 'usage', 'corrections', 'texts', 'needs', 'codes', 'money'];
-export const SITE_CAPS = ['projects', 'browse', 'usage', 'corrections', 'texts', 'needs', 'money'];
+export const CAPS = ['clusters', 'recent', 'transfers', 'actions', 'clipboard', 'files', 'drag', 'menus', 'window', 'telemetry', 'picks', 'browse', 'usage', 'corrections', 'texts', 'needs', 'codes', 'money'];
+export const SITE_CAPS = ['clusters', 'browse', 'usage', 'corrections', 'texts', 'needs', 'money'];
 
 /** Telemetry names a host forwards (beacon CONTRACT.md, *App telemetry*); never a query, value or title. */
 export const TELEMETRY = ['palette_open', 'find', 'ask', 'find_file', 'view', 'related', 'group', 'transfer'];
