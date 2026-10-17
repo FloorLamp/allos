@@ -4,9 +4,22 @@
 // The shell validates every call against contract/host-contract.json; the token never reaches this side.
 import {CAPS, SITE_CAPS, HOST_API, HostError, emitter, resourcePath} from './host.js';
 
+/** Full-page controls need the same gesture notes as the palette, before their handlers run. */
+export function pageInput(host, win = globalThis) {
+  for (const [event, kind] of [['keydown', 'key'], ['pointerdown', 'pointer']]) {
+    win.addEventListener(event, ev => {
+      if (ev.isTrusted) host.note('ui.input', {at: Math.round(performance.timeOrigin + ev.timeStamp), kind});
+    }, true);
+  }
+}
+
 /** The native channel: Windows `chrome.webview` (postMessage, message events), the Mac `webkit.messageHandlers.deck` (a reply per
  *  message: WKScriptMessageHandlerWithReply; events through `deckHost.receive`, called by callAsyncJavaScript). Else null. */
 export function nativeChannel(win = globalThis) {
+  if (win.deckAndroid) return {
+    platform: 'android', send: msg => { win.deckAndroid.postMessage(msg); return null; },
+    listen: fn => win.deckAndroid.addEventListener('message', e => fn(e.data)),
+  };
   const wv = win.chrome?.webview;
   if (wv) {
     return {

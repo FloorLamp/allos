@@ -14,6 +14,13 @@ const docPath = a => `/doc/${a.id}${a.message != null ? `/message/${encodeURICom
 
 /** Each bridge op as [method, path, body?] on the site (bridge's test checks every one has an /api route). */
 export const ROUTES = {
+  'bridge.attention': a => ['GET', '/api/attention'],
+  'bridge.gaps': a => ['GET', '/api/gaps'],
+  'bridge.ignored': a => ['GET', '/api/ignored'],
+  'bridge.attentionRetry': a => ['POST', '/api/attention/retry', a],
+  'bridge.attentionDismiss': a => ['POST', '/api/attention/dismiss', a],
+  'bridge.gapDismiss': a => ['POST', '/api/gaps/dismiss', a],
+  'bridge.restore': a => ['POST', '/api/restore', a],
   'bridge.texts': a => ['GET', `/api/texts${qs(a)}`],
   'bridge.textsPages': a => ['GET', `/api/texts/${encodeURIComponent(a.conv)}${a.message != null ? `/message/${encodeURIComponent(a.message)}` : ''}${(a.attachments ?? []).map(n => `/attachment/${n}`).join('')}/pages`],
   'bridge.textsConversation': a => ['GET', `/api/texts/${encodeURIComponent(a.conv)}/conversation${qs({cursor: a.cursor, dir: a.dir})}`],
