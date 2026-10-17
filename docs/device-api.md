@@ -42,8 +42,8 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 
 ## Web twins and the Health place
 
-`/api/<route>` twins use Allos/Boarding sessions (401 `token`), grants and profile. Writes: same-origin JSON (403 `origin`, 415 `type`).
-`POST /api/ask` `{q, profile?}`; GET: 405. `/api/accounts` CORS: `DECK_ORIGIN` only.
+`/api/<route>` twins: Allos/Boarding sessions (401 `token`), grants and profile. Writes: same-origin JSON (403 `origin`, 415 `type`).
+`POST /api/ask` `{q, profile?}`; GET: 405. `/api/accounts`: `DECK_ORIGIN` CORS, even 401.
 `CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
 
 `/health`: admin-only deck-ui mount/CSP. `DECK_BASE_PATH`:
