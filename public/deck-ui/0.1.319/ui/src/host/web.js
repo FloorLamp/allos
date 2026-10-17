@@ -1,3 +1,5 @@
+import {MONEY_ARGS} from './money.js';
+import {invalid} from './host.js';
 import {habitatStream} from './stream.js';
 // The site's host (bridge's web UI, deck.wang.team; contract/README.md): bridge's same-origin /api with the site's session (the family
 // network, or a member's passkey sign-in: Caddy's, never a token), links in new tabs, the clipboard API, prefs and picks in
@@ -14,6 +16,24 @@ const docPath = a => `/doc/${a.id}${a.message != null ? `/message/${encodeURICom
 
 /** Each bridge op as [method, path, body?] on the site (bridge's test checks every one has an /api route). */
 export const ROUTES = {
+  "money.overview": a => ['GET', `/money/api/overview${qs(a)}`],
+  "money.spending": a => ['GET', `/money/api/spending${qs(a)}`],
+  "money.merchant": a => ['GET', `/money/api/merchant/${a.id}`],
+  "money.rules": a => ['GET', `/money/api/rules${qs(a)}`],
+  "money.categories": a => ['GET', `/money/api/categories${qs(a)}`],
+  "money.accountManagement": a => ['GET', `/money/api/account-management${qs(a)}`],
+  "money.views": a => ['GET', `/money/api/views${qs(a)}`],
+  "money.imports": a => ['GET', `/money/api/imports${qs(a)}`],
+  "money.link": a => ['GET', `/money/api/link${qs(a)}`],
+  "money.merchants.resolve": a => ['GET', `/money/api/merchants/resolve${qs(a)}`],
+  "money.txns": a => ['GET', `/money/api/txns${qs(a)}`],
+  "money.txn": a => ['GET', `/money/api/txn/${a.id}`],
+  "money.facets": a => ['GET', `/money/api/facets${qs(a)}`],
+  "money.reviews": a => ['GET', `/money/api/reviews${qs(a)}`],
+  "money.needs": a => ['GET', `/money/api/needs${qs(a)}`],
+  "money.subscriptions": a => ['GET', `/money/api/subscriptions${qs(a)}`],
+  "money.accounts": a => ['GET', `/money/api/accounts${qs(a)}`],
+  "money.investments": a => ['GET', `/money/api/investments${qs(a)}`],
   'bridge.attention': a => ['GET', '/api/attention'],
   'bridge.gaps': a => ['GET', '/api/gaps'],
   'bridge.ignored': a => ['GET', '/api/ignored'],
@@ -78,7 +98,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
   async function bridge(op, args, signal) {
     const [method, path, body] = ROUTES[op](args);
     let target = path;
-    if (backends.bridge) {
+    if (backends.bridge && !op.startsWith('money.')) {
       // Keep bridge's established args and routes; only its destination changes.
       const configured = backends.bridge.origin;
       let u;
@@ -88,7 +108,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
       target = u.origin + path;
     }
     // Same-origin only: a custom header on a cross-origin call would add a preflight bridge does not answer (spaceport#568).
-    return request(target, method, body, signal, backends.bridge ? 'include' : 'same-origin', false, !backends.bridge);
+    return request(target, method, body, signal, backends.bridge && !op.startsWith('money.') ? 'include' : 'same-origin', false, !backends.bridge && !op.startsWith('money.'));
   }
   async function request(target, method, body, signal, credentials, strict = false, bridge = false) {
     let res;
@@ -177,9 +197,14 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
     },
     /** The registry's backend names (the nav this host can offer). */
     backends: Object.keys(backends),
-    caps: {recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false},
+    caps: {recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false, money: true},
     async call(op, args = {}, {signal} = {}) {
       if (signal?.aborted) throw new HostError('cancelled');
+      if (op.startsWith('money.')) {
+        if (!this.caps.money || !MONEY_ARGS[op]) throw new HostError('unsupported');
+        const why = invalid(MONEY_ARGS[op], args);
+        if (why) throw new HostError('refused', why);
+      }
       if (ROUTES[op]) return bridge(op, args, signal);
       if (local[op]) return local[op](args);
       if (/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(op) && Object.hasOwn(backends, op.split('.')[0])) return backend(op, args, signal);

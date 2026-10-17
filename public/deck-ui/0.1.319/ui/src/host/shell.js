@@ -62,6 +62,7 @@ export function shellHost(channel = nativeChannel()) {
     caps: Object.fromEntries(CAPS.map(c => [c, !SITE_CAPS.includes(c)])),
     call(op, args = {}, {signal} = {}) {
       if (signal?.aborted) return Promise.reject(new HostError('cancelled'));
+      if (op.startsWith('money.') && !host.caps.money) return Promise.reject(new HostError('unsupported'));
       const id = next++;
       return new Promise((resolve, reject) => {
         pending.set(id, {resolve, reject});
