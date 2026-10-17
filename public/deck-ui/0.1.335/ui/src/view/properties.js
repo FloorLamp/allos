@@ -12,6 +12,7 @@ export function Properties({model, host, onOpen}) {
   const [, redraw] = useState(0), [selected, select] = useState(null);
   useEffect(() => model.subscribe(() => redraw(n => n + 1)), [model]);
   const home = model.homes.find(p => p.id === selected);
+  useEffect(() => { model.open(home?.id); return () => { model.open(null); }; }, [model, home]);
   const papers = home?.papers ?? [];
   const rows = model.homes.map(propertyRow);
   return html`<main class="dk-properties" aria-label="Properties" aria-busy=${model.loading}>
@@ -23,6 +24,7 @@ export function Properties({model, host, onOpen}) {
     <${Drawer} open=${!!home} title=${home?.name} onClose=${() => select(null)}>
       <${StatTiles} label="Home papers" tiles=${[{key: 'papers', label: 'Indexed papers', quantity: {value: papers.length}},
         {key: 'renewals', label: 'Recorded renewals', quantity: {value: papers.filter(p => p.renewal).length}}]} />
+      ${model.detailLoading ? html`<p role="status">Loading paper dates…</p>` : null}
       <h2>Papers</h2>
       <${RowList} items=${papers.map((p, i) => ({id: `${p.document?.id}:${i}`, title: p.document?.title ?? p.kind,
         sub: `${p.kind} · ${p.expiry ? `expires ${p.expiry}` : 'Expiry not indexed'}${p.datesUnavailable ? ' · Dates unavailable' : ''}`,
