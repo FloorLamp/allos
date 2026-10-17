@@ -112,17 +112,23 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
     // Same-origin only: a custom header on a cross-origin call would add a preflight bridge does not answer (spaceport#568).
     return request(target, method, body, signal, backends.bridge && !op.startsWith('money.') ? 'include' : 'same-origin', false, !backends.bridge && !op.startsWith('money.'));
   }
+  const flightplanCache = new Map();
   async function request(target, method, body, signal, credentials, strict = false, bridge = false) {
+    const conditional = method === 'GET' && backends.flightplan?.origin && target.startsWith(backends.flightplan.origin + '/api/');
+    const cached = conditional ? flightplanCache.get(target) : null;
     let res;
     try {
       res = await win.fetch(target, {method, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000), credentials, redirect: 'error', ...(body ? {body: JSON.stringify(body)} : {}),
-        headers: {accept: 'application/json', ...(bridge ? {'X-Deck-Surface': 'web'} : {}), ...(body ? {'content-type': 'application/json'} : {})}});
+        headers: {accept: 'application/json', ...(cached ? {'If-None-Match': cached.etag} : {}), ...(bridge ? {'X-Deck-Surface': 'web'} : {}), ...(body ? {'content-type': 'application/json'} : {})}});
     } catch (e) { throw hostError(e); }
+    if (res.status === 304 && cached) return cached.answer;
     const answer = await res.json().catch(() => {
       if (strict) throw new HostError('http', 'invalid JSON', res.status);
       return {};
     });
     if (!res.ok) throw new HostError('http', strict ? `HTTP ${res.status}` : answer.error || `HTTP ${res.status}`, res.status);
+    const etag = res.headers?.get?.('etag');
+    if (conditional && etag) { if (flightplanCache.size >= 100) flightplanCache.delete(flightplanCache.keys().next().value); flightplanCache.set(target, {etag, answer}); }
     const retry = Number(res.headers?.get?.('retry-after'));
     if (retry > 0 && answer && typeof answer === 'object' && !Array.isArray(answer)) answer.retryAfter = retry;
     return answer;
