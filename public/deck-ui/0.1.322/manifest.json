@@ -1,6 +1,6 @@
 {
-  "version": "0.1.319",
-  "revision": "8c1c531f35905a61a32b8f1e680eb4d1f836f781",
+  "version": "0.1.322",
+  "revision": "201be0cdc7748ca420a798abe56f6754e27a9447",
   "hostApi": 1,
   "files": {
     "palette/model.mjs": "88dc7d0ac4eb83af0b9ee8cd83907aa1647842020e3c03aace1288b01fa71042",
@@ -12,7 +12,7 @@
     "ui/contract/foundation.md": "d0a435eec68f2cc79405d97ee005744b58fc95df32dda2199e6d229c1ee5d37a",
     "ui/contract/health.md": "82a02048ec46041f6f1665976ddb19643f64d299fb107986b71ca3e76b3ee212",
     "ui/contract/host-contract.json": "8815e8b2ebeecb224177630e03d1292dc7fd78021db30f5956e1c29be006e459",
-    "ui/contract/host.md": "215423142a5cabde30de607dea8caaf28eafe49be5a50a1806df668045ff3f4f",
+    "ui/contract/host.md": "ff57ddd1798b08d9e4de36cb8cdc10f4d2b0fb3abdd8427ebc8fd99dd327f539",
     "ui/contract/house.md": "91c1b860062ab9b7ae4d22b7b4d61b1b08ed640a7484d61685da3dbdc12013a3",
     "ui/contract/insurance.md": "d3535f245ac95275bfb4e2c2c6477653faeca4f04c05615a561d2fc3e78bedcd",
     "ui/contract/nav.json": "1c9a459718a1ad57eb87626090351f36abdb228c58715ebae90c2e7b168dbc78",
