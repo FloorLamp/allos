@@ -65,6 +65,8 @@ host = {kind: 'web' | 'shell', hostApi: 1, caps: {recent, transfers, actions, cl
 
 ### Shared Texts mount
 
+Both shared mounts are named exports of `ui/src/mount.js` (first published together in 0.1.315).
+
 `mountTexts(element, host, {onOpen?})` exports the read-only conversation list with the shared rows and conversation viewer.
 The host sizes the mount element for the viewer (for example, a viewport-height pane). Requires `texts`; uses `bridge.texts`, `bridge.textsPages`, `bridge.textsConversation`, attachment resources and `url.open`.
 `onOpen(document)` overrides the built-in viewer (`document.id` is `texts:<conversation>`).
@@ -106,11 +108,27 @@ It reads `bridge.attention`, `bridge.gaps`, and `bridge.ignored` immediately; no
 Sections are locked, unsupported, gaps, coverage and ignored. `onOpen(document)` overrides opening the document page.
 The model's `setTab(tab)` selects a section. `mutate(action, ids, password?)` accepts retry, dismiss, gap and restore,
 using `bridge.attentionRetry`, `bridge.attentionDismiss`, `bridge.gapDismiss` and `bridge.restore` respectively.
+Document mutations take non-empty arrays of positive integer IDs; gap dismiss takes non-empty arrays of string IDs.
+Only retry accepts an optional password (at most 1000 characters); mutation results are `{left}` for retry
+and `{ok}` for dismiss, gap dismiss and restore. While busy, further mutations are ignored.
+Reads return `{items: [{id, kind: locked|unsupported, title, sourceId, problems}]}` for attention,
+`{gaps, older, coverage}` for gaps, and `{results: [Document]}` for ignored files.
 These map to POST `/api/attention/retry`, `/api/attention/dismiss`, `/api/gaps/dismiss`, `/api/restore`
 (cap `browse`, site-only); reads use GET `/api/attention`, `/api/gaps`, `/api/ignored`.
+The default opener uses `document.page`.
 Passwords are used once, cleared from the form on submit and never retained in model state.
-After successful mutations the snapshot is refreshed. `onCount(number)` fires for the first successful snapshot and
+Each refresh replaces the snapshot only after all three reads succeed; a newer refresh cancels the previous read.
+Failed reads retain the last successful lists and count. After successful mutations the snapshot is refreshed.
+`onCount(number)` fires for the first successful snapshot and
 whenever locked documents plus recent gaps changes; unchanged refreshes and failed mutations do not notify.
 Unsupported files, older gaps and ignored documents do not contribute. This is a document maintenance count, separate from Needs.
 Unmount aborts pending reads and mutations, suppresses late results and calls `onCount(null)` once so the host removes its badge.
 Mutation errors remain visible with Retry. The shared rows support desktop and narrow layouts.
+
+The host owns refresh timing for focus and external changes: neither mount subscribes to events or emits
+`deck-attention-changed`. Consumers call `refresh()` explicitly and remove their listeners when unmounting.
+`onCount` reports snapshots, not every mutation. The error Retry control refreshes the snapshot;
+retrying a failed mutation requires invoking that action again. For the first published version with both mounts,
+see the [adoption note](../CONSUMERS.md#texts-and-attention-adoption-spaceport-767-bridge-270).
+Consumers use the separate [Unified Needs snapshot](../CONSUMERS.md#unified-needs-spaceport-830-bridge-287)
+for Needs badges.
