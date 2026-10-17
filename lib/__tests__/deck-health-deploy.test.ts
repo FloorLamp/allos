@@ -79,7 +79,11 @@ handle @allos {
     }
   );
 
-  it("0006 moves 0005's block to prod's address with the gate's indent", () => {
+  it("0006 moves 0005's block to allos's own upstream with the gate's indent", () => {
+    // allos's own site handler (@allos): a matched boarding proxy, then the site's upstream (a documentation address).
+    const site =
+      "\thandle @allos {\n\t\troute {\n\t\t\treverse_proxy @allos_boarding boarding:9816\n" +
+      "\t\t\treverse_proxy 192.0.2.10:3000\n\t\t}\n\t}\n";
     // 0005 proxied allos:3000, which Caddy cannot resolve: Deck Health 502 (spaceport#995).
     const root = makeTmpDir("allos-route");
     try {
@@ -91,7 +95,8 @@ handle @allos {
         "\t\troute {\n\t\t\timport member_gate deck\n" +
           "        # BEGIN allos-health\n        @allos_health path /health /health/*\n" +
           "        handle @allos_health {\n            reverse_proxy allos:3000\n        }\n" +
-          "        # END allos-health\n\t\t\treverse_proxy bridge:8080\n\t\t}\n"
+          "        # END allos-health\n\t\t\treverse_proxy bridge:8080\n\t\t}\n" +
+          site
       );
       const lib = join(root, "lib.sh");
       writeFileSync(lib, 'install_file() { cp "$1" "$2"; }\n');
@@ -117,8 +122,15 @@ handle @allos {
       expect(readFileSync(config, "utf8")).toBe(
         "\t\troute {\n\t\t\timport member_gate deck\n" +
           "\t\t\t# BEGIN allos-health\n\t\t\t@allos_health path /health /health/*\n" +
-          "\t\t\thandle @allos_health {\n\t\t\t\treverse_proxy 10.69.6.200:3000\n\t\t\t}\n" +
-          "\t\t\t# END allos-health\n\t\t\treverse_proxy bridge:8080\n\t\t}\n"
+          "\t\t\thandle @allos_health {\n\t\t\t\treverse_proxy 192.0.2.10:3000\n\t\t\t}\n" +
+          "\t\t\t# END allos-health\n\t\t\treverse_proxy bridge:8080\n\t\t}\n" +
+          site
+      );
+      // no single unmatched upstream in allos's own handler: fail closed, nothing changed
+      writeFileSync(config, "\t\t\timport member_gate deck\n");
+      expect(run("run").status).toBe(2);
+      expect(readFileSync(config, "utf8")).toBe(
+        "\t\t\timport member_gate deck\n"
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
