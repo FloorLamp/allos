@@ -115,7 +115,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
   async function request(target, method, body, signal, credentials, strict = false, bridge = false) {
     let res;
     try {
-      res = await win.fetch(target, {method, signal, credentials, redirect: 'error', ...(body ? {body: JSON.stringify(body)} : {}),
+      res = await win.fetch(target, {method, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000), credentials, redirect: 'error', ...(body ? {body: JSON.stringify(body)} : {}),
         headers: {accept: 'application/json', ...(bridge ? {'X-Deck-Surface': 'web'} : {}), ...(body ? {'content-type': 'application/json'} : {})}});
     } catch (e) { throw hostError(e); }
     const answer = await res.json().catch(() => {
