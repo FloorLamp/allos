@@ -474,12 +474,23 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       r => { c.charts = {...c.charts, [key]: {busy: false, data: r?.series ?? null, error: null}}; changed(); },
       e => { c.charts = {...c.charts, [key]: {busy: false, data: null, error: failure(e)}}; changed(); }));
   }
+  function cacheFound(q, rows) {
+    env.found = {...env.found, [q]: rows};
+    const keys = Object.keys(env.found);
+    for (const key of keys.filter(key => key !== q).slice(0, Math.max(0, keys.length - 50))) {
+      delete env.found[key];
+      delete env.foundOrder[key];
+    }
+  }
   function cancelSearch() {
     findVersion++;
+    if (c.find.partial) {
+      delete env.found[c.find.query]; delete env.foundOrder[c.find.query];
+      if (c.status?.text === 'Showing initial results · Couldn’t finish search') c.status = null;
+    }
     if (!search) return;
     timers.clearTimeout(search.timer);
     timers.clearTimeout(search.skeleton);
-    if (c.find.partial) delete env.found[c.find.query];
     search.abort.abort();
     search.done();
     search = null;
@@ -531,7 +542,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
             if (!current()) return;
             plan = rows;
             if (bridgeRows) {
-              env.found = {...env.found, [q]: mergeFound(bridgeRows, plan)};
+              cacheFound(q, mergeFound(bridgeRows, plan));
               changed();
             }
           }));
@@ -542,7 +553,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       }
       if (signal.aborted) return;
       if (c.people()) c.peopleRelations = [...new Set([...c.peopleRelations, ...(r?.results ?? []).map(r => r.person?.relation).filter(Boolean)])].sort();
-      env.found = {...env.found, [q]: r?.results ?? []};
+      cacheFound(q, r?.results ?? []);
       const progressive = r?.progressive === 'two-phase-v1' && r.enrichment;
       if (progressive) {
         // Freeze the displayed order, including picks; the full answer is a replacement, never a patch.
@@ -557,7 +568,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
         r = await host.call('bridge.find', {q, limit: Number(next.searchParams.get('limit') ?? 20), phase: 'full'}, {signal});
         if (signal.aborted) return;
         bridgeRows = r?.results ?? [];
-        env.found = {...env.found, [q]: mergeFound(bridgeRows, plan)};
+        cacheFound(q, mergeFound(bridgeRows, plan));
       }
       c.find = {query: q, busy: false, error: null};
       lastFound = q;
@@ -568,9 +579,10 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       if (signal.aborted) return;
       const f = failure(e);
       if (f.code === 'cancelled') return;
-      if (c.find.partial) delete env.found[q];
+      const partial = !!c.find.partial;
       bridgeRows = undefined;
-      c.find = {query: q, busy: false, error: f, ...(c.find.backend ? {backend: c.find.backend} : {})};
+      c.find = {query: q, busy: false, error: partial ? null : f, ...(partial ? {partial: true} : {}), ...(c.find.backend ? {backend: c.find.backend} : {})};
+      if (partial) c.status = {kind: 'info', text: 'Showing initial results · Couldn’t finish search', retry: () => { queryChanged({again: true}); changed(); }};
       telemetry('find', false, t0, outcome(f));
     } finally {
       if (search?.abort.signal === signal) { timers.clearTimeout(search.skeleton); search = null; }
