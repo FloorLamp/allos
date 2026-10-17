@@ -44,8 +44,9 @@ test:smoke` for frontend changes). Passing checks need no extra invented tests.
 
 State contracts and owners; update rules.
 
-`npm run docs:check` checks all Git-visible Markdown, untracked and generated
-included (keep generated reference data apart from prose):
+`npm run docs:check` checks authored Git-visible Markdown, including untracked
+files, excluding `public/deck-ui/*/` bundles. Keep generated reference
+data separate:
 
 - New and short files: at most 1,500 words; oversized files: at most their word
   count at the base.
