@@ -132,3 +132,41 @@ retrying a failed mutation requires invoking that action again. For the first pu
 see the [adoption note](../CONSUMERS.md#texts-and-attention-adoption-spaceport-767-bridge-270).
 Consumers use the separate [Unified Needs snapshot](../CONSUMERS.md#unified-needs-spaceport-830-bridge-287)
 for Needs badges.
+
+## Shared Projects mount (Clusters)
+
+`mountProjects(element, host, {id?, onOpen?})` exports the document-undertaking page,
+labelled **Clusters** to match bundled `nav.json` (`clusters`, `/clusters`).
+`mountCollectionPage` also resolves `/clusters`. Returns `{projects, refresh(), unmount()}`.
+`id` opens a cluster after the first list read; `onOpen(document)` overrides the shared
+viewer. Back from the viewer retains the collection. Map is the item overlay, not a page.
+Activity is excluded. This is not Flightplan's project/epic board.
+
+The `projects` capability is enabled on the web host only. Bridge requires the owner's
+existing authenticated browser session; mutation POSTs require its same-origin Origin.
+Native hosts must leave this capability off: Bridge does not expose these writes on `/v1`.
+No credentials are passed in mount options. Unsupported operations use the standard host error.
+
+`bridge.clusters {all?: boolean}` reads `GET /api/clusters` (`all=true` adds `?all=1`).
+It returns `{clusters}` with stable `p_` ids, name, kind, state, summary, count, from/to
+and namedBy. Default excludes set-aside rows; filtering name/kind/summary is local.
+`bridge.cluster {id}` reads the canonical cluster, `documents` and `out` (taken-out
+documents), with normal document descriptors. A merged id can resolve to a different id.
+
+`bridge.clusterEdit {id, action, ...payload}` posts only payload to
+`/api/cluster/<id>/<action>` and returns `{id}` (the canonical destination):
+
+| action | payload | meaning |
+| --- | --- | --- |
+| rename | `{name}` nonblank | Owner's display name |
+| remove / restore | `{}` | Set aside / recognize as a cluster |
+| remove-members / add-members | `{ids}` positive document ids, at most 1000 | Take out / put back |
+| merge | `{clusters}` source cluster ids | Merge sources into target `id`; explicit Confirm merge button |
+| split | `{ids, name}` selected members and nonblank name | New cluster, returned id |
+
+Edits are serialized and controls disabled while pending. Success reloads the list and
+destination detail; failure retains the current detail and shows an error. Refresh replaces
+snapshots, no polling. Superseded list/detail reads and unmount abort pending requests;
+late responses are ignored. Aborting a write cannot undo a server edit: remount/refresh
+reads authoritative state. Empty/loading/error states are explicit; Retry repeats the read,
+never the write. Documents use the shared viewer's documented operations and resources.

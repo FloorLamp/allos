@@ -1,3 +1,5 @@
+import {createProjects} from './projects.js';
+import {Projects} from './view/projects.js';
 import {createAttention} from './attention.js';
 import {Attention} from './view/attention.js';
 import {createTexts} from './texts.js';
@@ -41,7 +43,7 @@ import {Vehicles} from './view/vehicles.js';
 import {createFlightplan} from './flightplan.js';
 import {Flightplan} from './view/flightplan.js';
 
-const STYLES = ['tokens.css', 'base.css', 'view/viewer/viewer.css', 'view/palette.css', 'view/chart.css', 'view/shell-bar.css', 'view/foundation.css', 'view/house.css', 'view/accounts.css', 'view/health.css', 'view/vehicles.css', 'view/properties.css', 'view/insurance.css', 'view/things.css', 'view/taxes.css', 'view/papers.css', 'view/flightplan.css'];
+const STYLES = ['view/projects.css', 'tokens.css', 'base.css', 'view/viewer/viewer.css', 'view/palette.css', 'view/chart.css', 'view/shell-bar.css', 'view/foundation.css', 'view/house.css', 'view/accounts.css', 'view/health.css', 'view/vehicles.css', 'view/properties.css', 'view/insurance.css', 'view/things.css', 'view/taxes.css', 'view/papers.css', 'view/flightplan.css'];
 
 /** The style sheets added here (href → settled once it loaded or failed). */
 const adding = new Map();
@@ -351,7 +353,7 @@ export function mountPeople(el, host, opts = {}) {
 export function mountCollectionPage(el, host, opts = {}) {
   const id = (opts.path ?? el.ownerDocument.location.pathname).replace(/^\//, '').replace(/\/$/, '');
   const mount = {people: mountPeople, vehicles: mountVehicles, properties: mountProperties,
-    insurance: mountInsurance, papers: mountPapers, taxes: mountTaxes, things: mountThings,
+    insurance: mountInsurance, papers: mountPapers, taxes: mountTaxes, things: mountThings, clusters: mountProjects,
     // the page's bar is this one: Flightplan draws none of its own
     flightplan: (el, host, opts) => mountFlightplan(el, host, {...opts, nav: undefined})}[id];
   if (!mount) throw new Error('Unknown collection page');
@@ -394,4 +396,17 @@ export function mountAttention(el, host, opts = {}) {
   attention.subscribe(() => d.draw());
   attention.refresh();
   return {attention, refresh: () => attention.refresh(), unmount() { attention.stop(); d.unmount(); }};
+}
+
+/** Document undertakings (Clusters). opts.onOpen overrides the shared viewer. */
+export function mountProjects(el, host, opts = {}) {
+  const projects = createProjects(host);
+  let viewing = false;
+  const viewer = createViewer(host, {onClose: () => { viewing = false; viewer.reset(); d.draw(); }});
+  const onOpen = opts.onOpen ?? (document => { viewing = true; viewer.open({id: document.id, document}); d.draw(); });
+  const d = drawing(el, () => render(viewing ? h(Viewer, {v: viewer, env: {mod: 'Control'}}) : h(Projects, {model: projects, host, onOpen}), el));
+  projects.subscribe(() => d.draw());
+  viewer.subscribe(() => d.draw());
+  projects.refresh().then(() => { if (opts.id) projects.select(opts.id); });
+  return {projects, refresh: async () => { await projects.refresh(); if (projects.id) await projects.select(projects.id); }, unmount() { projects.stop(); viewer.reset(); d.unmount(); }};
 }
