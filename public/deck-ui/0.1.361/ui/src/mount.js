@@ -340,6 +340,8 @@ export function mountFlightplan(el, host, opts = {}) {
   const flightplan = createFlightplan(host, {clock: opts.clock});
   const d = drawing(el, () => render(h(Flightplan, {model: flightplan, host, opts}), el));
   const hash = el.ownerDocument?.location?.hash ?? '';
+  const epic = new URLSearchParams(el.ownerDocument?.location?.search ?? '').get('epic');
+  if (hash === '#board' && /^[1-9]\d*$/.test(epic ?? '') && Number.isSafeInteger(Number(epic))) flightplan.setEpic(Number(epic));
   flightplan.subscribe(() => d.draw());
   flightplan.refresh().then(() => { if (hash === '#needs') setTimeout(() => el.querySelector('#needs')?.scrollIntoView?.({block: 'start'}), 0); });
   if ((opts.tab ?? (hash === '#board' ? 'board' : null)) === 'board') flightplan.setTab('board');
