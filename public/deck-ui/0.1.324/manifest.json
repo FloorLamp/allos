@@ -1,6 +1,6 @@
 {
-  "version": "0.1.322",
-  "revision": "201be0cdc7748ca420a798abe56f6754e27a9447",
+  "version": "0.1.324",
+  "revision": "21902927aebc54de5a06964ef0d13538859296ea",
   "hostApi": 1,
   "files": {
     "palette/model.mjs": "88dc7d0ac4eb83af0b9ee8cd83907aa1647842020e3c03aace1288b01fa71042",
@@ -15,7 +15,7 @@
     "ui/contract/host.md": "ff57ddd1798b08d9e4de36cb8cdc10f4d2b0fb3abdd8427ebc8fd99dd327f539",
     "ui/contract/house.md": "91c1b860062ab9b7ae4d22b7b4d61b1b08ed640a7484d61685da3dbdc12013a3",
     "ui/contract/insurance.md": "d3535f245ac95275bfb4e2c2c6477653faeca4f04c05615a561d2fc3e78bedcd",
-    "ui/contract/nav.json": "1c9a459718a1ad57eb87626090351f36abdb228c58715ebae90c2e7b168dbc78",
+    "ui/contract/nav.json": "6f86aca872c9d44f26e03174cac6238788e455baa41f76c2b33253ddad59ea95",
     "ui/contract/papers.md": "252dbe94bd076af023ae4cf6618a4ffb8dfe911910b4cf6a544c3694039b8574",
     "ui/contract/people.md": "d97ac685c7c238eb53533acc43c9e68a21d77589c19ab88e4bedd1791c274a55",
     "ui/contract/properties.md": "2cd7db80903f90ac4bb9b67c66020f7eb7810c558660b529c6af4bba66b5308e",
