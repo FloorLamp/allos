@@ -71,3 +71,19 @@ The host sizes the mount element for the viewer (for example, a viewport-height 
 The returned `{texts, refresh(), unmount()}` reads immediately, pages with More conversations, and replaces its snapshot on refresh.
 Unmount aborts pending list reads and resets the viewer. No polling, mutations or count notifications: Texts exposes no unread count.
 Rows use the same responsive desktop and narrow layout as other shared lists; Enter opens, Mod+Enter opens Google Messages.
+
+### Shared Attention mount
+
+`mountAttention(element, host, {onCount?, onOpen?})` returns `{attention, refresh(), unmount()}`.
+It reads `bridge.attention`, `bridge.gaps`, and `bridge.ignored` immediately; no polling.
+Sections are locked, unsupported, gaps, coverage and ignored. `onOpen(document)` overrides opening the document page.
+The model's `setTab(tab)` selects a section. `mutate(action, ids, password?)` accepts retry, dismiss, gap and restore,
+using `bridge.attentionRetry`, `bridge.attentionDismiss`, `bridge.gapDismiss` and `bridge.restore` respectively.
+These map to POST `/api/attention/retry`, `/api/attention/dismiss`, `/api/gaps/dismiss`, `/api/restore`
+(cap `browse`, site-only); reads use GET `/api/attention`, `/api/gaps`, `/api/ignored`.
+Passwords are used once, cleared from the form on submit and never retained in model state.
+After successful mutations the snapshot is refreshed. `onCount(number)` fires for the first successful snapshot and
+whenever locked documents plus recent gaps changes; unchanged refreshes and failed mutations do not notify.
+Unsupported files, older gaps and ignored documents do not contribute. This is a document maintenance count, separate from Needs.
+Unmount aborts pending reads and mutations, suppresses late results and calls `onCount(null)` once so the host removes its badge.
+Mutation errors remain visible with Retry. The shared rows support desktop and narrow layouts.

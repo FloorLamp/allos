@@ -125,3 +125,21 @@ gesture of its own (the press's `ui.input` is the click's; the release counts fo
 keeps the place, top-anchored there, until the shell quits: the next show opens where the person put it (Mac: on that screen;
 another screen, its own spot a fifth down); the viewer centres under it.
 
+
+## Android pages
+
+Android transfers one `WebMessagePort` to the committed main document at `https://deck.wang.team` and exposes
+`deckAndroid` to `shell.js`. Navigation revokes that port and its pending replies. Requests outside the bundled manifest,
+nav documents and the contract's bridge resource allowlist are denied; the WebView itself has network, file and content
+access disabled. Native HTTP attaches the enrolled device credential and refuses redirects. The page never receives it.
+
+The Pages menu reads the bundle's `contract/nav.json`. Collection, Health, House and Flightplan documents mount the same
+shared views through `shell-page.js`; unsupported page mounts display an explicit unavailable state. Back walks WebView
+history before returning to the native palette. The system's night mode selects the shared tokens, and Android recreates
+the activity on appearance changes. The palette/viewer model, capture, sharing, widgets and push remain native.
+Android registers HTTPS links on `deck.wang.team` with the native entry point, which validates their paths against the bundle.
+Full-page controls send trusted input notes before handling writes; Android also requires recent native input in the focused window.
+
+`deck-android-emulator` builds this checkout's debug and instrumentation APKs, runs `selftest` through Chromium's native
+port, then captures every nav destination at phone width. Its fresh emulator has no enrollment or live data: screenshots
+show the real unconfigured/error states. The artifacts are `deck/android/build/emulator/page-<nav id>.png`.
