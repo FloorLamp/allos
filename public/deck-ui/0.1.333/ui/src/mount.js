@@ -128,11 +128,16 @@ export function mountPalette(el, host, opts = {}) {
   };
   c.subscribe(changed);
   changed();
-  const ready = Promise.all([c.start(), d.styled]).then(() => {
+  // A deep-link query can search while the idle page's background loads are still pending.
+  const starting = c.start();
+  if (!opts.group?.key && !Object.values(opts.browse ?? {}).some(Boolean) && opts.query) {
+    c.edit(opts.query);
+    if (opts.ask) c.key('Shift+Enter');
+  }
+  const ready = Promise.all([starting, d.styled]).then(() => {
     d.draw();
     if (opts.group?.key) c.openGroup(opts.group.key, opts.group.title);
     else if (opts.browse && Object.values(opts.browse).some(Boolean)) c.browse(opts.browse);
-    else if (opts.query) { c.edit(opts.query); if (opts.ask) c.key('Shift+Enter'); }
   });
   const focus = r => { el.querySelector('.dp-input')?.focus({preventScroll: true}); return r; };
   return {
