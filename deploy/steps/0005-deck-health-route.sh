@@ -20,16 +20,12 @@ case "$1" in
       !skip {print}
       !skip && /^[[:space:]]*import member_gate deck[[:space:]]*$/ {
         gates++;
-        # The gate line'"'"'s own indent; Caddy reaches allos at prod'"'"'s address,
-        # as allos.wang.team does: the allos_default network has no caddy.
-        match($0, /^[[:space:]]*/); ind = substr($0, 1, RLENGTH);
-        in2 = ind (ind ~ /\t/ ? "\t" : "    ");
-        print ind "# BEGIN allos-health";
-        print ind "@allos_health path /health /health/*";
-        print ind "handle @allos_health {";
-        print in2 "reverse_proxy 10.69.6.200:3000";
-        print ind "}";
-        print ind "# END allos-health";
+        print "        # BEGIN allos-health";
+        print "        @allos_health path /health /health/*";
+        print "        handle @allos_health {";
+        print "            reverse_proxy allos:3000";
+        print "        }";
+        print "        # END allos-health";
       }
       END {if (gates != 1 || skip || begin != end || begin > 1) exit 2}
     ' "$config" > "$candidate"

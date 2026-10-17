@@ -56,7 +56,7 @@ handle @allos {
         const installed = readFileSync(config, "utf8");
         expect(
           installed.replace(
-            /[ \t]*# BEGIN allos-health[\s\S]*?# END allos-health\n/,
+            /        # BEGIN allos-health[\s\S]*?        # END allos-health\n/,
             ""
           )
         ).toBe(original);
@@ -79,8 +79,8 @@ handle @allos {
     }
   );
 
-  it("0006 moves an installed block to prod's address with the gate's indent", () => {
-    // 0005 first proxied allos:3000, which Caddy cannot resolve: Deck Health 502 (spaceport#995).
+  it("0006 moves 0005's block to prod's address with the gate's indent", () => {
+    // 0005 proxied allos:3000, which Caddy cannot resolve: Deck Health 502 (spaceport#995).
     const root = makeTmpDir("allos-route");
     try {
       mkdirSync(join(root, "allos"));
