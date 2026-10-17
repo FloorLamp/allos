@@ -84,3 +84,6 @@ that text matches descriptions, notes, categories, accounts or merchants; for th
 in its `connect-src` CSP; web requests use the Purser session with credentials included. Backend configuration, session/CORS and device grants follow
 the registry rules above. A missing route, signed-out session or failed backend stays
 an error with retry, with no model fallback.
+
+The palette shows one failure notice per backend, combining failed background loads and lists. Retry retries every failed load
+for that backend. A missing configuration takes precedence over other failures and directs native users to Settings.

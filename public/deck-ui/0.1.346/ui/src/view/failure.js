@@ -11,7 +11,7 @@ export function StatusLink({host}) {
 
 export function Failure({backend, error, retry, host}) {
   const f = describeFailure(backend, error, {device: host?.kind === 'shell'});
-  return html`<div role="alert"><p>${f.message}</p>
+  return html`<div class="dk-failure" role="alert"><p>${f.message}</p>
     ${retry ? html`<button type="button" class="dk-btn" onClick=${retry}>Retry</button>` : null}
     <${StatusLink} host=${host} />
     ${f.url ? html`<a class="dk-btn" href=${f.url} onClick=${host ? ev => { ev.preventDefault(); host.call('url.open', {url: f.url}); } : undefined}>${f.action}</a>` : null}</div>`;
