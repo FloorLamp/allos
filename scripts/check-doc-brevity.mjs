@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Check all Markdown against a word budget.
+// Check authored Markdown against a word budget.
 // Usage: node scripts/check-doc-brevity.mjs [--base <git-ref>]
 //
 // GENERATED BLOCKS COUNT ON NEITHER SIDE OF THE COMPARISON (#4769). Text fenced by
@@ -77,7 +77,10 @@ export function withoutGeneratedBlocks(text) {
 export const words = (text) =>
   withoutGeneratedBlocks(text).match(/\S+/g)?.length ?? 0;
 
-const covered = (name) => /\.md$/i.test(name);
+// Published deck-ui bundles are pinned by content hashes, not authored Allos
+// prose. Exclude them from both totals so upgrades cannot buy prose headroom.
+const covered = (name) =>
+  /\.md$/i.test(name) && !/^public\/deck-ui\/[^/]+\//.test(name);
 
 function main(args) {
   if (args.includes("--help") || args.includes("-h")) {

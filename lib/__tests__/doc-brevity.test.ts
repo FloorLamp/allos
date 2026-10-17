@@ -59,14 +59,19 @@ interface Report {
  * A one-commit git repository whose committed state is `base`, with `working`
  * left uncommitted in the tree — exactly the shape the script compares.
  */
-function checkDoc(base: string, working: string = base): Report {
+function checkDoc(
+  base: string,
+  working: string = base,
+  name = "doc.md"
+): Report {
   const dir = makeTmpDir("doc-brevity");
   const git = (...args: string[]) =>
     spawnSync("git", args, { cwd: dir, encoding: "utf8" });
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "Test");
-  const doc = path.join(dir, "doc.md");
+  const doc = path.join(dir, name);
+  fs.mkdirSync(path.dirname(doc), { recursive: true });
   fs.writeFileSync(doc, base);
   git("add", "-A");
   git("commit", "-qm", "base");
@@ -90,6 +95,28 @@ function checkDoc(base: string, working: string = base): Report {
     oldTotal: Number(line[2]),
   };
 }
+
+describe("doc brevity: published bundles", () => {
+  it("excludes vendored prose from both totals even when it grows", () => {
+    const report = checkDoc(
+      say("published", 1600),
+      say("published", 1800),
+      "public/deck-ui/0.1.311/ui/contract/shell.md"
+    );
+    expect(report.total).toBe(0);
+    expect(report.oldTotal).toBe(0);
+    expect(report.status).toBe(0);
+  });
+
+  it.each(["docs/deck-ui.md", "public/deck-ui.md"])(
+    "still rejects over-budget authored prose in %s",
+    (name) => {
+      const report = checkDoc(say("authored", 10), say("authored", 1501), name);
+      expect(report.status).toBe(1);
+      expect(report.stderr).toContain(`${name}: 1501 words; limit 1500`);
+    }
+  );
+});
 
 describe("doc brevity: the generated block counts on neither side", () => {
   const prose = `${say("intro", 20)}\n\n${block(100)}\n\n${say("outro", 10)}`;
