@@ -15,36 +15,53 @@ export function propertyRow(property) {
     end: null, property};
 }
 export function createProperties(host) {
-  let stopped = false, generation = 0, request;
+  let stopped = false, generation = 0, request, detailRequest, detailGeneration = 0;
   const subscribers = new Set();
   const changed = () => { for (const fn of subscribers) fn(); };
   const model = {
-    homes: [], loading: false, error: null, warning: null,
+    homes: [], loading: false, detailLoading: false, error: null, warning: null,
+    async open(id) {
+      detailRequest?.abort();
+      const current = ++detailGeneration;
+      model.warning = null; model.detailLoading = false;
+      const home = model.homes.find(p => p.id === id);
+      if (stopped || !home) { queueMicrotask(changed); return; }
+      detailRequest = new AbortController();
+      const {signal} = detailRequest;
+      // Drawer effects can run during a host render; notify after that render finishes.
+      model.detailLoading = true; queueMicrotask(changed);
+      const documents = new Map();
+      const papers = await Promise.all((home.papers ?? []).map(async paper => {
+        const id = paper.document?.id;
+        if (!id) return {...paper};
+        if (!documents.has(id)) documents.set(id, host.call('bridge.doc', {id}, {signal}).catch(e => {
+          if (!stopped && current === detailGeneration) model.warning = describeFailure('bridge', e);
+          return null;
+        }));
+        const detail = await documents.get(id);
+        return {...paper, ...paperDates(detail), datesUnavailable: !detail};
+      }));
+      if (!stopped && current === detailGeneration) {
+        home.papers = papers; model.detailLoading = false; changed();
+      }
+    },
     subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); },
     async refresh() {
       if (stopped) return;
+      model.open(null);
       request?.abort(); request = new AbortController();
       const {signal} = request, current = ++generation;
       model.loading = true; model.error = null; model.warning = null; changed();
       try {
         const answer = await host.call('bridge.properties', {}, {signal});
-        const documents = new Map();
-        const homes = await Promise.all((answer?.results ?? []).filter(r => r.property).map(async ({property}) => ({...property,
-          papers: await Promise.all((property.papers ?? []).map(async paper => {
-            const id = paper.document?.id;
-            if (!id) return {...paper};
-            if (!documents.has(id)) documents.set(id, host.call('bridge.doc', {id}, {signal}).catch(e => { if (!stopped && current === generation) model.warning = describeFailure('bridge', e); return null; }));
-            const detail = await documents.get(id);
-            return {...paper, ...paperDates(detail), datesUnavailable: !detail};
-          })),
-        })));
+        const homes = (answer?.results ?? []).filter(r => r.property).map(r => ({...r.property}));
         if (!stopped && current === generation) model.homes = homes;
       } catch (e) {
         if (!stopped && current === generation) { model.homes = []; model.error = describeFailure('bridge', e); }
       }
       if (!stopped && current === generation) { model.loading = false; changed(); }
     },
-    stop() { stopped = true; request?.abort(); generation++; subscribers.clear(); },
+    stop() { stopped = true; request?.abort(); detailRequest?.abort(); detailGeneration++; generation++; subscribers.clear(); },
   };
   return model;
 }

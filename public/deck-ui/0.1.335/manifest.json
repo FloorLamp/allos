@@ -1,6 +1,6 @@
 {
-  "version": "0.1.333",
-  "revision": "df3ea3d862fbb3d70b3ba121fc6bf6d90c66cf6e",
+  "version": "0.1.335",
+  "revision": "91d30f16d2a569570e744902bf5c182ab3d6e344",
   "hostApi": 1,
   "files": {
     "palette/model.mjs": "88dc7d0ac4eb83af0b9ee8cd83907aa1647842020e3c03aace1288b01fa71042",
@@ -54,7 +54,7 @@
     "ui/src/needs.js": "4a8596c61c0386b54d099ccc0984fbe496796a7374c20039fd84ee48fdc675c5",
     "ui/src/papers.js": "ef5d8fd532391036245126d142ed4e041deae35593ad5a79129ac4db89eb423b",
     "ui/src/projects.js": "a6af374d71d31beb3e1929d45de65e5ca75b44055ca723d21dcab97791ed5850",
-    "ui/src/properties.js": "f775e226defdc47a119064513a1834cdeb6d6b6ea9a63e5d034a565b2727b7ac",
+    "ui/src/properties.js": "9d5d6e74e6ac2e65349cb849f9964b91d31e8ef2106671171af6a12646891c80",
     "ui/src/quantity.js": "50dc4e2b1f5b42fc9ba316273adaaef8234aafd8f577f6c4f3104490152ac31b",
     "ui/src/security.js": "00f5a0ae50a9decf7c82a53bbbb308380def9b18b1f2083ef91edade2f58bc76",
     "ui/src/selftest.js": "37a4f8391d85acc988b3089ea532db6c83dd73e0f0c9d3c417849ca8f017a11d",
@@ -92,7 +92,7 @@
     "ui/src/view/projects.css": "82f5d49d45b2e50eb0df304046b9877f293a12159130cf9529349de2135e16c1",
     "ui/src/view/projects.js": "7b346832a9403c51cf895e134051020f4e3104ecf72bd50a3071a5a21dd3ab9a",
     "ui/src/view/properties.css": "ee25b2245becb4c5d7fc4f508398d21ead3de6741ea9852d4ea27701523c4f10",
-    "ui/src/view/properties.js": "9ed5c84315fc8728810a14bb9b623068d026014db1d5774498a3a80a438df857",
+    "ui/src/view/properties.js": "74a8adf47ffd3bf938edafb0854cae1ef17419e3554e47c31b871e9352515a30",
     "ui/src/view/rows.js": "63784d41b86d85413be1eaedf26d548348ae2bb5978aa5047fcb4679495bf74d",
     "ui/src/view/security.js": "f79d18b5e67d85d21d56c06f9a66be8ace735198c5505010a488d5861eb7da5e",
     "ui/src/view/shell-bar.css": "f09b3861c70bc22e2cef329c6ad7cb7150ad99def49caf0d530b1b9f168b7d29",
