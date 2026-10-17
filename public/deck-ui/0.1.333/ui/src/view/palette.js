@@ -23,7 +23,7 @@ import {thingsQuery} from '../things.js';
 import {ThingsPlace} from './things.js';
 import {taxesQuery} from '../taxes.js';
 import {TaxesPlace} from './taxes.js';
-import {insuranceQuery} from '../insurance.js';
+import {insuranceQuery, insuranceMatches} from '../insurance.js';
 import {InsurancePlace} from './insurance.js';
 import {propertyQuery} from '../properties.js';
 import {PropertiesPlace} from './properties.js';
@@ -94,7 +94,10 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
   const composing = useRef(false), composedAt = useRef(-1e9);
   const [held, setHeld] = useState(false);
   const [details, setDetails] = useState(null);
-  const st = c.state, v = c.view(), rows = c.rows(), top = st.scopes.at(-1), host = c.host;
+  const [policies, setPolicies] = useState(null);
+  const st = c.state, v = c.view(), allRows = c.rows(), top = st.scopes.at(-1), host = c.host;
+  const insurance = insuranceQuery(st.query) && !st.scopes.length;
+  const rows = insurance ? insuranceMatches(allRows, policies) : allRows;
   const loading = c.loading(), block = c.block(), chart = c.chart();
 
   // a group's rows slide in from the right (closing: back from the left)
@@ -351,14 +354,15 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
     ${propertyQuery(st.query) && !st.scopes.length ? html`<${PropertiesPlace} host=${host} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
     ${taxesQuery(st.query) && !st.scopes.length ? html`<${TaxesPlace} host=${host} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
     ${thingsQuery(st.query) && !st.scopes.length ? html`<${ThingsPlace} host=${host} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
-    ${insuranceQuery(st.query) && !st.scopes.length ? html`<${InsurancePlace} host=${host} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
     ${papersQuery(st.query) && !st.scopes.length ? html`<${PapersPlace} host=${host} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
     ${flightplanQuery(st.query) && !st.scopes.length ? html`<${PaletteFlightplan} host=${host} />` : null}
     ${rows[selAt]?.person || rows[selAt]?.cluster ? html`<button type="button" class="dk-btn" onClick=${() => setDetails(rows[selAt])}>Details</button>` : null}
     <${CollectionDetails} host=${host} item=${details} onClose=${() => setDetails(null)} onOpen=${doc => c.viewRef(doc.id)} />
     <${Peek} path=${peekPath} neighbours=${neighbours} host=${host} onOpen=${() => selAt >= 0 && act.open(rows[selAt].id)} />
     <div class=${`dp-rows ${slide.current ? `slide-${slide.current}` : ''}`} key=${`list:${top?.key ?? ''}`} id="dp-list" role="listbox" aria-label=${top ? top.title : 'Results'}
-      ref=${list}>${out}</div>
+      ref=${list}>
+      ${insurance ? html`<${InsurancePlace} host=${host} onPolicies=${setPolicies} onOpen=${doc => doc?.id && c.viewRef(doc.id)} />` : null}
+      ${insurance ? html`<div class="dp-insurance-found">${out}</div>` : out}</div>
     ${block ? html`<${Block} b=${block} live=${!box} onAction=${() => c.blockAction()} />` : null}
     ${chrome && c.commandsBar() ? html`<${Commands} c=${c} mod=${mod} held=${held} />` : null}
     ${layout === 'panel' ? statusEl : null}
