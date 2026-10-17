@@ -47,7 +47,7 @@ handle @allos {
         const run = (mode: string) =>
           spawnSync(
             "sh",
-            [resolve("deploy/steps/0007-deck-health-upstream.sh"), mode],
+            [resolve("deploy/steps/0006-deck-health-target.sh"), mode],
             {
               env: {
                 ...process.env,
