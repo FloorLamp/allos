@@ -3,7 +3,7 @@
 ## Host object
 
 ```js
-host = {kind: 'web' | 'shell', hostApi: 1, caps: {recent, transfers, actions, clipboard, files, drag, menus, window, telemetry, picks, browse, usage, corrections, texts, needs, codes},
+host = {kind: 'web' | 'shell', hostApi: 1, caps: {recent, transfers, actions, clipboard, files, drag, menus, window, telemetry, picks, browse, usage, corrections, texts, needs, codes, money},
         call(op, args, {signal}) → Promise, resource(path) → URL, on(event, fn) → unsubscribe}
 ```
 
@@ -11,7 +11,7 @@ host = {kind: 'web' | 'shell', hostApi: 1, caps: {recent, transfers, actions, cl
   `unsupported` (an op this host lacks, or its cap is off), `refused` (args off the schema, no recent input), `cancelled` (the
   signal).
 - A cap off: the UI hides what needs it and never calls its ops. The site: `actions`, `clipboard`, `picks`, `browse`, `usage`,
-  `corrections`, `texts`, `needs` only. `browse` (the site's filtered browse), `usage` (a series' chart), `corrections` (the owner's corrections in
+  `corrections`, `texts`, `needs`, `money` only. `browse` (the site's filtered browse), `usage` (a series' chart), `corrections` (the owner's corrections in
   the Details pane), `texts` (Texts: palette SPEC.md *Texts*) and `needs` (Needs you: palette SPEC.md *Needs you*) are off on a shell
   unless its env.get's `caps` says so: both desktops say `usage`, `corrections` (bridge's `POST /v1/doc/<id>/correct` with the device
   token, past Caddy since 2026-10-14), `texts`, `needs` and `codes` (the one-time codes they hold: palette SPEC.md *Codes*); `browse`
@@ -71,6 +71,33 @@ The host sizes the mount element for the viewer (for example, a viewport-height 
 The returned `{texts, refresh(), unmount()}` reads immediately, pages with More conversations, and replaces its snapshot on refresh.
 Unmount aborts pending list reads and resets the viewer. No polling, mutations or count notifications: Texts exposes no unread count.
 Rows use the same responsive desktop and narrow layout as other shared lists; Enter opens, Mod+Enter opens Google Messages.
+
+### Money reads
+
+All `money.*` operations require `money`. The web host enables it and uses the Deck Money surface at same-origin `/money/api`, including when mounted on another Deck page. Shells default it off until `env.get` explicitly enables it; disabled calls reject `unsupported` without a native message. Enabled shells implement the documented `/money/v1` reads using an enrolled device credential with `purser:read`. Paths are relative to the Deck origin; a backend at its root uses `/v1` instead. Results and query semantics follow [Purser CONTRACT.md](https://github.com/FloorLamp/purser/blob/main/CONTRACT.md). No session, mutation, preview or undo operations are exposed.
+
+Arguments are flat objects; `?` means optional. IDs are positive integers; limit is 1–200 and offset nonnegative. Spending accepts inclusive YYYY-MM-DD dates, category/merchant group and month grain. Transaction filters and sort use Purser’s documented values; category accepts comma-separated IDs.
+
+| Operation | Arguments | Result | Web | Shell (purser:read) |
+| --- | --- | --- | --- | --- |
+| `money.overview` | `{}` | Overview totals and review counts | `GET /money/api/overview` | `GET /money/v1/overview` |
+| `money.spending` | `group?, grain?, from?, to?` | Spending reports by category or merchant and month | `GET /money/api/spending` | `GET /money/v1/spending` |
+| `money.merchant` | `id` | Merchant details | `GET /money/api/merchant/<id>` | `GET /money/v1/merchant/<id>` |
+| `money.rules` | `{}` | Classification rules, categories and suggestions | `GET /money/api/rules` | `GET /money/v1/rules` |
+| `money.categories` | `{}` | Classification rules, categories and suggestions | `GET /money/api/categories` | `GET /money/v1/categories` |
+| `money.accountManagement` | `{}` | Ledger account inventory, mapping choices and people | `GET /money/api/account-management` | `GET /money/v1/account-management` |
+| `money.views` | `{}` | {views: [{id, name, state}]} | `GET /money/api/views` | `GET /money/v1/views` |
+| `money.imports` | `{}` | {imports: [Import]} | `GET /money/api/imports` | `GET /money/v1/imports` |
+| `money.link` | `{}` | Connection status and account mapping; configured, env, redirect_uri | `GET /money/api/link` | `GET /money/v1/link` |
+| `money.merchants.resolve` | `name` | Exact merchant resolution status and candidates | `GET /money/api/merchants/resolve` | `GET /money/v1/merchants/resolve` |
+| `money.txns` | `q?, account?, merchant?, category?, from?, to?, preset?, kind?, min?, max?, sort?, limit?, offset?` | {total, sum_cents, items}; integer cents, outflow negative | `GET /money/api/txns` | `GET /money/v1/txns` |
+| `money.txn` | `id` | Transaction detail, account/category, explanation, transfer counterparts, splits, sources, edits, children, merged and active links | `GET /money/api/txn/<id>` | `GET /money/v1/txn/<id>` |
+| `money.facets` | `{}` | {accounts, categories} | `GET /money/api/facets` | `GET /money/v1/facets` |
+| `money.reviews` | `kind?, limit?, offset?` | Review queue with kinds in tab order | `GET /money/api/reviews` | `GET /money/v1/reviews` |
+| `money.needs` | `{}` | {needs: [Need]} | `GET /money/api/needs` | `GET /money/v1/needs` |
+| `money.subscriptions` | `{}` | Subscription groups and recurring payments | `GET /money/api/subscriptions` | `GET /money/v1/subscriptions` |
+| `money.accounts` | `{}` | {accounts, generated}; shared Accounts contract | `GET /money/api/accounts` | `GET /money/v1/accounts` |
+| `money.investments` | `{}` | Investment accounts, holdings and gains | `GET /money/api/investments` | `GET /money/v1/investments` |
 
 ### Shared Attention mount
 

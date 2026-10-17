@@ -8,7 +8,7 @@ export function fakeHost({kind = 'shell', caps = {}, answers = {}, contract = nu
   const events = emitter();
   const host = {
     kind, hostApi: HOST_API,
-    caps: {...Object.fromEntries(CAPS.map(c => [c, kind === 'shell' && !SITE_CAPS.includes(c)])), ...(kind === 'web' ? {actions: true, clipboard: true, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true} : {}), ...caps},
+    caps: {...Object.fromEntries(CAPS.map(c => [c, kind === 'shell' && !SITE_CAPS.includes(c)])), ...(kind === 'web' ? {actions: true, clipboard: true, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, money: true} : {}), ...caps},
     backends: Object.keys(backends), calls: [], refused: [],
     async call(op, args = {}, {signal} = {}) {
       host.calls.push({op, args});

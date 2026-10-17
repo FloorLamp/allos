@@ -28,10 +28,10 @@ export function hostError(e) {
 /** Caps (contract/README.md); `browse` is the site's filtered browse (bridge.facets, bridge.browse), `usage` a series' chart (bridge.usage),
  *  `corrections` the owner's corrections in the document pane (bridge.correct, bridge.matches), `texts` the Texts list (bridge.texts,
  *  bridge.textsPages, bridge.textsConversation) and `needs` what only the owner can fix (bridge.needs, bridge.need), each off on the
- *  shells unless env.get says; the site supports `texts`. `codes` is the desktops' one-time codes (codes.list, codes.copy; SPEC.md
+ *  shells unless env.get says; `money` is Purser’s read-only Money surface, also off until env.get enables it; the site supports `texts`. `codes` is the desktops' one-time codes (codes.list, codes.copy; SPEC.md
  *  *Codes*): never the site's. */
-export const CAPS = ['recent', 'transfers', 'actions', 'clipboard', 'files', 'drag', 'menus', 'window', 'telemetry', 'picks', 'browse', 'usage', 'corrections', 'texts', 'needs', 'codes'];
-export const SITE_CAPS = ['browse', 'usage', 'corrections', 'texts', 'needs'];
+export const CAPS = ['recent', 'transfers', 'actions', 'clipboard', 'files', 'drag', 'menus', 'window', 'telemetry', 'picks', 'browse', 'usage', 'corrections', 'texts', 'needs', 'codes', 'money'];
+export const SITE_CAPS = ['browse', 'usage', 'corrections', 'texts', 'needs', 'money'];
 
 /** Telemetry names a host forwards (beacon CONTRACT.md, *App telemetry*); never a query, value or title. */
 export const TELEMETRY = ['palette_open', 'find', 'ask', 'find_file', 'view', 'related', 'group', 'transfer'];

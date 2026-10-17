@@ -1,0 +1,21 @@
+// Read-only Money arguments; mirrored in contract/host-contract.json.
+export const MONEY_ARGS = {
+  "money.overview": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.spending": {"type": "object", "additionalProperties": false, "properties": {"group": {"enum": ["category", "merchant"]}, "grain": {"enum": ["month"]}, "from": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}, "to": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}}},
+  "money.merchant": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer", "minimum": 1}}, "required": ["id"]},
+  "money.rules": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.categories": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.accountManagement": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.views": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.imports": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.link": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.merchants.resolve": {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "maxLength": 4000}}, "required": ["name"]},
+  "money.txns": {"type": "object", "additionalProperties": false, "properties": {"q": {"type": "string", "maxLength": 4000}, "account": {"type": "string", "maxLength": 4000}, "merchant": {"type": "string", "maxLength": 4000}, "category": {"type": "string", "maxLength": 4000}, "from": {"type": "string", "maxLength": 4000}, "to": {"type": "string", "maxLength": 4000}, "preset": {"type": "string", "maxLength": 4000}, "kind": {"type": "string", "maxLength": 4000}, "min": {"type": "string", "maxLength": 4000}, "max": {"type": "string", "maxLength": 4000}, "sort": {"type": "string", "maxLength": 4000}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}, "offset": {"type": "integer", "minimum": 0}}},
+  "money.txn": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer", "minimum": 1}}, "required": ["id"]},
+  "money.facets": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.reviews": {"type": "object", "additionalProperties": false, "properties": {"kind": {"type": "string", "maxLength": 4000}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}, "offset": {"type": "integer", "minimum": 0}}},
+  "money.needs": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.subscriptions": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.accounts": {"type": "object", "additionalProperties": false, "properties": {}},
+  "money.investments": {"type": "object", "additionalProperties": false, "properties": {}},
+};
