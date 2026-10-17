@@ -142,7 +142,7 @@ labelled **Clusters** to match bundled `nav.json` (`clusters`, `/clusters`).
 viewer. Back from the viewer retains the collection. Map is the item overlay, not a page.
 Activity is excluded. This is not Flightplan's project/epic board.
 
-The `projects` capability is enabled on the web host only. Bridge requires the owner's
+The `clusters` capability is enabled on the web host only. Bridge requires the owner's
 existing authenticated browser session; mutation POSTs require its same-origin Origin.
 Native hosts must leave this capability off: Bridge does not expose these writes on `/v1`.
 No credentials are passed in mount options. Unsupported operations use the standard host error.
