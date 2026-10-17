@@ -213,3 +213,5 @@
 }
 
 @media (width < 600px) { .dp.page .dp-peek { display: none; } }
+
+.dp > .dk-failure { padding: var(--gap-s) var(--gutter); }

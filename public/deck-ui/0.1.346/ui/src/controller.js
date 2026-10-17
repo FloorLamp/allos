@@ -370,10 +370,10 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
           : {glyph: 'recent', title: 'Nothing here yet', line: 'Sends and receives show up here', action: null};
       }
       const backend = c.find.query === q && c.find.backend ? c.find.backend : healthQuery(q) != null ? 'allos' : spendingQuery(q) ? 'purser' : planOwns(q) ? 'flightplan' : 'bridge';
-      if (backend === 'bridge' && (c.platform?.bridgeSetUp === false || c.find.error?.code === 'not-set-up')) return {glyph: 'document', title: 'bridge: not set up', line: describeFailure('bridge', {code: 'not-set-up'}).message, action: 'Set up'};
+      if (backend === 'bridge' && (c.platform?.bridgeSetUp === false || c.find.error?.code === 'not-set-up')) return {glyph: 'document', title: 'bridge: not set up', line: describeFailure('bridge', {code: 'not-set-up'}, {device: host.kind === 'shell'}).message, action: 'Set up'};
       const err = c.find.error;
       if (err?.status === 401 && c.find.query === q) return authBlock(err, backend);
-      if (err && c.find.query === q) return {glyph: 'warn', title: 'Search unavailable', line: describeFailure(backend, err).message, action: 'Retry', warn: true};
+      if (err && c.find.query === q) return {glyph: 'warn', title: 'Search unavailable', line: describeFailure(backend, err, {device: host.kind === 'shell'}).message, action: 'Retry', warn: true};
       if (!list.length && !c.find.busy) return {glyph: 'find', title: `No matches for “${q}”`, line: '', action: 'Ask instead'};
       return null;
     },
@@ -794,7 +794,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
   async function transfer(op, args) {
     // a configured target not enrolled: refused here (its chip is dimmed)
     if (op === 'transfer.send' && c.enrolled && args.to?.length === 1 && !c.enrolled.includes(args.to[0])) {
-      c.status = {kind: 'bad', text: `${args.to[0]}: not set up. Not retrying automatically. Enroll the device in Settings.`};
+      c.status = {kind: 'bad', text: `${args.to[0]}: not set up. Enroll the device in Settings.`};
       changed();
       return;
     }

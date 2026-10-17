@@ -2,7 +2,7 @@ import {formatQuantity} from '../quantity.js';
 import {openMap} from './map.js';
 import {NavTiles} from './shell-bar.js';
 import {Failure, StatusLink} from './failure.js';
-import {describeFailure} from '../failure.js';
+import {paletteFailures, describeFailure} from '../failure.js';
 // The palette (palette SPEC.md, *Layout*, *Rows*, *Preview*, *Answer*, *States*, *Groups*, *Keys*, *Look and motion*; DESIGN.md §3 P2–P3):
 // the controller's rows in sections with their labels (`FOUND · searching…`, `All n ›`, Recent's Clear), the selection by id (kept in
 // view), hover, the series chips, a group's rows sliding in, the answer with its citations, the asking and loading placeholders, the
@@ -339,10 +339,7 @@ export function Palette({c, mod = 'Control', box = true, hint = true, chrome = f
     ${c.people() ? html`<label class="dp-filters">Relation <select class="dk-field dp-filter" aria-label="Relation filter" value=${c.peopleRelation} onChange=${e => c.relation(e.currentTarget.value)}><option value="">All relations</option>${[...new Set([...c.peopleRelations, c.peopleRelation].filter(Boolean))].map(r => html`<option value=${r}>${r}</option>`)}</select></label>` : null}
     ${c.browsing() && c.facets ? html`<${Filters} c=${c} f=${c.browsing()} />` : null}
     ${layout === 'page' ? hintEl : null}
-    ${Object.values(c.backgroundFailures).map(f => html`<${Failure} backend=${f.backend} error=${f.error} retry=${f.retry} host=${host} />`)}
-    ${['codes', 'targets'].filter(kind => c[`${kind}Error`]).map(kind => html`<div class="dp-status bad" role="status">
-      <span>${describeFailure(kind === 'codes' ? 'bridge codes' : 'This device’s targets', c[`${kind}Error`]).message}</span>
-      <${StatusLink} host=${host} /><button class="dk-btn" onClick=${() => c.retryList(kind)}>Retry</button></div>`)}
+    ${paletteFailures(c).map(f => html`<${Failure} backend=${f.backend} error=${f.error} retry=${f.retry} host=${host} />`)}
     ${layout === 'page' ? statusEl : null}
     ${c.asking && !answer ? html`<section class="dp-answer asking" aria-busy="true"><div class="dk-label">Answer</div>
       <span class="dk-ph" style="width:92%;height:12px"></span><span class="dk-ph" style="width:84%;height:12px"></span><span class="dk-ph" style="width:56%;height:12px"></span>
