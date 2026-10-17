@@ -1,6 +1,6 @@
 {
-  "version": "0.1.325",
-  "revision": "2a21fe4d406b3f52e2d6ebc367e2d84124ac42eb",
+  "version": "0.1.329",
+  "revision": "c6e0dccc341b87d8de463b6039623fb7e30c3f78",
   "hostApi": 1,
   "files": {
     "palette/model.mjs": "88dc7d0ac4eb83af0b9ee8cd83907aa1647842020e3c03aace1288b01fa71042",
@@ -32,7 +32,7 @@
     "ui/src/attention.js": "188baa16d492772f6e547389bddf97d88738f47252eb146255fec5126193d8a1",
     "ui/src/base.css": "5ae0c95a4ff4c110288dbd3474fb5f8e5d9450e36004ee68eacf1b18a795a219",
     "ui/src/collection-details.js": "13473f2fed890fdf75826432a10f7585de94236bcfe271fa929ec3820ad8068e",
-    "ui/src/controller.js": "b662e1e8ea7a5f76de6e168a8e9cffab928f020f931a8524f65a4018bf41044a",
+    "ui/src/controller.js": "3c062f195af5ad02091383b6131f86392ae73c6682dd926427890f2e42f8bb48",
     "ui/src/details.js": "e3b3d362bc9452f2e2fe119d77e3907f43616cf67083d13746cc7b6a91bdb1d1",
     "ui/src/failure.js": "d89325018b236a49b3de1e91feb8f2cb632063a1ac959f6401ff49e9c974af2b",
     "ui/src/flightplan.js": "28ee3132d46ac5d325d6c312e37187386ed68b91ffbf7f55619517d348a7e8c3",
@@ -46,7 +46,7 @@
     "ui/src/host/money.js": "054e08ca799909e8e3f8a7267390dbc9ea611cb5935e76da5ab8d285d1a3a0ed",
     "ui/src/host/shell.js": "e71bfec8fcd65bdf4cb91b2626a62162876944680c3c759006221d822b649fe6",
     "ui/src/host/stream.js": "2c17ce51688e6248339def3928b03bc635a817695d4d7a52a99b590cd086eca6",
-    "ui/src/host/web.js": "749f7dc53fb4823effeebb47eacb931fe39eca251ac260114c24c408c9ee0341",
+    "ui/src/host/web.js": "1e8cf69146c06b11789f5ef6c5c78afe38274f0a2319ec6163f758f13abe8103",
     "ui/src/house.js": "5f968cb74e1ecd382d50bcb0e052ea19f96083da1e46e60b989fd57f2a8bd5e5",
     "ui/src/insurance.js": "384a41d283c93a461da4083ecca0859861ea04d1d415603e42f4854eecea8fcf",
     "ui/src/lookups.js": "ec9b717b8fab242ce3965789ef1571d75db1463f34cc0334d377f631962d1e8c",
