@@ -22,10 +22,20 @@ describe("Deck Health route step", () => {
     }
 }
 handle @allos {
-    reverse_proxy allos:3000
+    reverse_proxy 203.0.113.10:3000
 }
 `;
-        writeFileSync(config, original);
+        const broken = original.replace(
+          "        reverse_proxy bridge:8080",
+          `        # BEGIN allos-health
+        @allos_health path /health /health/*
+        handle @allos_health {
+            reverse_proxy allos:3000
+        }
+        # END allos-health
+        reverse_proxy bridge:8080`
+        );
+        writeFileSync(config, broken);
         const lib = join(root, "lib.sh");
         writeFileSync(lib, 'install_file() { cp "$1" "$2"; }\n');
         const marker = join(root, "failed");
@@ -37,7 +47,7 @@ handle @allos {
         const run = (mode: string) =>
           spawnSync(
             "sh",
-            [resolve("deploy/steps/0005-deck-health-route.sh"), mode],
+            [resolve("deploy/steps/0006-deck-health-upstream.sh"), mode],
             {
               env: {
                 ...process.env,
@@ -48,12 +58,15 @@ handle @allos {
             }
           );
         expect(run("check").status).toBe(1);
-        expect(readFileSync(config, "utf8")).toBe(original);
-        expect(run("run").status).toBe(fail ? 2 : 0);
-        if (fail) expect(readFileSync(config, "utf8")).toBe(original);
+        expect(readFileSync(config, "utf8")).toBe(broken);
+        const result = run("run");
+        expect(result.status, result.stderr.toString()).toBe(fail ? 2 : 0);
+        if (fail) expect(readFileSync(config, "utf8")).toBe(broken);
         expect(run("run").status).toBe(0);
         expect(run("check").status).toBe(0);
         const installed = readFileSync(config, "utf8");
+        expect(installed).toContain("reverse_proxy 203.0.113.10:3000");
+        expect(installed).not.toContain("reverse_proxy allos:3000");
         expect(
           installed.replace(
             /        # BEGIN allos-health[\s\S]*?        # END allos-health\n/,
