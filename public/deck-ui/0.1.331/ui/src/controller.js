@@ -98,9 +98,9 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
   let copiedTimer = null, flashTimer = null, hideTimer = null, codesTimer = null;
   let inputAt = 0; // the person's last key or click in the page (c.input)
   // flightplan in the palette (SPEC.md, *Flightplan in Find*, *Capture*): where the host's registry has it, its lists (the find rules'
-  // list names; asked once, again after a failure) and one Flightplan model (contract/flightplan.md) for the capture and the rows' writes
+  // list names; asked once, retried a minute after a failure) and one Flightplan model (contract/flightplan.md) for the capture and the rows' writes
   const planOn = () => !!host.backends?.includes('flightplan');
-  let fp = null, listsAsked = null, listsKnown = [], toastSeen = null;
+  let fp = null, listsAsked = null, listsKnown = [], listsRetryAt = 0, findVersion = 0, toastSeen = null;
   const c = {
     host, env,
     peopleRelation: '',
@@ -475,6 +475,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       e => { c.charts = {...c.charts, [key]: {busy: false, data: null, error: failure(e)}}; changed(); }));
   }
   function cancelSearch() {
+    findVersion++;
     if (!search) return;
     timers.clearTimeout(search.timer);
     timers.clearTimeout(search.skeleton);
@@ -503,11 +504,13 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
     track(p);
   }
   async function runFind(q, signal) {
-    const t0 = now();
+    const t0 = now(), version = findVersion;
+    let bridgeRows, plan = [];
+    const current = () => !signal.aborted && version === findVersion;
     let ruled = false;
     try {
       const health = healthQuery(q);
-      let r, plan = [];
+      let r;
       if (health != null) {
         if (!await healthIdentity(host)) { delete env.found[q]; delete env.answers[q]; throw new Error('Health is unavailable'); }
         r = await host.call('allos.find', {query: {q: health, limit: 20}}, {signal});
@@ -517,16 +520,24 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       else {
         // Deck's find rules answer from flightplan alone (no bridge or model call); else bridge's find, flightplan's matches beside it
         const on = planOn(), call = (op, args = {}) => host.call(`flightplan.${op}`, args, {signal});
-        const lists = on ? await planLists() : [], rule = on ? planQuery(q, lists) : null;
+        const lists = listsKnown, rule = on ? planQuery(q, lists) : null;
         if (rule) c.find.backend = 'flightplan';
         r = rule ? await planAnswer(call, rule, {now: now(), lists}) : null;
         ruled = !!r;
         if (!r) {
           delete c.find.backend;
-          const words = on ? planSearch(call, q, {now: now(), lists}).catch(() => []) : null;
-          r = await host.call('bridge.find', {q, limit: 20, phase: 'words'}, {signal});
-          if (words) plan = await words;
-          if (plan.length) r = {...r, results: mergeFound(r?.results ?? [], plan)};
+          const bridge = host.call('bridge.find', {q, limit: 20, phase: 'words'}, {signal});
+          if (on) track(planLists().then(lists => planSearch(call, q, {now: now(), lists})).catch(() => []).then(rows => {
+            if (!current()) return;
+            plan = rows;
+            if (bridgeRows) {
+              env.found = {...env.found, [q]: mergeFound(bridgeRows, plan)};
+              changed();
+            }
+          }));
+          r = await bridge;
+          bridgeRows = r?.results ?? [];
+          r = {...r, results: mergeFound(bridgeRows, plan)};
         }
       }
       if (signal.aborted) return;
@@ -545,7 +556,8 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
         if (!/^\/(v1|api)\/find$/.test(next.pathname) || next.origin !== 'https://bridge.invalid' || next.searchParams.get('q') !== q || next.searchParams.get('phase') !== 'full') throw new Error('Invalid Find enrichment');
         r = await host.call('bridge.find', {q, limit: Number(next.searchParams.get('limit') ?? 20), phase: 'full'}, {signal});
         if (signal.aborted) return;
-        env.found = {...env.found, [q]: mergeFound(r?.results ?? [], plan)};
+        bridgeRows = r?.results ?? [];
+        env.found = {...env.found, [q]: mergeFound(bridgeRows, plan)};
       }
       c.find = {query: q, busy: false, error: null};
       lastFound = q;
@@ -557,6 +569,7 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
       const f = failure(e);
       if (f.code === 'cancelled') return;
       if (c.find.partial) delete env.found[q];
+      bridgeRows = undefined;
       c.find = {query: q, busy: false, error: f, ...(c.find.backend ? {backend: c.find.backend} : {})};
       telemetry('find', false, t0, outcome(f));
     } finally {
@@ -565,14 +578,15 @@ export function createController(host, {debounce = 100, copiedMs = 260, flashMs 
     changed();
   }
 
-  /** flightplan's lists (the find rules' list names), asked once; a failure asks again next time. */
+  /** flightplan's lists (the find rules' list names), asked once; failures cool down for a minute. */
   function planLists() {
     if (!planOn()) return Promise.resolve([]);
+    if (!listsAsked && now() < listsRetryAt) return Promise.resolve(listsKnown);
     listsAsked ??= host.call('flightplan.lists', {}).then(r => {
       listsKnown = Array.isArray(r?.lists) ? r.lists : [];
       if (fp) fp.lists = listsKnown;
       return listsKnown;
-    }, () => { listsAsked = null; return []; });
+    }, () => { listsAsked = null; listsRetryAt = now() + 60_000; return listsKnown; });
     return listsAsked;
   }
   /** Whether flightplan answers the query here (a capture, a find rule). */

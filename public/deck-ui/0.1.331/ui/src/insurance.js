@@ -37,3 +37,10 @@ export function createInsurance(host) {
   };
   return model;
 }
+
+/** Keep policy documents in the collection drawer, with other Find matches below it. */
+export function insuranceMatches(rows, policies) {
+  const documents = new Set((policies ?? []).flatMap(p => p.documents ?? []).map(d => String(d.id)));
+  return rows.filter(r => !r.result || policies != null &&
+    !policies.some(p => p.id === r.result.insurance?.id) && !documents.has(String(r.result.document?.id)));
+}

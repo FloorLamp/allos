@@ -41,8 +41,12 @@ export function Insurance({model, host, onOpen}) {
     <//>
   </main>`;
 }
-export function InsurancePlace({host, onOpen}) {
+export function InsurancePlace({host, onOpen, onPolicies}) {
   const [model] = useState(() => createInsurance(host));
-  useEffect(() => { model.refresh(); return () => model.stop(); }, [model]);
+  useEffect(() => {
+    const unsubscribe = model.subscribe(() => { if (!model.loading) onPolicies?.(model.policies); });
+    model.refresh();
+    return () => { unsubscribe(); model.stop(); onPolicies?.(null); };
+  }, [model]);
   return html`<${Insurance} model=${model} host=${host} onOpen=${onOpen} />`;
 }
