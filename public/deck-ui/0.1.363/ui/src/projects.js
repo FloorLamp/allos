@@ -13,7 +13,7 @@ export function createProjects(host) {
       const request = listRequest = new AbortController();
       model.loading = true; model.error = null; notify();
       try {
-        if (!host.caps.projects) throw new HostError('unsupported');
+        if (!host.caps.clusters) throw new HostError('unsupported');
         const answer = await host.call('bridge.clusters', {all: model.all}, {signal: request.signal});
         if (!stopped && !request.signal.aborted) model.clusters = answer.clusters ?? [];
       } catch (error) { if (!stopped && !request.signal.aborted) model.error = error; }

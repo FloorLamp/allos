@@ -205,7 +205,7 @@ export function webHost(win = globalThis, {backends = {}} = {}) {
     },
     /** The registry's backend names (the nav this host can offer). */
     backends: Object.keys(backends),
-    caps: {projects: true, recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false, money: true},
+    caps: {clusters: true, recent: false, transfers: false, actions: true, clipboard: true, files: false, drag: false, menus: false, window: false, telemetry: false, picks: true, browse: true, usage: true, corrections: true, texts: true, needs: true, codes: false, money: true},
     async call(op, args = {}, {signal} = {}) {
       if (signal?.aborted) throw new HostError('cancelled');
       if (op.startsWith('money.')) {
