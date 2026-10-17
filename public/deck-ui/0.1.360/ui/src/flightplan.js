@@ -176,13 +176,29 @@ export function byDay(items, today) {
 }
 /** History lines from `/v1/items/<id>/events`, newest first: [{at, what, by, owner}]. */
 export function historyOf(events = []) {
-  return events.map(e => {
+  const rows = events.map(e => {
     const fields = Object.keys(e.changes ?? {}), created = fields.length && fields.every(f => e.changes[f][0] === null) && !e.occurrence && !e.ignored;
-    const st = e.changes?.status;
-    const what = created ? 'Created' : e.occurrence ? `Done for ${e.occurrence}` : st ? `${st[1] === 'done' ? 'Done' : `Moved from ${statusLabel(st[0])} to ${statusLabel(st[1])}`}${e.ignored ? ' (not applied: the owner’s move wins)' : ''}`
-      : `Changed ${fields.join(', ') || 'nothing'}`;
-    return {at: e.at, what, by: [e.actor, e.source].filter(Boolean).join(' · '), owner: e.source === 'owner'};
-  }).reverse();
+    const st = e.changes?.status, links = e.changes?.links;
+    const added = (links?.[1] ?? []).filter(l => !(links?.[0] ?? []).some(old => old.type === l.type && old.ref === l.ref));
+    const name = l => `${l.type === 'pr' ? 'PR' : l.type === 'sortie' ? 'agent session' : l.type} ${shortRef(l.ref).replace(/^sortie:/, '')}`;
+    const removed = (links?.[0] ?? []).filter(l => !(links?.[1] ?? []).some(next => next.type === l.type && next.ref === l.ref));
+    const states = (links?.[1] ?? []).filter(l => l.type === 'pr' && l.state && (links?.[0] ?? []).some(old => old.type === l.type && old.ref === l.ref && old.state !== l.state));
+    const words = [...added.map(l => l.type === 'sortie' ? `Agent session ${l.ref.replace(/^sortie:/, '')} started` : `Linked ${name(l)}`),
+      ...removed.map(l => `Unlinked ${name(l)}`), ...states.map(l => `${name(l)} ${l.state}`)];
+    const what = created ? 'Created' : e.occurrence ? `Done for ${e.occurrence}` : [
+      ...(st ? [st[1] === 'done' ? 'Done' : `Moved from ${statusLabel(st[0])} to ${statusLabel(st[1])}`] : []), ...words,
+      ...fields.filter(f => f !== 'status' && (f !== 'links' || !words.length)).map(f => `Changed ${f}`)
+    ].join(' · ') || 'Changed nothing';
+    return {at: e.at, what: what + (e.ignored ? ' (not applied: the owner’s move wins)' : ''),
+      by: e.actor === 'coordinator' ? 'Coordinator' : e.actor === 'owner-cli' ? 'You (CLI)' : [e.actor, e.source].filter(Boolean).join(' · '), owner: e.source === 'owner'};
+  });
+  const grouped = [];
+  for (const row of rows) {
+    const prev = grouped.at(-1);
+    if (prev && prev.at.slice(0, 19) === row.at.slice(0, 19) && prev.by === row.by) prev.what += ` · ${row.what}`;
+    else grouped.push({...row});
+  }
+  return grouped.reverse();
 }
 /** `Oct 16, 10:41` in New York. */
 export const whenText = iso => new Intl.DateTimeFormat('en-US', {timeZone: ZONE, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(iso));
@@ -302,7 +318,7 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     drawer: null, toast: null, busy: new Set(), snoozing: null,
     capture: {text: '', preview: null, error: null, busy: false, choices: null},
     subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); },
-    stop() { stopped = true; timers.clearTimeout(parseTimer); timers.clearTimeout(toastTimer); subscribers.clear(); },
+    stop() { stopped = true; timers.clearTimeout(parseTimer); timers.clearTimeout(toastTimer); timers.clearInterval?.(boardTimer); globalThis.document?.removeEventListener('visibilitychange', visible); subscribers.clear(); },
     setTab(tab) { fp.tab = tab; if (tab === 'board' && !fp.board.loaded) fp.refreshBoard(); changed(); },
     async setList(slug) { fp.list = slug; fp.listItems = slug === 'all' ? null : fp.openItems.filter(i => i.list === slug); changed(); if (slug !== 'all') await loadList(); },
     toggleDone() { fp.showDone = !fp.showDone; changed(); },
@@ -440,11 +456,14 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     // ---------- the board ----------
     async refreshBoard() {
       const gen = ++boardGen;
-      fp.board = {...fp.board, loading: true, error: null};
+      fp.board = {...fp.board, loading: !fp.board.loaded, error: null};
       changed();
       try {
         const status = [...OPEN, 'done'].join(',');
         const [epics, work] = await Promise.all([all({kind: 'epic', status}), all({repo: 'any', status})]);
+        await Promise.all(work.filter(t => t.status === 'stuck').map(async t => {
+          try { t.timeline = (await call('timeline', id(t)))?.timeline ?? []; } catch { t.timeline = []; }
+        }));
         if (stopped || gen !== boardGen) return;
         fp.board = {epics, tasks: work.filter(t => t.kind !== 'epic'), loading: false, loaded: true, error: null};
       } catch (e) {
@@ -474,7 +493,7 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     toggleColumn(k) { if (fp.expanded.has(k)) fp.expanded.delete(k); else fp.expanded.add(k); changed(); },
     /** A card's one chip, if any: why it is stuck, else an open blocker, else its PR. */
     chips(task) {
-      if (task.status === 'stuck') return [{kind: 'stuck', text: oneLine(task.notes, 100) || 'stuck'}];
+      if (task.status === 'stuck') return [{kind: 'stuck', text: oneLine(task.timeline?.filter(e => e.detail).sort((a, b) => b.at.localeCompare(a.at))[0]?.detail, 100) || 'stuck'}];
       const byId = new Map(fp.board.tasks.map(t => [t.id, t]));
       const b = (task.blockedBy ?? []).find(id => byId.get(id)?.status !== 'done');
       if (b != null) return [{kind: 'blocked', text: `blocked by ${byId.get(b) ? refOf(byId.get(b)) : `#${b}`}`}];
@@ -504,6 +523,8 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
       }
     },
     setOver(k) { if (fp.over !== k) { fp.over = k; changed(); } },
+    async edit(task, body) { await write(task, () => call('update', {...id(task), body})); },
+    copy(task) { return host.call('clipboard.copy', {text: `flightplan show ${task.id}`}); },
     open(task) { fp.drawer = {item: task, events: null, error: null}; changed(); loadEvents(task); },
     close() { fp.drawer = null; eventsGen++; changed(); },
     dismiss() { timers.clearTimeout(toastTimer); fp.toast = null; changed(); },
@@ -521,8 +542,11 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
   async function loadEvents(task) {
     const gen = ++eventsGen;
     try {
-      const r = await call('events', id(task));
-      if (!stopped && gen === eventsGen && fp.drawer) { fp.drawer = {...fp.drawer, events: r?.events ?? []}; changed(); }
+      const [item, r] = await Promise.all([call('item', id(task)), call('events', id(task))]);
+      if (!stopped && gen === eventsGen && fp.drawer) {
+        fp.board = {...fp.board, tasks: fp.board.tasks.map(t => t.id === item.id ? item : t), epics: fp.board.epics.map(t => t.id === item.id ? item : t)};
+        fp.drawer = {...fp.drawer, item, events: r?.events ?? [], error: null}; changed();
+      }
     } catch (e) { if (!stopped && gen === eventsGen && fp.drawer) { fp.drawer = {...fp.drawer, error: describeFailure('flightplan', e)}; changed(); } }
   }
   /** One write on a todo: the row busy meanwhile, then the views read again; a failure says why. */
@@ -533,6 +557,8 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     try { await fn(); } catch (e) { failed(e); }
     fp.busy.delete(item.id);
     await again();
+    if (fp.board.loaded) await fp.refreshBoard();
+    if (fp.drawer?.item.id === item.id) await loadEvents(item);
   }
   /** A write's failure: a 401 the backend's session landing renews is one Sign in to save action (contract/flightplan.md), not an
    *  error; anything else says why. */
@@ -547,5 +573,8 @@ export function createFlightplan(host, {clock = Date.now, timers = globalThis, t
     if (!signIn) toastTimer = timers.setTimeout(() => { if (fp.toast === t) { fp.toast = null; changed(); } }, toastMs);
     changed();
   }
+  const visible = () => { if (!globalThis.document?.hidden && fp.board.loaded) { fp.refreshBoard(); if (fp.drawer) loadEvents(fp.drawer.item); } };
+  const boardTimer = timers.setInterval?.(visible, 60000);
+  globalThis.document?.addEventListener('visibilitychange', visible);
   return fp;
 }
