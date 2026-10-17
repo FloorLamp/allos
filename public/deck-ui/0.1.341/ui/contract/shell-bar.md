@@ -25,7 +25,7 @@ opts = {brand: {label: 'Deck', href: '/', mark?},
   sign-in controls) accept text or Preact nodes, never HTML strings. Hosts own their data, actions and refreshes; omitted slots disappear. Updates merge options.
 - Entries carry `group: top | library`. Desktop shows the top entries and a Library disclosure.
   Enter/Space toggles Library; Escape closes it and returns focus to the button.
-  Below 600 px navigation is hidden: the header retains brand, Needs count and sign-in.
+  Below 600 px a Menu button opens navigation as a sheet, including Library. Escape closes the sheet and returns focus; outside clicks or focus leaving the header dismiss it. The header stays sticky, with phone navigation targets at least 44 px.
 - `mountPalette(el, host, {nav, …})` draws phone tiles immediately below Find’s box on an idle page
   (no query, scope, answer or pending ask). Pass the same resolved `nav` array used by `mountShellBar`;
   no per-site table or separate tile mount is needed. Tiles remain hidden on desktop and in panel layouts.

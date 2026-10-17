@@ -10,3 +10,4 @@
 .dhealth input { display: block; margin: 6px 0 12px; width: 100%; box-sizing: border-box; }
 .dh-result { display: block; margin-top: 12px; text-align: left; }
 @media (max-width: 600px) { .dh-columns, .dh-fields { grid-template-columns: 1fr; } .dhealth { padding: 16px; } }
+.dh-skeleton { height: 64px; border-radius: 4px; background: var(--line); }
