@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { accountsCors } from "./lib/accounts-cors";
 import {
   SESSION_COOKIE,
   SESSION_SLIDE_MARK_COOKIE,
@@ -142,6 +143,7 @@ export function middleware(req: NextRequest) {
   const withCsp = (res: NextResponse): NextResponse => {
     res.headers.set("content-security-policy", csp);
     if (selfFramed) res.headers.set("X-Frame-Options", "SAMEORIGIN");
+    if (pathname === "/api/accounts") accountsCors(req, res.headers);
     return res;
   };
 

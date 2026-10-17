@@ -26,7 +26,7 @@
 //
 // middleware() is Edge code but pure over its request, so it unit-tests directly.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { middleware } from "@/middleware";
 import {
@@ -141,5 +141,50 @@ describe("shouldSlideSessionCookie — the policy itself", () => {
     // between the two is the worst case by which a POST-only session's browser
     // lifetime can lag its DB expires_at.
     expect(SESSION_SLIDE_MARK_TTL_SEC).toBeLessThan(SESSION_TTL_SEC);
+  });
+});
+
+describe("Accounts CORS before session authentication", () => {
+  it("lets Deck read the real no-cookie 401 without opening other origins or APIs", async () => {
+    vi.stubEnv("DECK_ORIGIN", "https://deck.example");
+    try {
+      for (const origin of [
+        "https://deck.example",
+        "https://other.example",
+        "https://deck.example.evil.test",
+      ]) {
+        const response = middleware(
+          new NextRequest("https://allos.test/api/accounts", {
+            headers: { origin },
+          })
+        );
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: "Unauthorized" });
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+          origin === "https://deck.example" ? origin : null
+        );
+        expect(response.headers.get("access-control-allow-credentials")).toBe(
+          origin === "https://deck.example" ? "true" : null
+        );
+        expect(response.headers.get("vary")).toBe("Origin");
+      }
+      const otherApi = middleware(
+        new NextRequest("https://allos.test/api/me", {
+          headers: { origin: "https://deck.example" },
+        })
+      );
+      expect(otherApi.headers.get("access-control-allow-origin")).toBeNull();
+      vi.stubEnv("DECK_ORIGIN", "");
+      const unconfigured = middleware(
+        new NextRequest("https://allos.test/api/accounts", {
+          headers: { origin: "https://deck.example" },
+        })
+      );
+      expect(
+        unconfigured.headers.get("access-control-allow-origin")
+      ).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
