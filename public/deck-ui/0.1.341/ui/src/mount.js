@@ -373,6 +373,7 @@ export function mountHealthPage(el, host, opts = {}) {
 function mountPage(el, host, opts, id, mount) {
   const shell = el.ownerDocument.createElement('div'), content = el.ownerDocument.createElement('div');
   el.append(shell, content);
+  shell.className = 'ds-page-shell';
   content.className = 'dk-collection-page';
   const bar = mountShellBar(shell, {...opts, host, current: id});
   const page = mount(content, host, opts);

@@ -12,7 +12,7 @@ with the owner's allos credential.
 
 `mountHealth(el, host, {onRecord?})` mounts today's medication board (Take, Skip, Undo), recent readings and labs, record find/Q&A,
 and a reading form. It answers `{health, refresh(), unmount()}` (`health: null` without allos). `refresh()` checks identity again
-before fetching personal data; a failed refresh clears Health. There is no polling or health data in localStorage. A record opens
+before fetching personal data; a failed refresh clears Health. The first load shows a skeleton; refresh and profile changes keep the previous snapshot with a busy state and disabled actions until the replacement is ready. There is no polling or health data in localStorage. A record opens
 in the shared viewer as the API's scalar fields, rendered as text; `onRecord({key, title, profile})` may override that destination.
 The viewer independently checks `allos.me` before `allos.record`, with no bridge pages, Related, corrections or file download.
 

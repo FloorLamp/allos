@@ -40,25 +40,27 @@ export function createHealth(host) {
     start() { return h.refresh(); },
     async refresh(profile = h.profile) {
       const n = ++generation;
-      clear(); h.loading = true; h.error = null; changed();
+      h.loading = true; h.error = null; changed();
       const me = await healthIdentity(host, {onFailure: e => { if (n === generation && !stopped) h.error = describeFailure('allos', e); }});
       if (n !== generation || stopped) return;
       if (!me) { h.loading = false; changed(); return; }
       h.me = me; h.owner = true;
+      let profiles, selected;
       try {
         const available = await host.call('allos.profiles', {});
         if (n !== generation || stopped) return;
-        h.profiles = available.profiles ?? [];
-        h.profile = h.profiles.some(p => p.id === profile) ? profile : available.profile;
+        profiles = available.profiles ?? [];
+        selected = profiles.some(p => p.id === profile) ? profile : available.profile;
       } catch (e) { if (n !== generation || stopped) return; clear(); h.error = describeFailure('allos', e); h.loading = false; changed(); return; }
       try {
-        const [board, readings, labs] = await Promise.all(['board', 'readings', 'labs'].map(op => host.call(`allos.${op}`, {query: query({})})));
+        const [board, readings, labs] = await Promise.all(['board', 'readings', 'labs'].map(op => host.call(`allos.${op}`, {query: selected != null ? {profile: selected} : {}})));
         if (n !== generation || stopped) return;
-        Object.assign(h, {board, readings: readings.readings ?? [], labs: labs.labs ?? []});
+        Object.assign(h, {profiles, profile: selected, results: [], answer: null, board, readings: readings.readings ?? [], labs: labs.labs ?? []});
       } catch (e) { if (n !== generation || stopped) return; clear(); h.error = describeFailure('allos', e); }
       h.loading = false; changed();
     },
     async search(q, ask = false) {
+      if (h.loading) return;
       const n = ++generation;
       h.results = []; h.answer = null; h.error = null; changed();
       const me = await healthIdentity(host, {onFailure: e => { if (n === generation && !stopped) h.error = describeFailure('allos', e); }});
@@ -72,7 +74,7 @@ export function createHealth(host) {
       changed();
     },
     async write(op, body, extra = {}) {
-      if (!h.owner || h.busy || h.profiles?.find(p => p.id === h.profile)?.access !== 'write') return;
+      if (!h.owner || h.loading || h.busy || h.profiles?.find(p => p.id === h.profile)?.access !== 'write') return;
       h.busy = true; h.status = ''; h.statusBad = false; changed();
       try {
         // Call before awaiting: the browser's active gesture must reach the host's POST gate.

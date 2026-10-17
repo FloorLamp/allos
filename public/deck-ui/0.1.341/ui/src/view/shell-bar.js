@@ -1,6 +1,6 @@
 // One bar for backend sites and Tower. Destinations are release data, independent of backend availability.
 import {h} from '../../vendor/preact.mjs';
-import {useId, useState} from '../../vendor/hooks.mjs';
+import {useEffect, useId, useRef, useState} from '../../vendor/hooks.mjs';
 import htm from '../../vendor/htm.mjs';
 const html = htm.bind(h);
 
@@ -18,10 +18,32 @@ function Needs({needs}) {
 /** Hosts supply the resolved contract list and own the needs, verdict and sign-in slots. */
 export function ShellBar({brand = {label: 'Deck', href: '/'}, nav = [], current, needs = null, verdict = null, signIn = null}) {
   const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const bar = useRef(null);
   const menuId = useId();
-  return html`<header class="ds-bar"><div class="ds-in">
+  const navId = useId();
+  useEffect(() => {
+    const outside = e => {
+      if (!bar.current?.querySelector('.ds-menu')?.contains(e.target)) setOpen(false);
+      if (!bar.current?.contains(e.target)) setSheetOpen(false);
+    };
+    const doc = bar.current.ownerDocument;
+    doc.addEventListener('pointerdown', outside);
+    doc.addEventListener('focusin', outside);
+    return () => { doc.removeEventListener('pointerdown', outside); doc.removeEventListener('focusin', outside); };
+  }, []);
+  return html`<header ref=${bar} class=${`ds-bar${sheetOpen ? ' ds-sheet-open' : ''}`} onKeyDown=${e => {
+    if (e.key === 'Escape' && sheetOpen) {
+      setSheetOpen(false); setOpen(false);
+      bar.current.querySelector('.ds-nav-toggle').focus();
+      e.stopPropagation();
+    }
+  }}><div class="ds-in">
     <a class="ds-brand" href=${brand.href}>${brand.mark ?? null}${brand.label}</a>
-    <nav class="ds-nav" aria-label="Navigation">${nav.filter(p => p.group !== 'library').map(p => html`<a key=${p.id} href=${p.href} aria-current=${p.id === current ? 'page' : null}>${p.label}</a>`)}
+    ${nav.length ? html`<button type="button" class="ds-nav-toggle dk-btn text" aria-expanded=${sheetOpen} aria-controls=${navId} onClick=${() => { setSheetOpen(!sheetOpen); setOpen(false); }}>Menu</button>` : null}
+    <nav id=${navId} class="ds-nav" aria-label="Navigation" onClick=${e => {
+      if (e.target.closest('a')) { setSheetOpen(false); setOpen(false); }
+    }}>${nav.filter(p => p.group !== 'library').map(p => html`<a key=${p.id} href=${p.href} aria-current=${p.id === current ? 'page' : null}>${p.label}</a>`)}
     ${nav.some(p => p.group === 'library') ? html`<div class=${`ds-menu${open ? ' open' : ''}`} onKeyDown=${e => {
       if (e.key === 'Escape' && open) {
         setOpen(false);
