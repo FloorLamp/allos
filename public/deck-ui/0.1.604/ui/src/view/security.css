@@ -1,0 +1,9 @@
+.dk-security { color: var(--text); font: var(--font-body); padding-block: var(--gap-l); }
+.dk-security > h2 { margin: 0 0 var(--gap-l); font: var(--font-heading); }
+.dk-security > section { margin-top: var(--gap-l); }
+.dk-security .dp-rows { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 0; }
+.dk-security .dp-rows:empty { display: none; }
+.dk-security .dp-row { grid-template-columns: minmax(0, 1fr); margin: 0; padding: var(--gap-m); border-top: 1px solid var(--hair); border-radius: 0; }
+.dk-security .dp-row:first-child { border-top: 0; }
+.dk-security .dp-title, .dk-security .dp-sub { white-space: normal; overflow-wrap: anywhere; }
+.dk-security p { color: var(--muted); font: var(--font-sub); }

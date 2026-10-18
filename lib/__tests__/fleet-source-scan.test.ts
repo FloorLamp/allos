@@ -19,6 +19,12 @@ const hash = (value: string) =>
   createHash("sha256").update(value.toLowerCase()).digest("hex");
 
 function scan(root: string, files: string[]): string[] {
+  const names = new Map<string, boolean>();
+  const isName = (word: string) => {
+    const key = word.toLowerCase();
+    if (!names.has(key)) names.set(key, nameHashes.has(hash(key)));
+    return names.get(key);
+  };
   return files.flatMap((file) => {
     if (
       file.startsWith("public/deck-ui/") ||
@@ -31,9 +37,7 @@ function scan(root: string, files: string[]): string[] {
       .split(/\r?\n/)
       .flatMap((line, i) =>
         patterns.some((pattern) => pattern.test(line)) ||
-        (line.match(/[a-z]+/gi) ?? []).some((word) =>
-          nameHashes.has(hash(word))
-        )
+        (line.match(/[a-z]+/gi) ?? []).some(isName)
           ? [`${file}:${i + 1}`]
           : []
       );

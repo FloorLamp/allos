@@ -1,0 +1,64 @@
+/* The foundation every Deck page shares (contract/foundation.md, *Foundation*): figure and section tokens, tones, stat tiles, money rows and
+   date sections, the detail drawer. Tokens only on top of tokens.css, so both themes and forced colours follow it. */
+:root {
+  /* the 24/8 rhythm: 24 between sections of a page, 8 between the parts inside one */
+  --space-section: var(--gap-xl);
+  --space-item: var(--gap-s);
+  --drawer-width: 420px;
+  --sticky-top: 0px;
+}
+.tone-good { color: var(--ok); }
+.tone-bad { color: var(--bad); }
+.tone-neutral { color: var(--text); }
+
+/* stat tiles */
+.dk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: var(--space-item); margin-bottom: var(--space-section); }
+.dk-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--gap-m) var(--gap-l); border-radius: var(--radius); background: var(--raised); }
+.dk-stat-label { font: var(--font-label); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--muted); }
+.dk-figure { font: var(--font-figure); font-variant-numeric: tabular-nums; margin: 0; overflow-wrap: anywhere; }
+button.dk-figure { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+button.dk-figure:hover { text-decoration: underline; }
+.dk-stat-sub, .dk-delta { font: var(--font-sub); color: var(--muted); font-variant-numeric: tabular-nums; }
+.dk-delta.tone-good { color: var(--ok); }
+.dk-delta.tone-bad { color: var(--bad); }
+.dk-delta-label { color: var(--muted); }
+@media (max-width: 480px) { .dk-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dk-stat { padding: var(--gap-s) var(--gap-m); } .dk-figure { font-size: var(--size-figure-small); } }
+
+/* money rows and sections (RowList): the figure trails, tabular, in its tone, no chip */
+.dp-row.bare { grid-template-columns: 10px minmax(0, 1fr) auto; }
+.dp-figure { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.dp-qty { font: var(--font-title); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dp-title .dp-dot { margin-right: var(--gap-s); vertical-align: 1px; }
+.dot-accent { background: var(--accent); } .dot-ok { background: var(--ok); } .dot-warn { background: var(--warn); } .dot-bad { background: var(--bad); }
+.dot-sent { background: var(--sent); } .dot-received { background: var(--received); } .dot-muted { background: var(--faint); }
+.dp-sec + .dp-sec { margin-top: var(--space-section); }
+.dp-sechead { position: sticky; top: var(--sticky-top); z-index: 1; display: flex; align-items: baseline; justify-content: space-between; margin: 0;
+  padding: var(--gap-s) var(--gutter); font: var(--font-section); color: var(--soft); background: var(--night); border-bottom: 1px solid var(--hair); }
+
+/* the detail drawer: a side panel from 720px, a full sheet below */
+.dk-drawer-wrap { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; }
+.dk-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--night) 55%, transparent); }
+.dk-drawer { position: relative; display: flex; flex-direction: column; width: min(var(--drawer-width), 100%); height: 100%; box-sizing: border-box;
+  background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px color-mix(in srgb, var(--shadow-ink) 18%, transparent); outline: none;
+  animation: dk-drawer-in var(--t-slide) var(--ease); }
+.dk-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--gap-m); padding: var(--gap-l) var(--gutter) var(--gap-m); border-bottom: 1px solid var(--hair); }
+.dk-drawer-titles { display: flex; flex-direction: column; min-width: 0; }
+.dk-drawer-titles b { font: var(--font-figure); overflow-wrap: anywhere; }
+.dk-drawer-titles span { font: var(--font-sub); color: var(--muted); }
+.dk-drawer-body { flex: 1; overflow-y: auto; padding: var(--gap-l) var(--gutter) var(--space-section); }
+.dk-facts { margin: 0; display: flex; flex-direction: column; gap: var(--space-item); }
+.dk-facts > div { display: flex; justify-content: space-between; gap: var(--gap-m); }
+.dk-facts dt { font: var(--font-sub); color: var(--muted); }
+.dk-facts dd { margin: 0; font: var(--font-title); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+@keyframes dk-drawer-in { from { transform: translateX(32px); opacity: 0; } }
+@keyframes dk-sheet-in { from { transform: translateY(32px); opacity: 0; } }
+@media (max-width: 719px) {
+  .dk-drawer { width: 100%; border-left: 0; box-shadow: none; animation-name: dk-sheet-in; }
+  .dk-scrim { display: none; }
+}
+/* Leave room above the 44px minimum while the phone sheet translates through fractional pixels. */
+@media (width < 600px) {
+  .dk-drawer-head > .dk-btn.icon { min-width: 48px; min-height: 48px; }
+}
+@media (forced-colors: active) { .dk-stat, .dk-drawer { border: 1px solid CanvasText; } .tone-good, .tone-bad, .tone-neutral, .dk-delta { color: CanvasText; } }
