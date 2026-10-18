@@ -1,0 +1,162 @@
+{
+  "about": "The UI's libraries, vendored by tool/vendor.mjs from the npm registry: `sha256` the file here, `sourceSha256` the tarball file it came from (`integrity` the tarball's), `rewritten` what changed.",
+  "files": {
+    "preact.mjs": {
+      "name": "preact",
+      "version": "10.29.8",
+      "published": "2026-08-01T09:59:54.572Z",
+      "licence": "MIT",
+      "licenceFile": "preact.LICENSE",
+      "tarball": "https://registry.npmjs.org/preact/-/preact-10.29.8.tgz",
+      "integrity": "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==",
+      "source": "package/dist/preact.module.js",
+      "sourceSha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8",
+      "sha256": "25a5df7e9f628a587743c4641a368737a3b218f28ef738ba0376a2d5bdfc948c",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    },
+    "hooks.mjs": {
+      "name": "preact",
+      "version": "10.29.8",
+      "published": "2026-08-01T09:59:54.572Z",
+      "licence": "MIT",
+      "licenceFile": "preact.LICENSE",
+      "tarball": "https://registry.npmjs.org/preact/-/preact-10.29.8.tgz",
+      "integrity": "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==",
+      "source": "package/hooks/dist/hooks.module.js",
+      "sourceSha256": "a6ee626f2d01570592dd569a792e3f050154aa02890eead8c223fa3ed5aa3d5a",
+      "sha256": "41391bb2f3153900ffbec61cd06d4ba5a62bb7458d63d83a4cded54245062bc1",
+      "rewritten": [
+        "import \"preact\" → \"./preact.mjs\"",
+        "source-map comment dropped"
+      ]
+    },
+    "htm.mjs": {
+      "name": "htm",
+      "version": "3.1.1",
+      "published": "2022-04-26T16:23:10.427Z",
+      "licence": "Apache-2.0",
+      "licenceFile": "htm.LICENSE",
+      "tarball": "https://registry.npmjs.org/htm/-/htm-3.1.1.tgz",
+      "integrity": "sha512-983Vyg8NwUE7JkZ6NmOqpCZ+sh1bKv2iYTlUkzlWmA5JD2acKoxd4KVxbMmxX/85mtfdnDmTFoNKcg5DGAvxNQ==",
+      "source": "package/dist/htm.module.js",
+      "sourceSha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
+      "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
+      "rewritten": []
+    },
+    "marked.mjs": {
+      "name": "marked",
+      "version": "18.0.14",
+      "published": "2026-09-22T06:09:15.277Z",
+      "licence": "MIT",
+      "licenceFile": "marked.LICENSE",
+      "tarball": "https://registry.npmjs.org/marked/-/marked-18.0.14.tgz",
+      "integrity": "sha512-mBHK6FBHuBAlhgRe88w9F0O1AbwwXJUcQibUbC/QcdTbVGAD7aWza+xt3N6oT/jCZx3/OMeS+8rnuiHZcQ9s7A==",
+      "source": "package/lib/marked.esm.js",
+      "sourceSha256": "528a1b88bef88fc27277e06036ce7f4afb6a220b18110ba57c09e292b24a7ce0",
+      "sha256": "0eab1f03c00471183d1b79febacfdca34e3f4bf506d25720883c682780f9e5e1",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    },
+    "entities-decode.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/decode.js",
+      "sourceSha256": "6ce0048039ae0f9dab6e21dd1309661bcfe7e3beabfab1f15cdd61adb91e20b7",
+      "sha256": "6ace680ed5f0b49b81577435c169c54aa67adc92cb81f7404c953c128de5fbd5",
+      "rewritten": [
+        "import ./decode-codepoint.js → ./entities-decode-codepoint.mjs",
+        "import ./generated/decode-data-html.js → ./entities-decode-data-html.mjs",
+        "import ./generated/decode-data-xml.js → ./entities-decode-data-xml.mjs",
+        "import ./internal/bin-trie-flags.js → ./entities-bin-trie-flags.mjs",
+        "import ./decode-codepoint.js → ./entities-decode-codepoint.mjs",
+        "import ./generated/decode-data-html.js → ./entities-decode-data-html.mjs",
+        "import ./generated/decode-data-xml.js → ./entities-decode-data-xml.mjs",
+        "source-map comment dropped"
+      ]
+    },
+    "entities-decode-codepoint.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/decode-codepoint.js",
+      "sourceSha256": "dddf76e72987697316e647f046b2755dafe16308fe83159969b3155e0ebf3beb",
+      "sha256": "6922ff1576a7e6ecee74f85f0a77ad2fc65de8d3d35fbb4c1212e1ff8688bb86",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    },
+    "entities-decode-data-html.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/generated/decode-data-html.js",
+      "sourceSha256": "1ff1226550125bb8976dd032b2dcfc37ba311863dbf9ae69b4b16922f5a38ead",
+      "sha256": "0b5cea8c379c98236d83b45c64e935eebcecb4e285d20cd8f2057ee4fcfb3e58",
+      "rewritten": [
+        "import ../internal/decode-shared.js → ./entities-decode-shared.mjs",
+        "source-map comment dropped"
+      ]
+    },
+    "entities-decode-data-xml.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/generated/decode-data-xml.js",
+      "sourceSha256": "e549a5fd573d540a4652c81fab6655f3418c34c1613a30ed245ca017d9a5b730",
+      "sha256": "60747b3d149db527462f0d79101d426e3ced0c9bf6aeeee0f10d2b90d169b1b1",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    },
+    "entities-bin-trie-flags.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/internal/bin-trie-flags.js",
+      "sourceSha256": "8bb285f9ab41b9fd2525c83902c99b36e7c36da7cb7fa3be574d68f328183de5",
+      "sha256": "0f57ac7050b8af6781afaf516ba3dbc566379e12d2586c82e214d99938f1328c",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    },
+    "entities-decode-shared.mjs": {
+      "name": "entities",
+      "version": "8.1.0",
+      "published": "2026-09-07T22:42:04.929Z",
+      "licence": "BSD-2-Clause",
+      "licenceFile": "entities.LICENSE",
+      "tarball": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
+      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
+      "source": "package/dist/internal/decode-shared.js",
+      "sourceSha256": "cd26388e8ec3fdc2c4b212883e9ae460a4fe6dd37d80d0dacffd6b0087171b6b",
+      "sha256": "073fc4e93326d83212262f098064d2728d4eb4ddf40ecb533904ab319725bbe0",
+      "rewritten": [
+        "source-map comment dropped"
+      ]
+    }
+  }
+}

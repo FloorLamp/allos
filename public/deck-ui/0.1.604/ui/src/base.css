@@ -1,0 +1,56 @@
+/* What every view shares (palette SPEC.md, *Look and motion*; tokens.css the values): glyphs, buttons, chips, keycaps, the state block,
+   placeholders and their shimmer, the focus ring, reduced motion (the system's, or the host's `data-motion="reduce"`). */
+.glyph { flex: none; display: block; }
+.dk-btn { display: inline-flex; align-items: center; gap: var(--gap-xs); height: 28px; padding: 0 var(--gap-s); border-radius: var(--chip-radius);
+  border: 1px solid var(--edge); background: transparent; color: var(--soft); font: var(--font-chip); cursor: pointer; white-space: nowrap; }
+.dk-btn:hover { border-color: var(--accent); color: var(--text); }
+.dk-btn:disabled { opacity: var(--alpha-disabled); cursor: default; border-color: var(--edge); }
+.dk-btn.icon { width: 28px; padding: 0; justify-content: center; border-color: transparent; }
+.dk-btn.icon:hover { border-color: var(--edge); background: var(--hover); }
+.dk-btn.main { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.dk-btn.main:hover { filter: brightness(1.08); color: var(--on-accent); }
+.dk-btn.text { border-color: transparent; color: var(--accent); padding: 0 var(--gap-xs); }
+.dk-btn.text:hover { text-decoration: underline; }
+.dk-btn .n { font: var(--font-chip); color: var(--muted); }
+.dk-chip { display: inline-flex; align-items: center; gap: var(--gap-xs); height: var(--chip); padding: 0 var(--gap-s); border-radius: var(--chip-radius);
+  border: 1px solid var(--edge); background: transparent; color: var(--muted); font: var(--font-chip); cursor: pointer; max-width: 100%; }
+.dk-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-chip:hover, .dk-chip.on { color: var(--accent); border-color: var(--accent); }
+.dk-label { font: var(--font-label); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--hud); }
+kbd.dk-key { font: var(--font-key); color: var(--key-ink); border: 1px solid var(--edge); border-radius: 4px; padding: 0 4px; min-width: 10px; text-align: center; }
+.dk-field { height: 28px; box-sizing: border-box; padding: 0 var(--gap-s); border-radius: var(--chip-radius); border: 1px solid var(--edge); background: var(--panel);
+  color: var(--text); font: var(--font-sub); min-width: 0; }
+.dk-field:focus { outline: none; border-color: var(--accent); }
+.dk-field::placeholder { color: var(--muted); }
+:where(.dk-btn, .dk-chip, .dk-field, button, a, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* one block in a list's place (SPEC.md, *States*): the glyph, a title, one line, at most one action */
+.dk-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--gap-s); padding: var(--gap-xl) var(--gutter);
+  text-align: center; min-height: 160px; box-sizing: border-box; }
+.dk-state .dk-tile { width: var(--tile); height: var(--tile); border-radius: var(--row-radius); background: var(--raised); color: var(--soft); display: grid; place-items: center; }
+.dk-state.bad .dk-tile { color: var(--warn); }
+.dk-state b { font: var(--font-title); color: var(--text); }
+.dk-state p { margin: 0; font: var(--font-sub); color: var(--muted); max-width: 46ch; overflow-wrap: anywhere; }
+.dk-state .acts { display: flex; gap: var(--gap-s); flex-wrap: wrap; justify-content: center; }
+
+/* placeholders (`track`) with a shimmer; still under reduced motion */
+.dk-ph { background: var(--track); border-radius: 3px; animation: dk-shimmer 1.8s ease-in-out infinite alternate; }
+@keyframes dk-shimmer { from { opacity: 1; } to { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .dk-ph { animation: none; } }
+:root[data-motion="reduce"] { --t-open: 0ms; --t-close: 0ms; --t-select: 0ms; --t-rows: 0ms; --t-slide: 0ms; }
+:root[data-motion="reduce"] .dk-ph { animation: none; }
+.dk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.dk-collection-page { min-height: calc(100dvh - 64px); }
+.dk-people { padding: 16px; color: var(--text); font-family: system-ui, sans-serif; }
+
+/* Phone controls reserve a fingertip target; the narrow desktop popover keeps its compact desktop controls. */
+@media (width < 600px) {
+  :where(:root:not([data-surface="glance"])) :is(button, [role="button"], .dk-field, .dk-chip) { min-height: 44px; min-width: 44px; box-sizing: border-box; }
+  :where(:root:not([data-surface="glance"])) :is(.dk-btn, .dk-chip) { justify-content: center; }
+  :where(:root:not([data-surface="glance"])) .dk-field { font-size: var(--size-box); }
+  /* Safari's native popup ignores the touch height; keep its disclosure after removing native paint. */
+  :where(:root:not([data-surface="glance"])) select.dk-field { appearance: none; height: 44px; padding-right: 32px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+}
