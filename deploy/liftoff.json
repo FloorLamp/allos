@@ -1,8 +1,9 @@
 {
   "app": "allos",
   "services": ["allos", "allos-notify"],
-  "handoff": "pull",
-  "image": "ghcr.io/floorlamp/allos:latest",
+  "handoff": "build",
+  "repo": "FloorLamp/allos",
+  "branch": "main",
   "timeout": 120,
   "keep": 2,
   "resources": {

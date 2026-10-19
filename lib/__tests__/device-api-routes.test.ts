@@ -7,7 +7,7 @@ import { stripComments } from "./strip-comments";
 // docs/device-api.md's route table is Deck's view of allos (spaceport
 // deck/backends/allos.json maps its ops onto it). Read as text, no DB: every row
 // is a route file exporting that method behind that scope, every /v1 handler is a
-// row, and every route but `needs` has its `/api` session twin (ask's is a POST).
+// row, and every route but `needs` and `practices` has its `/api` session twin (ask's is a POST).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -90,9 +90,9 @@ describe("docs/device-api.md route table", () => {
         ).toBe(true);
   });
 
-  it("gives every route but needs its /api session twin", () => {
+  it("gives every route but needs and practices its /api session twin", () => {
     for (const { method, route } of rows) {
-      if (route === "/v1/needs") continue;
+      if (route === "/v1/needs" || route === "/v1/practices") continue;
       const file = routeFile(route, "api");
       expect(fs.existsSync(file), `${route} twin: ${file}`).toBe(true);
       const twin = route === "/v1/ask" ? ["POST"] : [method];

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import pin from "../lib/deck-ui-pin.json";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
@@ -322,4 +323,47 @@ test("a same-origin page may actually frame the stored-file route", async ({
   // error document, which is what the pane showed users from #624 until now.
   expect(framed.url()).not.toContain("chrome-error");
   expect(framed.url()).toContain(`/medical/file/${id}`);
+});
+
+const nav = JSON.parse(
+  fs.readFileSync(`public/deck-ui/${pin.version}/ui/contract/nav.json`, "utf8")
+) as { id: string; label: string; href: string; group: string }[];
+
+test("Deck Health loads the pinned navigation and phone Menu", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const contract = page.waitForResponse((response) =>
+    response.url().endsWith(`/deck-ui/${pin.version}/ui/contract/nav.json`)
+  );
+  await page.goto("/health");
+  expect((await contract).ok()).toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Health", exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Today’s doses" })
+  ).toBeVisible();
+  const menu = page.getByRole("button", { name: "Menu", exact: true });
+  await expect(menu).toBeVisible();
+  await menu.click();
+  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  const navigation = page.getByRole("navigation", {
+    name: "Navigation",
+    exact: true,
+  });
+  await navigation
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  for (const item of nav) {
+    const link = navigation.getByRole("link", {
+      name: item.label,
+      exact: true,
+    });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute(
+      "href",
+      item.id === "health" ? "/health" : item.href
+    );
+  }
 });

@@ -39,6 +39,10 @@ import { GET as ask } from "@/app/v1/ask/route";
 import { GET as board } from "@/app/v1/board/route";
 import { POST as boardDose } from "@/app/v1/board/[doseId]/route";
 import { GET as readings, POST as logReading } from "@/app/v1/readings/route";
+import { POST as logPractice } from "@/app/v1/practices/route";
+import { createWellnessPractice } from "@/lib/practice-store";
+import { deletePracticeSession } from "@/lib/practice-log";
+import { setTimezone } from "@/lib/settings";
 import { GET as labs } from "@/app/v1/labs/route";
 
 import * as healthMedications from "@/app/v1/health/medications/route";
@@ -762,7 +766,7 @@ describe("/v1/accounts", () => {
     }
   });
 
-  // Deck's Accounts place reads the twin from https://deck.example.internal: that origin
+  // Deck's Accounts page reads the twin from https://deck.example.internal: that origin
   // exactly, with credentials, on every answer; never a sibling or reflected one.
   it("lets Deck's origin read the accounts twin, and no other origin", async () => {
     const login = makeLogin("accounts-cors", "member");
@@ -1232,5 +1236,81 @@ describe("Deck Health workflow forms", () => {
         )
       ).status
     ).toBe(403);
+  });
+});
+
+describe("POST /v1/practices", () => {
+  const session = {
+    practice: "  RED   light therapy ",
+    end: "2026-10-19T04:10:00Z",
+    durationMin: 20,
+    key: "device-practice-session",
+  };
+
+  it("logs the profile-local start, matches a practice, retries, and respects edits and deletion", async () => {
+    const pid = mine.profileId;
+    setTimezone(pid, "America/New_York");
+    createWellnessPractice(pid, "Red light therapy", 3, null);
+    const send = (body = session) =>
+      logPractice(post("/v1/practices", phone, body));
+    expect(await json(await send())).toEqual({
+      profile: pid,
+      day: "2026-10-18",
+      outcome: "inserted",
+    });
+    const row = db
+      .prepare(
+        "SELECT id, practice, date, start_time, duration_min, source FROM practice_logs WHERE profile_id = ? AND external_id = ?"
+      )
+      .get(pid, session.key) as { id: number };
+    expect(row).toMatchObject({
+      practice: "Red light therapy",
+      date: "2026-10-18",
+      start_time: "23:50",
+      duration_min: 20,
+      source: "device:pixel",
+    });
+    expect(await json(await send())).toMatchObject({ outcome: "unchanged" });
+    expect(
+      await json(await send({ ...session, durationMin: 25 }))
+    ).toMatchObject({ outcome: "updated" });
+    db.prepare(
+      "UPDATE practice_logs SET edited = 1, duration_min = 30 WHERE profile_id = ? AND id = ?"
+    ).run(pid, row.id);
+    expect(await json(await send())).toMatchObject({ outcome: "edited" });
+    expect(
+      db
+        .prepare(
+          "SELECT duration_min FROM practice_logs WHERE profile_id = ? AND id = ?"
+        )
+        .get(pid, row.id)
+    ).toEqual({ duration_min: 30 });
+    deletePracticeSession(pid, row.id);
+    expect(await json(await send())).toMatchObject({ outcome: "suppressed" });
+  });
+
+  it.each([
+    [() => readOnlyScopes, () => "/v1/practices", "scope"],
+    [() => reader, () => "/v1/practices", "access"],
+    [() => phone, () => `/v1/practices?profile=${theirs.profileId}`, "profile"],
+  ])("refuses unauthorized writes", async (token, path, error) => {
+    const res = await logPractice(post(path(), token(), session));
+    expect(res.status).toBe(403);
+    expect(await json(res)).toEqual({ error });
+  });
+
+  it.each([
+    [{ practice: " " }, "practice"],
+    [{ key: "" }, "key"],
+    [{ durationMin: 0 }, "durationMin"],
+    [{ durationMin: "20" }, "durationMin"],
+    [{ end: "2026-10-19T04:10:00" }, "end"],
+    [{ end: "2026-02-30T04:10:00Z" }, "end"],
+  ])("rejects invalid session fields", async (patch, error) => {
+    const res = await logPractice(
+      post("/v1/practices", phone, { ...session, ...patch })
+    );
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error });
   });
 });
