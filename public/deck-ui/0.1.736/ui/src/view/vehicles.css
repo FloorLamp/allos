@@ -1,0 +1,80 @@
+.dk-vehicles { width: 100%; max-width: 1080px; min-width: 0; box-sizing: border-box; margin: 0 auto; padding: 32px; color: var(--text); font: var(--size-body)/1.5 var(--sans); }
+.dk-vehicles *, .dk-vehicles *::before, .dk-vehicles *::after { box-sizing: border-box; }
+.dp .dk-vehicles { overflow: auto; max-height: 65vh; padding: 16px; }
+.vehicle-page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-l); margin-bottom: var(--gap-xl); }
+.vehicle-page-head h1 { margin: 0; font-size: var(--size-page-title); line-height: 1.2; font-weight: 600; letter-spacing: -.035em; }
+.vehicle-page-head p { margin: 6px 0 0; color: var(--muted); font: var(--font-sub); }
+.dk-vehicles .dk-btn { min-height: 36px; height: auto; }
+.vehicle-card { min-width: 0; margin-bottom: var(--gap-l); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.vehicle-card-head { display: flex; justify-content: space-between; align-items: center; gap: var(--gap-l); padding: 20px 24px; }
+.vehicle-identity { min-width: 0; }
+.vehicle-identity h2 { margin: 0; font-size: var(--size-figure-small); line-height: 1.3; font-weight: 600; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.vehicle-identity p { margin: 5px 0 0; color: var(--muted); font: var(--font-sub); overflow-wrap: anywhere; }
+.vehicle-paper-count { display: block; margin-top: 8px; color: var(--muted); font: var(--font-sub); font-size: var(--size-sub); }
+.vehicle-renewals { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 12px 0 0; font: var(--font-sub); }
+.vehicle-renewal { min-width: 0; overflow-wrap: anywhere; }
+.vehicle-renewal dt { color: var(--muted); }
+.vehicle-renewal dd { margin: 2px 0 0; }
+.vehicle-renewal:is(.expired, .expiring, .missing) dd { color: var(--warn); }
+.vehicle-expand { flex: none; }
+.vehicle-expand svg { transition: transform var(--t-select) ease; }
+.vehicle-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.vehicle-details { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 28px; padding: 24px; border-top: 1px solid var(--line); }
+.dk-drawer .vehicle-details { grid-template-columns: minmax(0, 1fr); padding: 0; border-top: 0; }
+.vehicle-primary, .vehicle-photos, .vehicle-live, .vehicle-papers { min-width: 0; }
+.vehicle-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 14px; }
+.vehicle-section-head h3 { margin: 0; color: var(--text); font: var(--font-section); font-size: var(--size-title); }
+.vehicle-section-head > :is(time,span) { color: var(--muted); font: var(--font-sub); font-size: var(--size-label); }
+.vehicle-live .dk-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px; }
+.vehicle-live .dk-stat { padding: 12px; gap: 6px; border: 1px solid var(--hair); }
+.vehicle-live .dk-stat-label { font-size: var(--size-label-small); letter-spacing: .05em; }
+.vehicle-live .dk-figure { font-size: var(--size-figure); line-height: 1.2; }
+.vehicle-live .dk-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; }
+.vehicle-live .dk-facts > div { min-width: 0; gap: 8px; }
+.vehicle-live .dk-facts :is(dt,dd) { font: var(--font-sub); font-size: var(--size-sub); }
+.vehicle-live .dk-facts dt { flex: none; }
+.vehicle-live .dk-facts dd { min-width: 0; color: var(--text); }
+.vehicle-location { margin-top: 14px; color: var(--muted); font: var(--font-sub); }
+.vehicle-location button { flex-wrap: wrap; justify-content: flex-start; color: var(--accent); }
+.vehicle-location button span { color: var(--muted); font-size: var(--size-label); }
+.vehicle-live + .vehicle-papers, .vehicle-primary > .dk-state, .vehicle-primary > .dk-failure { margin-top: 24px; }
+.vehicle-paper-list { border-top: 1px solid var(--hair); }
+.vehicle-paper { padding: 12px 0; border-bottom: 1px solid var(--hair); }
+.vehicle-paper .vehicle-paper-title { display: flex; justify-content: space-between; width: 100%; min-height: 36px; padding: 6px 0; border: 0; border-radius: 3px; text-align: left; white-space: normal; color: var(--accent); font: var(--font-title); font-size: var(--size-section); }
+.vehicle-paper-title span { min-width: 0; overflow-wrap: anywhere; }
+.vehicle-paper-title svg { flex: none; color: var(--muted); }
+.vehicle-paper-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; color: var(--muted); font: var(--font-sub); font-size: var(--size-label); }
+.vehicle-paper-meta > span { text-transform: capitalize; }
+.vehicle-paper-photos { margin-top: 12px; color: var(--muted); font: var(--font-sub); font-size: var(--size-label); }
+.vehicle-strip { display: flex; gap: 8px; max-width: 100%; margin-top: 8px; padding: 2px; overflow-x: auto; }
+.dk-vehicles .vehicle-photo { display: flex; flex: none; align-items: center; justify-content: center; width: 72px; min-width: 72px; height: 56px; padding: 2px; overflow: hidden; white-space: normal; color: var(--muted); background: var(--raised); border-color: var(--line); }
+.vehicle-photo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+.vehicle-photo > span { max-width: 100%; overflow-wrap: anywhere; font-size: var(--size-label-small); line-height: 1.3; }
+.dk-vehicles .vehicle-photo.hero { width: 100%; height: 180px; padding: 6px; }
+.vehicle-photo.hero img { object-fit: contain; }
+.vehicle-expiry, .vehicle-note { margin: 12px 0 0; color: var(--muted); font: var(--font-sub); font-size: var(--size-sub); overflow-wrap: anywhere; }
+.vehicle-expiry { color: var(--warn); }
+.vehicle-empty { padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); }
+@media (max-width: 850px) { .dk-vehicles { padding: 24px; } .vehicle-card-head { padding: 18px; } .vehicle-details { grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; padding: 18px; } .vehicle-live .dk-facts { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .dk-vehicles { padding: 20px 16px; }
+  .vehicle-page-head { gap: 12px; margin-bottom: 20px; }
+  .vehicle-page-head h1 { font-size: var(--size-page-title-compact); }
+  .vehicle-page-head p { max-width: 24ch; font-size: var(--size-sub); }
+  .vehicle-card-head { align-items: flex-start; gap: 8px; padding: 16px; }
+  .vehicle-identity h2 { font-size: var(--size-section-x-large); }
+  .vehicle-identity p { font-size: var(--size-sub); }
+  .vehicle-paper-count { font-size: var(--size-label); }
+  .vehicle-expand { font-size: var(--size-label); padding: 0 8px; }
+  .vehicle-details { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 16px; }
+  .vehicle-live .dk-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  .vehicle-live .dk-stat { padding: 10px 8px; }
+  .vehicle-live .dk-figure { font-size: var(--size-figure-small); }
+  .vehicle-section-head { margin-bottom: 12px; }
+  .vehicle-photos { border-top: 1px solid var(--hair); padding-top: 18px; }
+  .dk-vehicles .vehicle-photo.hero { width: min(100%, 280px); height: 168px; }
+  .dk-vehicles .dk-btn { min-height: 44px; }
+  .dk-vehicles .vehicle-photo { min-height: 56px; }
+}
+@media (prefers-reduced-motion: reduce) { .vehicle-expand svg { transition: none; } }
+@media (forced-colors: active) { .vehicle-card, .vehicle-photo, .vehicle-paper-list, .vehicle-paper { border-color: CanvasText; } }

@@ -1,0 +1,107 @@
+/* Native controls and classed controls share the token defaults. */
+:where(button, input, select, textarea, .dk-btn, .dk-field) { box-sizing: border-box; font: var(--font-body); color: var(--text); accent-color: var(--accent); }
+:where(button, input:not([type="hidden"]), select, textarea, .dk-btn, .dk-field) { min-height: 36px; padding: 6px var(--gap-s); border: 1px solid var(--edge); border-radius: var(--chip-radius); background-color: var(--panel); }
+:where(button, .dk-btn, input:is([type="submit"], [type="button"], [type="reset"])) { display: inline-flex; align-items: center; justify-content: center; gap: var(--gap-xs); background: var(--raised); cursor: pointer; white-space: nowrap; }
+:where(button, input, select, textarea, .dk-btn):hover:not(:disabled) { border-color: var(--accent); }
+:where(button, .dk-btn).main, :where(button, .dk-btn)[data-variant="primary"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+:where(button, .dk-btn).main:hover:not(:disabled), :where(button, .dk-btn)[data-variant="primary"]:hover:not(:disabled) { filter: brightness(1.08); }
+:where(button, .dk-btn).text, :where(button, .dk-btn)[data-variant="quiet"] { background: transparent; border-color: transparent; color: var(--accent); }
+:where(button, .dk-btn)[data-variant="danger"] { background: var(--panel); border-color: var(--bad); color: var(--bad); }
+:is(button, input, select, textarea, .dk-btn, .dk-chip):disabled { opacity: 1; background-color: var(--raised); color: var(--soft); border-color: var(--edge); cursor: not-allowed; filter: none; }
+:where(input, select, textarea)[aria-invalid="true"], :where(input, select, textarea):user-invalid { border-color: var(--bad); }
+:where(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
+:where(input, select, textarea, .dk-field) { min-width: 0; }
+:where(textarea) { height: auto; min-height: 88px; resize: vertical; }
+:where(select) { appearance: none; padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+:where(input:is([type="checkbox"], [type="radio"])) { width: 36px; height: 36px; padding: 8px; cursor: pointer; }
+:where(input[type="range"]) { padding: 0; cursor: pointer; }
+:where(input[type="file"])::file-selector-button { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--edge); border-radius: var(--chip-radius); padding: 6px var(--gap-s); margin-right: var(--gap-s); }
+.dk-btn.icon { width: 36px; padding: 0; }
+.dk-btn .n { font: var(--font-chip); color: var(--muted); }
+.dk-form-field { display: grid; gap: var(--gap-xs); font: var(--font-body); }
+.dk-field-hint { color: var(--muted); font: var(--font-sub); }
+.dk-field-error { color: var(--bad); font: var(--font-sub); }
+:where(button, input, select, textarea, a, [tabindex], .dk-btn, .dk-field, .dk-chip):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, .dk-btn, .dk-field) { border-color: ButtonText; }
+  :where(button, input, select, textarea):disabled { color: GrayText; border-color: GrayText; }
+  :where(select) { appearance: auto; background-image: none; }
+}
+:where(input:is([type="checkbox"], [type="radio"])) { appearance: none; flex: none; background-origin: content-box; background-clip: content-box; }
+:where(input[type="checkbox"]):checked { background-color: var(--accent); background-image: linear-gradient(45deg, transparent 44%, var(--on-accent) 44%, var(--on-accent) 56%, transparent 56%), linear-gradient(135deg, transparent 44%, var(--on-accent) 44%, var(--on-accent) 56%, transparent 56%); background-size: 45% 50%, 65% 70%; background-position: 10% 70%, 90% 45%; background-repeat: no-repeat; }
+:where(input[type="checkbox"]):indeterminate { background-image: linear-gradient(var(--accent), var(--accent)); background-size: 80% 3px; background-position: center; background-repeat: no-repeat; }
+:where(input[type="radio"]) { border-radius: 50%; }
+:where(input[type="radio"]):checked { background-image: radial-gradient(circle, var(--accent) 55%, transparent 60%); }
+:where(input[type="range"]) { appearance: none; background: transparent; border-color: transparent; }
+:where(input[type="range"])::-webkit-slider-runnable-track { height: 6px; background: var(--edge); border-radius: var(--chip-radius); }
+:where(input[type="range"])::-moz-range-track { height: 6px; background: var(--edge); border-radius: var(--chip-radius); }
+:where(input[type="range"])::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; margin-top: -7px; border: 1px solid var(--accent); border-radius: 50%; background: var(--accent); }
+:where(input[type="range"])::-moz-range-thumb { width: 20px; height: 20px; border: 1px solid var(--accent); border-radius: 50%; background: var(--accent); }
+:where(input[type="range"]):disabled { opacity: 1; }
+@media (forced-colors: active) {
+  :where(input:is([type="checkbox"], [type="radio"], [type="range"])) { appearance: auto; background-image: none; }
+}
+/* What every view shares (palette SPEC.md, *Look and motion*; tokens.css the values): glyphs, buttons, chips, keycaps, the state block,
+   placeholders and their shimmer, the focus ring, reduced motion (the system's, or the host's `data-motion="reduce"`). */
+.glyph { flex: none; display: block; }
+.dk-chip { display: inline-flex; align-items: center; gap: var(--gap-xs); height: var(--chip); padding: 0 var(--gap-s); border-radius: var(--chip-radius);
+  border: 1px solid var(--edge); background: transparent; color: var(--muted); font: var(--font-chip); cursor: pointer; max-width: 100%; }
+.dk-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-chip:hover, .dk-chip.on { color: var(--accent); border-color: var(--accent); }
+.dk-label { font: var(--font-label); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--hud); }
+kbd.dk-key { font: var(--font-key); color: var(--key-ink); border: 1px solid var(--edge); border-radius: 4px; padding: 0 4px; min-width: 10px; text-align: center; }
+/* one block in a list's place (SPEC.md, *States*): the glyph, a title, one line, at most one action */
+.dk-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--gap-s); padding: var(--gap-xl) var(--gutter);
+  text-align: center; min-height: 160px; box-sizing: border-box; }
+.dk-state .dk-tile { width: var(--tile); height: var(--tile); border-radius: var(--row-radius); background: var(--raised); color: var(--soft); display: grid; place-items: center; }
+.dk-state.bad .dk-tile { color: var(--warn); }
+.dk-state b { font: var(--font-title); color: var(--text); }
+.dk-state p { margin: 0; font: var(--font-sub); color: var(--muted); max-width: 46ch; overflow-wrap: anywhere; }
+.dk-state .acts { display: flex; gap: var(--gap-s); flex-wrap: wrap; justify-content: center; }
+
+/* placeholders (`track`) with a shimmer; still under reduced motion */
+.dk-ph { background: var(--track); border-radius: 3px; animation: dk-shimmer 1.8s ease-in-out infinite alternate; }
+@keyframes dk-shimmer { from { opacity: 1; } to { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .dk-ph { animation: none; } }
+:root[data-motion="reduce"] { --t-open: 0ms; --t-close: 0ms; --t-select: 0ms; --t-rows: 0ms; --t-slide: 0ms; }
+:root[data-motion="reduce"] .dk-ph { animation: none; }
+.dk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.dk-collection-page { min-height: calc(100dvh - 64px); }
+.dk-people { padding: 16px; color: var(--text); font-family: system-ui, sans-serif; }
+
+/* Phone controls reserve a fingertip target; the narrow desktop popover keeps its compact desktop controls. */
+@media (width < 600px) {
+  :where(:root:not([data-surface="glance"])) :is(button, input:not([type="hidden"]), select, textarea, [role="button"], .dk-field, .dk-chip) { min-height: 44px; min-width: 44px; box-sizing: border-box; }
+  :where(:root:not([data-surface="glance"])) :is(.dk-btn, .dk-chip) { justify-content: center; }
+  :where(:root:not([data-surface="glance"])) .dk-field { font-size: var(--size-box); }
+  /* Safari's native popup ignores the touch height; keep its disclosure after removing native paint. */
+  :where(:root:not([data-surface="glance"])) select.dk-field { appearance: none; height: 44px; padding-right: 32px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+}
+
+/* Full pages share a column and header; embedded rows and desktop panels keep their own layout. */
+:root { --page-width: 1080px; --page-gutter: 32px; }
+body:has(.ds-bar, .dk-page) { margin: 0; background: var(--night); }
+.dk-page.dk-page { box-sizing: border-box; width: 100%; min-width: 0; max-width: var(--page-width); margin: 0 auto; padding: 32px var(--page-gutter) 80px; color: var(--text); font-family: var(--sans); }
+.dk-page-header.dk-page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--gap-l); min-width: 0; margin: 0 0 var(--gap-xl); padding: 0; }
+.dk-page-heading { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--gap-l); }
+.dk-page-title-row { display: flex; align-items: center; gap: var(--gap-l); min-height: 44px; }
+.dk-page-titles { min-width: 0; }
+.dk-page-header.dk-page-header h1 { margin: 0; font: var(--font-page-title); letter-spacing: -.025em; color: var(--text); }
+.dk-page-header.dk-page-header p { margin: 8px 0 0; font: var(--font-body); color: var(--muted); }
+.dk-page-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-s); flex-shrink: 0; }
+.dk-page-tabs { min-width: 0; }
+.dk-page-tabs:has(nav) { flex-basis: 100%; }
+.dk-page-tabs > nav { display: flex; flex-wrap: wrap; gap: var(--gap-s); }
+@media (max-width: 600px) {
+  :root { --page-gutter: 16px; }
+  .dk-page.dk-page { padding-top: 24px; }
+  .dk-page-heading { align-items: flex-start; flex-wrap: wrap; gap: var(--gap-m); }
+  .dk-page-actions { justify-content: flex-start; }
+}
+
+/* The desktop status popover keeps its explicit compact density. */
+:root[data-surface="glance"] :is(button, .dk-btn) { min-height: 28px; }
+:root[data-surface="glance"] .dk-btn { height: 28px; padding-block: 0; font: var(--font-chip); }
