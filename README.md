@@ -82,7 +82,7 @@ Anthropic-compatible endpoint can be configured with `AI_BASE_URL`.
 ### 3. Start Allos
 
 ```bash
-docker compose up -d --pull always
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and sign in with the admin
@@ -120,18 +120,14 @@ Profiles**.
 
 ## Updating
 
-The default Compose file pulls the published image from GitHub Container
-Registry:
+Liftoff builds `FloorLamp/allos` from `main` using `deploy/liftoff.json`. Both
+services deploy together, with healthcheck rollback.
+
+For local installations, update and rebuild:
 
 ```bash
-docker compose pull
-docker compose up -d
-```
-
-To pin a particular build instead of using `latest`, set `IMAGE` in `.env`:
-
-```dotenv
-IMAGE=ghcr.io/floorlamp/allos:<git-commit-sha>
+git pull
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 Database migrations run automatically at startup, and the database is copied
