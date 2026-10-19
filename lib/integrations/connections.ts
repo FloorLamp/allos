@@ -1225,7 +1225,7 @@ export function disconnectWeather(profileId: number) {
   });
 }
 
-// The Node startup boundary fans out over profiles; only kind and time leave here.
+// The metrics boundary fans out over profiles; only kind and time leave here.
 export function seedSyncMetrics(profileId: number): void {
   const rows = db
     .prepare(
