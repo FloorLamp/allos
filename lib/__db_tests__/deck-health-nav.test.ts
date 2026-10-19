@@ -39,7 +39,11 @@ vi.mock("@/lib/record-qa-answer", async (importOriginal) => {
 import { db } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { middleware } from "@/middleware";
-import { SESSION_COOKIE, createSession } from "@/lib/auth";
+import {
+  SESSION_COOKIE,
+  createSession,
+  resolveBrowserSession,
+} from "@/lib/auth";
 import { aiLogSize } from "@/lib/ai-log";
 import { answerRecordQuestion } from "@/lib/record-qa-answer";
 import { seedProfile } from "./fixtures";
@@ -113,6 +117,8 @@ describe("/api twins — the session, not a device credential", () => {
   });
 
   it("accepts only a Boarding-verified owner for Health data", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.stubEnv("DECK_ORIGIN", "https://trusted.test");
     const admins = db
       .prepare("SELECT id FROM logins WHERE role = 'admin'")
       .all() as { id: number }[];
@@ -122,13 +128,17 @@ describe("/api twins — the session, not a device credential", () => {
       mine.profileId,
       id
     );
-    const fetch = vi.fn(async () =>
+    const fetch = vi.fn<() => Promise<Response> | Response>(async () =>
       Response.json({ owner: true, who: "synthetic-owner" })
     );
     vi.stubGlobal("fetch", fetch);
     const req = () =>
       new Request("https://allos.test/api/board", {
-        headers: { cookie: "__Host-boarding_member=synthetic-session" },
+        headers: {
+          cookie: "__Host-boarding_member=synthetic-session",
+          host: "attacker.test",
+          "x-forwarded-host": "attacker.test",
+        },
       });
     try {
       const res = await board(req());
@@ -141,17 +151,62 @@ describe("/api twins — the session, not a device credential", () => {
         expect.objectContaining({
           headers: {
             cookie: "__Host-boarding_member=synthetic-session",
-            "x-forwarded-host": "allos.test",
+            "x-forwarded-host": "trusted.test",
           },
         })
       );
-      fetch.mockResolvedValue(Response.json({ owner: false }));
-      expect((await board(req())).status).toBe(401);
-      fetch.mockRejectedValue(new Error("unavailable"));
-      expect((await board(req())).status).toBe(401);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      // Cached verification never caches the admin mapping.
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      db.prepare("UPDATE logins SET role = 'member' WHERE id = ?").run(id);
+      expect(
+        await resolveBrowserSession("__Host-boarding_member=synthetic-session")
+      ).toBeNull();
+      db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(id);
+      const extra = makeLogin("extra-boarding-admin", "admin");
+      expect(
+        await resolveBrowserSession("__Host-boarding_member=synthetic-session")
+      ).toBeNull();
+      expect(warn).toHaveBeenCalled();
+      db.prepare("DELETE FROM logins WHERE id = ?").run(extra);
+      warn.mockRestore();
+      for (const reply of [
+        () => Response.json({ owner: false }),
+        () => Response.json({ owner: true }, { status: 503 }),
+        () => new Response("not json"),
+        () => Response.json(null),
+        () => {
+          throw new Error("unavailable");
+        },
+      ]) {
+        vi.advanceTimersByTime(10_001);
+        fetch.mockImplementation(reply);
+        const calls = fetch.mock.calls.length;
+        expect((await board(req())).status).toBe(401);
+        expect((await board(req())).status).toBe(401);
+        expect(fetch).toHaveBeenCalledTimes(calls + 1);
+      }
+      vi.advanceTimersByTime(10_001);
+      fetch.mockImplementation(async () => Response.json({ owner: true }));
+      const beforeConcurrent = fetch.mock.calls.length;
+      await Promise.all([board(req()), board(req())]);
+      expect(fetch).toHaveBeenCalledTimes(beforeConcurrent + 1);
+      const calls = fetch.mock.calls.length;
+      await resolveBrowserSession("__Host-boarding_member=another-session");
+      expect(fetch).toHaveBeenCalledTimes(calls + 1);
+      vi.stubEnv("DECK_ORIGIN", "https://other-trusted.test");
+      await board(req());
+      expect(fetch).toHaveBeenCalledTimes(calls + 2);
+      for (const origin of ["", "invalid", "http://trusted.test"]) {
+        vi.stubEnv("DECK_ORIGIN", origin);
+        expect((await board(req())).status).toBe(401);
+      }
+      expect(fetch).toHaveBeenCalledTimes(calls + 2);
     } finally {
       request.jar.delete("__Host-boarding_member");
       vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
       db.prepare("DELETE FROM logins WHERE id = ?").run(id);
       for (const admin of admins)
         db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(
