@@ -45,6 +45,20 @@ import { deletePracticeSession } from "@/lib/practice-log";
 import { setTimezone } from "@/lib/settings";
 import { GET as labs } from "@/app/v1/labs/route";
 
+import * as healthMedications from "@/app/v1/health/medications/route";
+import * as healthDocuments from "@/app/v1/health/documents/route";
+import * as healthImports from "@/app/v1/health/imports/route";
+import * as healthTrash from "@/app/v1/health/trash/route";
+import * as webHealthMedications from "@/app/api/health/medications/route";
+import { captureDelete } from "@/lib/undo-delete-db";
+import type { listHealthWorkflow } from "@/lib/health-workflows";
+const workflowHandlers: Record<string, typeof healthMedications> = {
+  medications: healthMedications,
+  documents: healthDocuments,
+  imports: healthImports,
+  trash: healthTrash,
+};
+
 // Exercise the real device and cookie authorization boundaries.
 vi.unmock("@/lib/auth");
 
@@ -796,6 +810,432 @@ describe("/v1/accounts", () => {
     );
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "scope" });
+  });
+});
+
+// These forms cross the device/session boundary without invoking Server Actions.
+describe("Deck Health workflow forms", () => {
+  type WorkflowItem = ReturnType<typeof listHealthWorkflow>["items"][number];
+  async function items(kind: string, token = phone, profile = mine.profileId) {
+    const response = await workflowHandlers[kind].GET(
+      req(`/v1/health/${kind}?profile=${profile}`, token)
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()) as {
+      items: WorkflowItem[];
+      next: string | null;
+    };
+  }
+  async function apply(
+    kind: string,
+    item: WorkflowItem,
+    action: string,
+    values: Record<string, unknown>,
+    token = phone,
+    profile = mine.profileId
+  ) {
+    return workflowHandlers[kind].POST(
+      post(`/v1/health/${kind}?profile=${profile}`, token, {
+        id: item.id,
+        revision: item.revision,
+        action,
+        values,
+      })
+    );
+  }
+  it("requires a selected, reachable profile and hides forms for readers", async () => {
+    expect(
+      (await healthMedications.GET(req("/v1/health/medications", phone))).status
+    ).toBe(400);
+    expect(
+      (
+        await healthMedications.GET(
+          req(`/v1/health/medications?profile=${theirs.profileId}`, phone)
+        )
+      ).status
+    ).toBe(403);
+    const read = await items("medications", reader);
+    expect(read.items.length).toBeGreaterThan(0);
+    expect(read.items.every((i) => i.actions.length === 0)).toBe(true);
+    const item = (await items("medications")).items.find(
+      (i) => i.id === `intake:${mine.medicationId}`
+    )!;
+    expect(
+      (await apply("medications", item, "pause", { confirm: true }, reader))
+        .status
+    ).toBe(403);
+    expect(
+      (
+        await apply(
+          "medications",
+          item,
+          "pause",
+          { confirm: true },
+          readOnlyScopes
+        )
+      ).status
+    ).toBe(403);
+    expect(
+      (
+        await apply(
+          "medications",
+          item,
+          "pause",
+          { confirm: true },
+          phone,
+          theirs.profileId
+        )
+      ).status
+    ).toBe(403);
+  });
+  it("creates once, rejects unknown fields and stale revisions, and uses the slot/ingredient/course engines", async () => {
+    const create = (await items("medications")).items.find(
+      (i) => i.id === "intake:new"
+    )!;
+    const values = {
+      name: "Synthetic workflow medicine",
+      kind: "medication",
+      brand: "",
+      product: "",
+      notes: "",
+    };
+    expect(
+      (
+        await apply("medications", create, "save", {
+          ...values,
+          arbitrary: "no",
+        })
+      ).status
+    ).toBe(400);
+    expect((await apply("medications", create, "save", values)).status).toBe(
+      200
+    );
+    expect((await apply("medications", create, "save", values)).status).toBe(
+      409
+    );
+    const load = async () =>
+      (await items("medications")).items.find((i) => i.title === values.name)!;
+    let item = await load();
+    expect(
+      (
+        await apply("medications", item, "slot:add", {
+          amount: "2,5 g",
+          time: "09:00",
+          food: "any",
+          weekdays: "",
+          start: "",
+          end: "",
+        })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await apply("medications", item, "slot:add", {
+          amount: "10 mg",
+          time: "09:00",
+          food: "any",
+          weekdays: "",
+          start: "",
+          end: "",
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (await apply("medications", item, "pause", { confirm: true })).status
+    ).toBe(409);
+    item = await load();
+    expect(
+      (
+        await apply("medications", item, "ingredient:add", {
+          name: "Synthetic ingredient",
+          amount: "10 mg",
+        })
+      ).status
+    ).toBe(200);
+    item = await load();
+    expect(
+      (
+        await apply("medications", item, "purpose:add", {
+          purpose: "goal:sleep",
+        })
+      ).status
+    ).toBe(200);
+    item = await load();
+    expect(
+      (await apply("medications", item, "pause", { confirm: true })).status
+    ).toBe(200);
+    item = await load();
+    expect(item.summary).toBe("Paused");
+    expect(
+      (
+        await apply("medications", item, "course:add", {
+          start: mine.todayStr,
+          confirm: true,
+        })
+      ).status
+    ).toBe(200);
+    const id = Number(item.id.split(":")[1]);
+    expect(
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_doses WHERE item_id = ? AND retired = 0"
+        )
+        .get(id)
+    ).toEqual({ amount: "10 mg" });
+    expect(
+      db
+        .prepare(
+          "SELECT kind, goal_key FROM intake_item_purposes WHERE item_id = ?"
+        )
+        .get(id)
+    ).toEqual({ kind: "goal", goal_key: "sleep" });
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL"
+        )
+        .get(id)
+    ).toEqual({ n: 1 });
+    // A later-acquired historical course must not become the end-date target.
+    db.prepare(
+      "INSERT INTO medication_courses (item_id, started_on, stopped_on) VALUES (?, '2020-01-01', '2020-01-02')"
+    ).run(id);
+    const openCourse = db
+      .prepare(
+        "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL"
+      )
+      .get(id) as { id: number };
+    item = await load();
+    expect(
+      item.actions
+        .filter(
+          (a) =>
+            a.id.startsWith("course:") && a.fields.some((f) => f.name === "end")
+        )
+        .map((a) => a.id)
+    ).toEqual([`course:${openCourse.id}`]);
+  });
+  it("offers document identities and reassigns the complete imported footprint only to writable people", async () => {
+    db.prepare(
+      "UPDATE medical_records SET document_id = ? WHERE profile_id = ?"
+    ).run(mine.documentId, mine.profileId);
+    const doc = (await items("documents", ownerDesk)).items.find(
+      (i) => i.id === `document:${mine.documentId}`
+    )!;
+    expect(doc.recordKey).toBe(doc.id);
+    const denied = (await items("documents")).items.find(
+      (i) => i.id === doc.id
+    )!;
+    expect(denied.actions.some((a) => a.id === "reassign")).toBe(false);
+    expect(
+      (
+        await apply(
+          "documents",
+          doc,
+          "reassign",
+          { person: String(theirs.profileId), confirm: true },
+          ownerDesk
+        )
+      ).status
+    ).toBe(200);
+    expect(
+      db
+        .prepare("SELECT profile_id FROM medical_documents WHERE id = ?")
+        .get(mine.documentId)
+    ).toEqual({ profile_id: theirs.profileId });
+    expect(
+      db
+        .prepare(
+          "SELECT DISTINCT profile_id FROM medical_records WHERE document_id = ?"
+        )
+        .all(mine.documentId)
+    ).toEqual([{ profile_id: theirs.profileId }]);
+    expect(
+      (await apply("documents", doc, "select", { confirm: true }, ownerDesk))
+        .status
+    ).toBe(409);
+  });
+  it("corrects stored extraction, requires explicit review, commits once and rejects without persisting", async () => {
+    const makeJob = () =>
+      Number(
+        db
+          .prepare(
+            "INSERT INTO import_jobs (profile_id, type, source_text, status, result_json) VALUES (?, 'clinical-results', 'synthetic', 'ready', ?)"
+          )
+          .run(
+            mine.profileId,
+            JSON.stringify({
+              ok: true,
+              type: "clinical-results",
+              meta: {
+                patient_name: "Synthetic person",
+                patient_sex: null,
+                patient_birthdate: null,
+                patient_age: null,
+                document_type: null,
+                source: null,
+                document_date: "2024-01-01",
+              },
+              immunizations: [],
+              results: [
+                {
+                  category: "lab",
+                  name: "Synthetic marker",
+                  canonical_name: "Synthetic marker",
+                  value: "2",
+                  value_num: 2,
+                  unit: "mg/dL",
+                  collected_date: "2024-01-01",
+                  notes: null,
+                  flag: null,
+                  panel: null,
+                  reference_range: null,
+                },
+              ],
+            })
+          ).lastInsertRowid
+      );
+    const id = makeJob();
+    const load = async () =>
+      (await items("imports")).items.find((i) => i.id === `import:${id}`)!;
+    let item = await load();
+    expect(
+      (await apply("imports", item, "commit", { confirm: false })).status
+    ).toBe(400);
+    expect(
+      (
+        await apply("imports", item, "correct:0", {
+          value: "3",
+          unit: "mg/dL",
+          date: "2024-01-01",
+          notes: "Reviewed",
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (await apply("imports", item, "commit", { confirm: true })).status
+    ).toBe(409);
+    item = await load();
+    expect(
+      (await apply("imports", item, "commit", { confirm: true })).status
+    ).toBe(200);
+    expect(
+      db
+        .prepare(
+          "SELECT value_num FROM medical_records WHERE profile_id = ? AND name = 'Synthetic marker'"
+        )
+        .get(mine.profileId)
+    ).toEqual({ value_num: 3 });
+    expect(
+      (await apply("imports", item, "commit", { confirm: true })).status
+    ).toBe(409);
+    const rejected = makeJob();
+    item = (await items("imports")).items.find(
+      (i) => i.id === `import:${rejected}`
+    )!;
+    expect(
+      (await apply("imports", item, "reject", { confirm: true })).status
+    ).toBe(200);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ? AND name = 'Synthetic marker'"
+        )
+        .get(mine.profileId)
+    ).toEqual({ n: 1 });
+  });
+  it("restores through the existing trash engine and refuses a consumed token", async () => {
+    db.prepare(
+      "INSERT INTO conditions (profile_id, name) VALUES (?, 'Synthetic deleted condition')"
+    ).run(mine.profileId);
+    const token = captureDelete(
+      "condition",
+      mine.profileId,
+      Number(
+        (
+          db
+            .prepare("SELECT id FROM conditions WHERE profile_id = ? LIMIT 1")
+            .get(mine.profileId) as { id: number }
+        ).id
+      )
+    )!;
+    const item = (await items("trash")).items.find(
+      (i) => i.id === `trash:${token}`
+    )!;
+    expect(item.actions.map((a) => a.id)).toEqual(["restore"]);
+    expect(
+      (await apply("trash", item, "restore", { confirm: true })).status
+    ).toBe(200);
+    expect(
+      (await apply("trash", item, "restore", { confirm: true })).status
+    ).toBe(409);
+  });
+  it("bounds and searches workflow pages and refuses malformed cursors", async () => {
+    for (let n = 0; n < 27; n++)
+      db.prepare(
+        "INSERT INTO intake_items (profile_id, name, kind) VALUES (?, ?, 'supplement')"
+      ).run(mine.profileId, `Paging fixture ${n}`);
+    const path = `/v1/health/medications?profile=${mine.profileId}&q=Paging%20fixture`;
+    const first = (await (
+      await healthMedications.GET(req(path, phone))
+    ).json()) as { items: WorkflowItem[]; next: string };
+    expect(first.items).toHaveLength(25);
+    const second = (await (
+      await healthMedications.GET(req(`${path}&cursor=${first.next}`, phone))
+    ).json()) as { items: WorkflowItem[]; next: string | null };
+    expect(second.items).toHaveLength(2);
+    expect(second.next).toBeNull();
+    expect(
+      new Set([...first.items, ...second.items].map((i) => i.id)).size
+    ).toBe(27);
+    expect(
+      (await healthMedications.GET(req(`${path}&cursor=invalid`, phone))).status
+    ).toBe(400);
+    expect(
+      (
+        await healthMedications.GET(
+          req(
+            `/v1/health/medications?profile=${mine.profileId}&q=${"x".repeat(201)}`,
+            phone
+          )
+        )
+      ).status
+    ).toBe(400);
+  });
+  it("serves the same forms via a session twin and refuses cross-origin writes", async () => {
+    const login = makeLogin("workflow-session", "admin");
+    const session = createSession(login);
+    const cookie = `${SESSION_COOKIE}=${session.token}`;
+    const request = new Request(
+      `http://allos.test/api/health/medications?profile=${mine.profileId}`,
+      { headers: { cookie, host: "allos.test" } }
+    );
+    const res = await webHealthMedications.GET(request);
+    expect(res.status).toBe(200);
+    const item = ((await res.json()) as { items: WorkflowItem[] }).items.find(
+      (i) => i.id === "intake:new"
+    )!;
+    expect(
+      (
+        await webHealthMedications.POST(
+          new Request(request.url, {
+            method: "POST",
+            headers: {
+              cookie,
+              host: "allos.test",
+              origin: "https://evil.test",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              id: item.id,
+              revision: item.revision,
+              action: "save",
+              values: {},
+            }),
+          })
+        )
+      ).status
+    ).toBe(403);
   });
 });
 
