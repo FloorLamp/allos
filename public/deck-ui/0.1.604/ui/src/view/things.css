@@ -1,5 +1,0 @@
-.dk-things { padding: 16px; color: var(--text); font-family: var(--sans); }
-.dp .dk-things { overflow: auto; max-height: 65vh; }
-.dk-things > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-
-.dk-things img { max-width: 100%; max-height: 280px; object-fit: contain; }

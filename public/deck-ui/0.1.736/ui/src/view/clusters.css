@@ -1,0 +1,20 @@
+.dk-clusters { padding: var(--gap-l); max-width: 1100px; margin: auto; color: var(--text); font-family: var(--sans); }
+.dc-tools { display: flex; flex-wrap: wrap; gap: var(--gap-m); align-items: flex-end; margin-bottom: var(--gap-m); }
+.dc-filter { flex: 1 1 240px; }
+.dk-clusters label { display: grid; gap: var(--gap-xs); color: var(--soft); font: var(--font-sub); min-width: 0; }
+.dk-clusters .dc-check { display: flex; align-items: center; min-height: 44px; gap: var(--gap-s); cursor: pointer; }
+.dk-clusters .dc-check input { width: 20px; height: 20px; margin: 0; }
+.dk-clusters .dk-field { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.dk-clusters .dk-drawer { width: min(680px, 100%); }
+.dk-clusters [aria-label="Cluster details"] { display: grid; gap: var(--gap-m); }
+.dc-name, .dc-merge, .dc-split { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--gap-s); }
+.dc-name label, .dc-merge label, .dc-split label { flex: 1 1 240px; }
+.dc-actions { display: flex; gap: var(--gap-s); flex-wrap: wrap; }
+.dc-members { min-width: 0; border: 0; padding: 0; margin: 0; }
+.dc-members:disabled { opacity: .65; }
+.dk-clusters .dp-src { background: transparent; cursor: pointer; }
+@media (width < 600px) {
+  .dk-clusters { padding: 16px 12px; }
+  .dk-clusters .dk-field { min-height: 44px; font-size: var(--size-box); }
+  .dk-clusters .dk-drawer { width: 100%; }
+}
