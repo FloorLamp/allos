@@ -80,8 +80,8 @@ ENV NODE_ENV=production
 
 # The commit the image was built from. `.git` is excluded from the build
 # context (see .dockerignore), so the app can't read it at runtime — bake it in
-# here from a build arg (the deploy workflow passes github.sha) and expose it as
-# env vars the UI reads via lib/version.ts. Unset in a plain `docker build`,
+# here from a build arg and expose it as env vars the UI reads via
+# lib/version.ts. Unset in a plain `docker build`,
 # which is fine: the UI just shows "unknown".
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=$COMMIT_SHA

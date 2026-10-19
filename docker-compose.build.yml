@@ -1,5 +1,5 @@
-# Local-build override. The default docker-compose.yml pulls a pre-built image
-# from the registry; layer this on top to build from source instead:
+# Local-build override. The default docker-compose.yml uses Liftoff's live
+# image; layer this on top to build from source instead:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 #

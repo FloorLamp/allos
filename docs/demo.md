@@ -30,7 +30,7 @@ With `ALLOS_DEMO_MODE=1`:
   is never advertised in the UI. Set a strong `ADMIN_PASSWORD` — it is not
   read-only.
 
-Same seed, same GHCR image, same boot as a normal deploy — demo mode is
+Same seed, same image, same boot as a normal deploy — demo mode is
 presentation plus a belt-and-braces write block, so the demo doubles as a
 release smoke test.
 

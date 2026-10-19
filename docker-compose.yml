@@ -4,11 +4,10 @@ services:
     # so it shows up as exactly "allos" in `docker ps` / logs. (Rules out
     # scaling this service to >1 replica, which we never do.)
     container_name: allos
-    # Pre-built image pulled from a registry (built & pushed by CI). The deploy
-    # box never builds — it just pulls. IMAGE is normally pinned to a commit SHA
-    # by the CD workflow; it defaults to :latest for manual `docker compose pull`.
-    # To build locally instead, add the override: `-f docker-compose.build.yml`.
-    image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}
+    # Liftoff builds main and owns the live tag. For a local build, add
+    # -f docker-compose.build.yml.
+    image: ${IMAGE:-liftoff/allos:live}
+    pull_policy: never
     ports:
       - "${PORT:-3000}:3000"
       - "127.0.0.1:9830:9830"
@@ -66,7 +65,8 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
+      start_interval: 1s
 
   # Notification scheduler — the built-in replacement for an external cron.
   # Same image and data dir as the app; runs the tick (node dist/notify.cjs) once
@@ -84,7 +84,8 @@ services:
   # exactly ONE tick scheduler, never both.
   allos-notify:
     container_name: allos-notify
-    image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}
+    image: ${IMAGE:-liftoff/allos:live}
+    pull_policy: never
     command: ["docker-notify.sh"]
     env_file:
       - .env
