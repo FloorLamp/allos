@@ -10,6 +10,8 @@ import {
   startMetrics,
 } from "@/lib/metrics-runtime";
 import { db } from "@/lib/db";
+import * as runtime from "@/lib/metrics-runtime";
+import { register } from "../../instrumentation";
 import {
   seedSyncMetrics,
   recordSyncEvent,
@@ -247,5 +249,46 @@ it("retains strictly over 200 ms breaches across scrapes and stops sampling on c
     monitor.stop();
     clock.mockRestore();
     vi.useRealTimers();
+  }
+});
+
+it("refreshes weather successes written by the sidecar after web startup", async () => {
+  let collect: () => void = () => {};
+  const start = vi
+    .spyOn(runtime, "startMetrics")
+    .mockImplementation((callback) => {
+      collect = callback ?? (() => {});
+      return undefined;
+    });
+  vi.stubEnv("NEXT_RUNTIME", "nodejs");
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("NEXT_PHASE", "");
+  const profileId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES ('metrics-sidecar')").run()
+      .lastInsertRowid
+  );
+  const insert = db.prepare(
+    "INSERT INTO integration_sync_events (profile_id, source_id, at, ok) VALUES (?, 'weather', ?, ?)"
+  );
+  const scrape = metricsServer(metrics, () => collect());
+  try {
+    await register();
+    const url = await listen(scrape);
+    const first = "2090-10-18T20:10:00Z";
+    const next = "2090-10-19T14:10:00Z";
+    insert.run(profileId, first, 1);
+    expect(await (await fetch(`${url}/metrics`)).text()).toContain(
+      `allos_task_last_success_timestamp_seconds{task="weather"} ${Date.parse(first) / 1000}`
+    );
+    // Direct SQL models another process: it cannot update the web's registry.
+    insert.run(profileId, next, 1);
+    insert.run(profileId, "2090-10-19T15:10:00Z", 0);
+    expect(await (await fetch(`${url}/metrics`)).text()).toContain(
+      `allos_task_last_success_timestamp_seconds{task="weather"} ${Date.parse(next) / 1000}`
+    );
+  } finally {
+    await close(scrape);
+    start.mockRestore();
+    vi.unstubAllEnvs();
   }
 });
