@@ -1,11 +1,11 @@
 ---
-name: file-issue
-description: Investigate and draft or file a GitHub issue on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief.
+name: file-task
+description: Investigate and draft or file a flightplan item on FloorLamp/allos when the user asks to write up, track, or file work. Verify the premise, search for duplicates and rulings, resolve consequential decisions, and prepare a concise implementation brief.
 ---
 
-# File an actionable issue
+# File an actionable task
 
-Use this skill when issue preparation or filing is requested. A bug report or
+Use this skill when task preparation or filing is requested. A bug report or
 feature discussion alone does not authorize creating tracker work.
 
 Follow the [change and test policy](../../../docs/change-policy.md) for scope and
@@ -26,18 +26,19 @@ code and relevant domain contract before asking questions.
 
 ## Check the tracker
 
-Check open and closed issues with several relevant terms. Use paginated REST
-listing and local filtering when search is unavailable. Issue-list responses also
-include PRs; distinguish them when assessing duplicates.
+Use the fleet flightplan skill and its CLI or MCP client. Search before filing:
 
-Read each near match's complete body and all comments. If the investigation is
-long, recheck before filing so a new ruling is not missed.
+```bash
+node ~/ops/spaceport/flightplan/bin/flightplan.mjs list --repo FloorLamp/allos --q "<words>" --status all
+```
 
-- Duplicate: show the existing issue and stop creating a new one. A comment or
-  amendment needs authorization for that write.
-- Adjacent: cross-reference the issue and explain the different scope.
-- Dependency: use a standalone `Depends-on: #123` line.
-- Umbrella: name `Part of #N` and the specific checklist item.
+Try several relevant terms and read near matches' notes and linked evidence.
+Recheck before filing after a long investigation.
+
+- Duplicate: report the existing item; updating it needs authorization.
+- Adjacent: cross-reference the item and explain the different scope.
+- Dependency: use `--blocked-by <ids>`.
+- Epic: use `--parent <id>` and identify the specific remaining work.
 
 ## Resolve decisions
 
@@ -51,9 +52,10 @@ and the impact of each choice. Use existing constants or measurements for limits
 Do not reopen a settled decision at confirmation.
 
 If a consequential decision remains unresolved, keep it explicit in the draft.
-An authorized issue intended for a later owner decision carries `needs-human` and
-one concrete question. Without authorization to file that unresolved draft, save
-it for review and report it as unfiled. Noninteractive work does not supply consent.
+An authorized item intended for a later owner decision uses status `needs-you`
+and one concrete question. Without authorization to file that unresolved draft,
+save it for review and report it as unfiled. Noninteractive work does not supply
+consent.
 
 ## Draft
 
@@ -69,7 +71,7 @@ help distinguish a correct implementation. Include:
   Prefer existing coverage; do not require new tests by default.
 - Repository-rooted paths and symbols for evidence. When citing a line, name the
   code on that line so a later reader can verify it after edits.
-- Related issues/PRs under **Refs**, with a short reason for each reference.
+- Related items/PRs under **Refs**, with a short reason for each reference.
 - Final decisions from the discussion and any remaining owner question.
 
 Propose reuse, simplification, or removal before a new abstraction. State what a
@@ -80,32 +82,26 @@ provenance briefly without appending an incident narrative.
 Use truthful attribution for the actual agent/session when the host requires it.
 Never copy another provider's name or fabricate a session URL.
 
-## Labels and priority
-
-Use at least one domain label and exactly one priority slot, `P0`–`P3` or
-`parked`, chosen from the repository's existing labels. Never invent a label:
-GitHub's add-labels call silently creates an unknown one.
-
-An active infrastructure bottleneck can warrant P1; a latent isolated flake is
-normally P3; ordinary scoped features and cleanup are generally P2–P3.
-Agent-discovered work defaults to P3 unless it is a demonstrated regression.
-Explain priority in the draft; ask only when the evidence cannot settle it.
-
 ## File and verify
 
-Finish the reviewable package first: title, labels, and complete body. Honor any
-existing authorization to file; otherwise obtain approval for that package before
-creating the issue. Incorporate requested changes before the write.
+Finish the reviewable package first: title, repository, notes, and any parent or
+dependencies. Honor existing authorization to file; otherwise obtain approval for
+that package. Incorporate requested changes before the write.
 
-Use a structured API argument, JSON stdin, or a JSON payload file so newlines and
-literal text survive shell handling. For an available scratch-file writer:
+Create agent work in `backlog`; the coordinator decides readiness. Do not assign
+labels or create GitHub issues. For example:
 
 ```bash
-gh api --method POST repos/FloorLamp/allos/issues --input /tmp/issue.json
+node ~/ops/spaceport/flightplan/bin/flightplan.mjs add "<title>" --repo FloorLamp/allos --kind task --status backlog --due '' --notes "<complete brief>"
 ```
 
-Use a task-specific temporary filename. Check the response and verify the created
-issue under the shared GitHub write policy, then report its number and URL. If
+Keep dates in notes, or pass `--due ''`, so dates in a title do not become due
+dates. Add `--parent` and `--blocked-by` where applicable. Use
+`--link issue:<owner>/<repo>#<n>` only to reference an existing source issue.
+Preserve literal text and newlines through structured tool arguments or proper
+shell quoting.
+
+Verify the result with `flightplan.mjs show <id>` and report its item ID. If
 access is blocked, leave the complete draft and say it was not filed.
 
 If the premise already shipped or an existing ruling resolves it, report the
