@@ -10,6 +10,7 @@
 // on spelling. Grouped by domain. Values are the exact strings stored in
 // audit_events.action.
 export const AUDIT_ACTIONS = {
+  healthWorkflowApply: "health-workflow.apply",
   loginSuccess: "login.success",
   loginFailure: "login.failure",
   loginThrottled: "login.throttled",

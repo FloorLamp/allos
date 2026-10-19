@@ -15,6 +15,8 @@
 // nested writeTx is a SAVEPOINT (#468), so the delegation commits or refuses as one.
 
 import { db, today, writeTx } from "./db";
+import { deleteProfileSetting } from "./settings";
+import { leftRefillTrackedSet, refillMarkerKey } from "./refill-nudge";
 import { casUpdate, readForUpdate } from "./tx";
 import { setMedicationActive } from "./queries/intake/medications";
 
@@ -38,10 +40,14 @@ export function setIntakeActive(
   to: 0 | 1
 ): IntakeActiveOutcome {
   return writeTx((tx): IntakeActiveOutcome => {
-    const row = readForUpdate<{ active: number; kind: string }>(
+    const row = readForUpdate<{
+      active: number;
+      kind: string;
+      quantity_on_hand: number | null;
+    }>(
       tx,
       db.prepare(
-        "SELECT active, kind FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, kind, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
       ),
       itemId,
       profileId
@@ -50,9 +56,22 @@ export function setIntakeActive(
     if (row.active === to) {
       return to === 1 ? "already-active" : "already-paused";
     }
+    const finish = (outcome: IntakeActiveOutcome): IntakeActiveOutcome => {
+      if (
+        outcome === "paused" &&
+        leftRefillTrackedSet(
+          { active: true, quantityOnHand: row.quantity_on_hand },
+          { active: false, quantityOnHand: row.quantity_on_hand }
+        )
+      )
+        deleteProfileSetting(profileId, refillMarkerKey(itemId));
+      return outcome;
+    };
     if (row.kind === "medication") {
       // Course-history sync lives with the course core; same outcome words.
-      return setMedicationActive(profileId, itemId, to, today(profileId));
+      return finish(
+        setMedicationActive(profileId, itemId, to, today(profileId))
+      );
     }
     const res = casUpdate(
       tx,
@@ -69,6 +88,6 @@ export function setIntakeActive(
       // did not land can never be reported as a transition.
       return to === 1 ? "already-active" : "already-paused";
     }
-    return to === 1 ? "resumed" : "paused";
+    return finish(to === 1 ? "resumed" : "paused");
   });
 }
