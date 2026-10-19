@@ -7,6 +7,7 @@ import {
   observeEventLoop,
   observeRequests,
   routeMatcher,
+  startMetrics,
 } from "@/lib/metrics-runtime";
 import { db } from "@/lib/db";
 import {
@@ -119,6 +120,40 @@ it("seeds the latest persisted successful sync across profiles without identitie
     `allos_task_last_success_timestamp_seconds{task="garmin"} ${Date.parse("2026-10-01T12:00:00Z") / 1000}`
   );
   expect(metrics.render()).not.toContain("metrics-private-person");
+});
+
+it("refreshes successes written by the scheduler between scrapes", async () => {
+  const profileId = Number(
+    db
+      .prepare("INSERT INTO profiles (name) VALUES (?)")
+      .run("scheduler-metrics").lastInsertRowid
+  );
+  const insert = db.prepare(
+    "INSERT INTO integration_sync_events (profile_id, source_id, at, ok) VALUES (?, 'strava', ?, ?)"
+  );
+  // Direct SQL models another process: it cannot update the web's memory metrics.
+  insert.run(profileId, "2090-10-01T12:00:00Z", 1);
+  seedSyncMetrics(profileId);
+  const server = startMetrics(() => seedSyncMetrics(profileId))!;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("listening", resolve);
+      server.once("error", reject);
+    });
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const gauge = (at: string) =>
+      `allos_task_last_success_timestamp_seconds{task="strava"} ${Date.parse(at) / 1000}`;
+    expect(await (await fetch(`${url}/metrics`)).text()).toContain(
+      gauge("2090-10-01T12:00:00Z")
+    );
+    insert.run(profileId, "2090-10-02T12:00:00Z", 1);
+    insert.run(profileId, "2090-10-03T12:00:00Z", 0);
+    expect(await (await fetch(`${url}/metrics`)).text()).toContain(
+      gauge("2090-10-02T12:00:00Z")
+    );
+  } finally {
+    await close(server);
+  }
 });
 
 it("omits attended success gauges from persisted and live syncs while retaining run metrics", () => {
