@@ -6,6 +6,8 @@ import { makeTmpDir } from "./tmp-dir";
 
 // The documented Deck gate is the only permitted insertion point. Synthetic
 // config and reload command exercise the real step without touching a host.
+// An explicit mktemp template keeps macOS from preferring its user temp
+// directory over TMPDIR, which may be inaccessible in a sandbox.
 describe("Deck Health route step", () => {
   it.each([false, true])(
     "is idempotent and restores a failed reload (%s)",
@@ -37,7 +39,11 @@ handle @allos {
         );
         writeFileSync(config, broken);
         const lib = join(root, "lib.sh");
-        writeFileSync(lib, 'install_file() { cp "$1" "$2"; }\n');
+        writeFileSync(
+          lib,
+          'install_file() { cp "$1" "$2"; }\n' +
+            'mktemp() { command mktemp "$TMPDIR/tmp.XXXXXX"; }\n'
+        );
         const marker = join(root, "failed");
         writeFileSync(
           join(root, "caddy/reload.sh"),
@@ -51,6 +57,7 @@ handle @allos {
             {
               env: {
                 ...process.env,
+                TMPDIR: root,
                 STEP_LIB: lib,
                 STEP_HOST: "prod",
                 STEP_COMPOSE: join(root, "allos"),
@@ -112,7 +119,11 @@ handle @allos {
           site
       );
       const lib = join(root, "lib.sh");
-      writeFileSync(lib, 'install_file() { cp "$1" "$2"; }\n');
+      writeFileSync(
+        lib,
+        'install_file() { cp "$1" "$2"; }\n' +
+          'mktemp() { command mktemp "$TMPDIR/tmp.XXXXXX"; }\n'
+      );
       writeFileSync(join(root, "caddy/reload.sh"), "#!/bin/sh\n:\n", {
         mode: 0o755,
       });
@@ -123,6 +134,7 @@ handle @allos {
           {
             env: {
               ...process.env,
+              TMPDIR: root,
               STEP_LIB: lib,
               STEP_HOST: "prod",
               STEP_COMPOSE: join(root, "allos"),
