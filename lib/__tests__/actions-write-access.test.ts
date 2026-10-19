@@ -1137,10 +1137,14 @@ const PROFILE_REPOINT_ACTIONS: readonly {
 // Extract every exported async function as { name, body }. Balanced-brace scan
 // from the function's opening `{` to its matching `}`.
 function exportedAsyncFunctions(
-  src: string
+  src: string,
+  includeSync = false
 ): { name: string; params: string; body: string }[] {
   const out: { name: string; params: string; body: string }[] = [];
-  const re = /export\s+async\s+function\s+([A-Za-z0-9_]+)\s*\(/g;
+  const re = new RegExp(
+    `export\\s+${includeSync ? "(?:async\\s+)?" : "async\\s+"}function\\s+([A-Za-z0-9_]+)\\s*\\(`,
+    "g"
+  );
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     const name = m[1];
@@ -2113,12 +2117,21 @@ describe("actions consume typed write-core outcomes (#2106/#2109)", () => {
   it("no action discards a registered typed outcome in statement position", () => {
     const violations: string[] = [];
     const reached = new Set<string>();
-    for (const [file, src] of actionSources) {
+    for (const [file, src] of [
+      ...actionSources,
+      ...["lib/intake-item-write.ts", "lib/health-workflows.ts"].map((rel) => {
+        const file = path.join(REPO, rel);
+        return [file, fs.readFileSync(file, "utf8")] as const;
+      }),
+    ]) {
       const rel = path.relative(REPO, file).split(path.sep).join("/");
       const imports = registeredImportLocals(src, TYPED_OUTCOME_CORES);
       if (imports.size === 0) continue;
       for (const core of imports.values()) reached.add(core);
-      for (const { name, body } of exportedAsyncFunctions(stripComments(src))) {
+      for (const { name, body } of exportedAsyncFunctions(
+        stripComments(src),
+        true
+      )) {
         for (const core of discardedOutcomeCalls(body, imports)) {
           violations.push(
             `${rel}#${name}: ${core}(…) is called as a bare statement — consume its typed outcome and return/render the refusal instead of confirming unconditionally`
