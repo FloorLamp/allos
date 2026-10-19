@@ -8,13 +8,13 @@ import pin from "./deck-ui-pin.json";
 
 // Deck's web UI (spaceport deck/ui), the pinned version vendored into public/deck-ui/
 // by scripts/deck-ui.mjs and served from there at /deck-ui/<version>/…. Never fetched
-// at runtime. The Health place (app/deck/health) mounts its Health views with its web
+// at runtime. The Health page (app/deck/health) mounts its Health views with its web
 // host on this origin's session-authenticated /api twins (docs/device-api.md).
 
 export const DECK_UI = `/deck-ui/${pin.version}`;
 
 // The CSP the pinned bundle declares for its pages (ui/contract/host-contract.json);
-// the place's route sets it, so middleware leaves that one path to it (isDeckPlacePath).
+// the page's route sets it, so middleware leaves that one path to it (isDeckNavPath).
 export function deckUiCsp(): string {
   const contract = JSON.parse(
     readFileSync(
@@ -25,7 +25,7 @@ export function deckUiCsp(): string {
   return contract.csp;
 }
 
-// The place is the owner's, exactly like /v1/me's `owner`: allos's admin role. Anyone
+// The page is the owner's, exactly like /v1/me's `owner`: allos's admin role. Anyone
 // else, signed in or not, gets a 404 (an anonymous request never reaches here:
 // middleware sends it to the login).
 export async function ownerOnly(
@@ -79,22 +79,22 @@ export const deckHealthScript = (): string => {
 import { webHost } from "${base}${DECK_UI}/ui/src/host/web.js";
 import { ALLOS_OPS } from "${base}${DECK_UI}/ui/src/host/backends.js";
 
-const places = await (await fetch("${base}${DECK_UI}/ui/contract/places.json")).json();
+const nav = await (await fetch("${base}${DECK_UI}/ui/contract/nav.json")).json();
 const origin = location.origin;
-for (const place of places) if (place.id === "health") place.href = ${JSON.stringify(base || "/")};
+for (const item of nav) if (item.id === "health") item.href = ${JSON.stringify(base || "/")};
 // Keep the pinned host's origin and route validation; scope only its API transport.
 const transport = {
   location, navigator, localStorage, WebSocket,
   open: window.open.bind(window), matchMedia: window.matchMedia.bind(window),
   fetch: (input, init) => {
     const url = new URL(input, origin);
-    if (url.origin === origin && url.pathname.startsWith("/api/")) url.pathname = ${JSON.stringify(base)} + url.pathname;
+    if (url.origin === origin && url.pathname.startsWith("/allos/api/")) url.pathname = ${JSON.stringify(base)} + url.pathname.slice("/allos".length);
     return fetch(url, init);
   },
 };
 const host = webHost(transport, {
   backends: { allos: { origin, baseUrl: origin, scopes: ["allos:read", "allos:ask", "allos:log"], ops: ALLOS_OPS } },
 });
-mountHealth(document.getElementById("health"), host, { places });
+mountHealth(document.getElementById("health"), host, { nav });
 `;
 };

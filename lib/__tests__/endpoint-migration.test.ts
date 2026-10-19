@@ -24,7 +24,7 @@ function migrate(
         ] as const)
       : []),
     [
-      "/app/public/deck-ui/0.1.1/ui/contract/places.json",
+      "/app/public/deck-ui/0.1.1/ui/contract/nav.json",
       JSON.stringify([
         { id: "search", href: "https://deck.example.internal/" },
       ]),

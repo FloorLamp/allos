@@ -40,7 +40,7 @@ Refusals (`{error}`): 401 `token` (missing/invalid credential); 403 `scope`,
 | `POST /v1/practices`       | `log`  | `{practice, end, durationMin, key}` → `{profile, day, outcome}`; zoned ISO `end`, positive minutes; day/start = end − duration in profile zone; outcomes: inserted/unchanged/updated/edited/suppressed; edits/deletions win                |
 | `GET /v1/labs?limit=10`    | `read` | `{day, labs: [{name, value, unit, flag, date, href, freshness}]}`: latest per marker, notable first; `limit` 1–50                                                                                                                          |
 
-## Web twins and the Health place
+## Web twins and the Health page
 
 `/api/<route>` twins: Allos/Boarding sessions (401 `token`), grants and profile. Writes: same-origin JSON (403 `origin`, 415 `type`).
 `POST /api/ask` `{q, profile?}`; GET: 405. `/api/accounts`: `DECK_ORIGIN` CORS, even 401.

@@ -1,4 +1,5 @@
 import { db, hoistedStatement } from "./db";
+import { deckDestination } from "./public-paths";
 import { readBodyCapped } from "./request-body";
 import {
   accessibleProfilesForLogin,
@@ -228,7 +229,8 @@ export async function authenticateDevice(
   req: Request,
   scope: DeviceScope
 ): Promise<DeviceAuth> {
-  if (new URL(req.url).pathname.startsWith("/api/"))
+  const pathname = new URL(req.url).pathname;
+  if ((deckDestination(pathname) ?? pathname).startsWith("/api/"))
     return authenticateSession(req);
   const who = await authenticateDeviceCredential(req, scope);
   if (!who.ok) return who;

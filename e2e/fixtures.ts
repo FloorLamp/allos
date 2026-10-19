@@ -502,6 +502,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       fs.mkdirSync(path.join(dir, "data", "logs"), { recursive: true });
       fs.mkdirSync(path.join(dir, "data", "uploads"), { recursive: true });
 
+      fs.symlinkSync(
+        path.join(process.cwd(), "public"),
+        path.join(dir, "public"),
+        "dir"
+      );
+
       // 3) This worker's server: `next start` off the ONE shared production build,
       //    but with the worker dir as CWD so every cwd-relative artifact the app
       //    writes (data/uploads, data/logs/ai.jsonl, data/logs/errors.jsonl) is

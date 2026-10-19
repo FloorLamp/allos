@@ -37,10 +37,10 @@ if (!recovered.DECK_ORIGIN) {
     const file = path.join(
       "/app/public/deck-ui",
       version,
-      "ui/contract/places.json"
+      "ui/contract/nav.json"
     );
-    const places = JSON.parse(fs.readFileSync(file, "utf8"));
-    const search = places.find((place) => place.id === "search");
+    const nav = JSON.parse(fs.readFileSync(file, "utf8"));
+    const search = nav.find((item) => item.id === "search");
     if (search) recovered.DECK_ORIGIN = new URL(search.href).origin;
   }
 }
