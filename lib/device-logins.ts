@@ -205,7 +205,7 @@ export async function authenticateDeviceCredential(
     who = await verifier.check(bearer(req));
   } catch (e) {
     if (e instanceof BoardingUnavailable) {
-      console.error("device api: boarding unavailable", e.message);
+      console.warn("device api: boarding unavailable", e.message);
       return { ok: false, status: 503, error: "boarding" };
     }
     throw e;
