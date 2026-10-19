@@ -7,8 +7,10 @@ export async function register() {
     const { startMetrics } = await import("./lib/metrics-runtime");
     const { db } = await import("./lib/db");
     const { seedSyncMetrics } = await import("./lib/integrations/connections");
-    // The system metrics boundary reads every profile, including sidecar results.
     startMetrics(() => {
+      // The metrics boundary is authorized to read operational state for every profile.
+      // Scheduled syncs run in the notify process, so refresh persisted successes
+      // on each scrape rather than only at web startup.
       const profiles = db.prepare("SELECT id FROM profiles").all() as {
         id: number;
       }[];

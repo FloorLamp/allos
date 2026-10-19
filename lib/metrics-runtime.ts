@@ -129,7 +129,7 @@ export function observeEventLoop(registry: Metrics) {
 }
 
 // The web process exports these aggregates; notify and CLI processes stay separate.
-export function startMetrics(collectSyncMetrics: () => void = () => {}) {
+export function startMetrics(collect: () => void = () => {}) {
   const shared = globalThis as typeof globalThis & {
     allosMetricsStarted?: boolean;
   };
@@ -156,7 +156,7 @@ export function startMetrics(collectSyncMetrics: () => void = () => {}) {
   const stopRequests = observeRequests(metrics, routeMatcher(appPaths));
   const lag = observeEventLoop(metrics);
   const server = metricsServer(metrics, () => {
-    collectSyncMetrics();
+    collect();
     metrics.gauge("nodejs_heap_used_bytes", {}, process.memoryUsage().heapUsed);
     lag.collect();
   });
@@ -172,4 +172,5 @@ export function startMetrics(collectSyncMetrics: () => void = () => {}) {
   });
   server.listen(9830, "0.0.0.0");
   server.unref();
+  return server;
 }
