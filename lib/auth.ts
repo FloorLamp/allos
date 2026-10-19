@@ -1,6 +1,6 @@
 import { cache } from "react";
 import crypto from "node:crypto";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db, hoistedStatement } from "./db";
 import { recordAudit } from "./audit";
@@ -455,10 +455,50 @@ export function resolveSessionToken(token: string): CurrentSession | null {
   };
 }
 
+// Cache only Boarding's verdict; login roles and profiles stay live. Revocation
+// reaches every process within 10 seconds. Bound memory even for random cookies.
+const boardingOwners = new Map<
+  string,
+  { until: number; owner: Promise<boolean> }
+>();
+let boardingAdminWarningUntil = 0;
+
+async function boardingOwner(member: string): Promise<boolean> {
+  let host: string;
+  try {
+    const origin = new URL(process.env.DECK_ORIGIN ?? "");
+    if (origin.protocol !== "https:") return false;
+    host = origin.host;
+  } catch {
+    return false;
+  }
+  const endpoint = `${process.env.BOARDING_URL || "http://boarding:9816"}/owner`;
+  const key = hashToken(`${endpoint}\n${host}\n${member}`);
+  const cached = boardingOwners.get(key);
+  if (cached && cached.until > Date.now()) return cached.owner;
+  const owner = (async () => {
+    try {
+      const res = await fetch(endpoint, {
+        headers: { cookie: member, "x-forwarded-host": host },
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(3000),
+      });
+      return res.status === 200 && (await res.json())?.owner === true;
+    } catch {
+      return false;
+    }
+  })();
+  if (boardingOwners.size >= 1000) {
+    boardingOwners.delete(boardingOwners.keys().next().value!);
+  }
+  boardingOwners.set(key, { until: Date.now() + 10_000, owner });
+  return owner;
+}
+
 // Boarding owns the browser session; never mint an independent Allos session.
 export async function resolveBrowserSession(
-  cookie: string,
-  host: string
+  cookie: string
 ): Promise<CurrentSession | null> {
   const token = cookie
     .split(/;\s*/)
@@ -469,26 +509,18 @@ export async function resolveBrowserSession(
   const member = cookie
     .split(/;\s*/)
     .find((c) => c.startsWith("__Host-boarding_member="));
-  if (!member || !host) return null;
-  try {
-    const res = await fetch(
-      `${process.env.BOARDING_URL || "http://boarding:9816"}/owner`,
-      {
-        headers: { cookie: member, "x-forwarded-host": host },
-        cache: "no-store",
-        redirect: "error",
-        signal: AbortSignal.timeout(3000),
-      }
-    );
-    if (!res.ok || (await res.json()).owner !== true) return null;
-  } catch {
-    return null;
-  }
+  if (!member || !(await boardingOwner(member))) return null;
   // Multiple admins do not identify which Allos login belongs to the owner.
   const logins = db
     .prepare("SELECT id, username, role FROM logins WHERE role = 'admin'")
     .all() as SessionLogin[];
-  if (logins.length !== 1) return null;
+  if (logins.length !== 1) {
+    if (Date.now() >= boardingAdminWarningUntil) {
+      console.warn("Boarding owner refused: expected exactly one Allos admin");
+      boardingAdminWarningUntil = Date.now() + 60_000;
+    }
+    return null;
+  }
   const login = logins[0];
   const profiles = accessibleProfiles(login.id, login.role);
   const profile =
@@ -520,11 +552,7 @@ export const getCurrentSession = cache(
     if (local) return local;
     const member = jar.get("__Host-boarding_member")?.value;
     if (!member) return null;
-    const h = await headers();
-    return resolveBrowserSession(
-      `__Host-boarding_member=${member}`,
-      h.get("x-forwarded-host") ?? h.get("host") ?? ""
-    );
+    return resolveBrowserSession(`__Host-boarding_member=${member}`);
   }
 );
 

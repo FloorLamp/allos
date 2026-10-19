@@ -55,8 +55,8 @@ page/module/assets/API (empty: `/`). `/deck/health` redirects to `DECK_ORIGIN` +
 Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`; pin: `lib/deck-ui-pin.json`.
 
 [Boarding](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
-`/owner` maps the host cookie to the admin’s own/first profile;
-Ambiguity/failure denies; caregivers win.
+`/owner`: HTTPS `DECK_ORIGIN`; verdict/failure TTL: 10s. Sole admin:
+write, own/first. Zero/multiple: deny+warn/minute. Uncached permissions.
 `/boarding/client.js` loads; `/boarding/*` proxies to Boarding.
 
 `accounts_rover_origins`: portal-account ID → `rover:<login-id>` dedup. `generated`: latest run/success or epoch.
