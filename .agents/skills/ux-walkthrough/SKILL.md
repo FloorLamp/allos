@@ -144,7 +144,7 @@ or tab captures too.
 
 Trace visible symptoms to their code owner and check standing owner decisions
 before filing. Separate confirmed bugs from design choices and unresolved owner
-calls. Follow [issue filing](../file-issue/SKILL.md) within the existing authorization;
+calls. Follow [task filing](../file-task/SKILL.md) within the existing authorization;
 include route, state, reproducible evidence, and mechanism. For a proposed
 structural redesign, make a compact clickable prototype for owner review and keep
 the diagnosis self-contained when artifact links are private.
