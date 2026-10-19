@@ -752,7 +752,7 @@ describe("/v1/accounts", () => {
     }
   });
 
-  // Deck's Accounts place reads the twin from https://deck.example.internal: that origin
+  // Deck's Accounts page reads the twin from https://deck.example.internal: that origin
   // exactly, with credentials, on every answer; never a sibling or reflected one.
   it("lets Deck's origin read the accounts twin, and no other origin", async () => {
     const login = makeLogin("accounts-cors", "member");

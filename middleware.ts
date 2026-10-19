@@ -12,7 +12,7 @@ import {
 import {
   buildCsp,
   generateNonce,
-  isDeckPlacePath,
+  isDeckNavPath,
   isSelfFramedPath,
 } from "./lib/csp";
 import {
@@ -170,7 +170,7 @@ export function middleware(req: NextRequest) {
       );
     }
     const url = req.nextUrl.clone();
-    const health = isDeckPlacePath(pathname);
+    const health = isDeckNavPath(pathname);
     url.pathname = health ? "/boarding/sign-in" : "/login";
     url.search = "";
     url.searchParams.set(health ? "to" : "next", externalPath + search);
@@ -183,7 +183,7 @@ export function middleware(req: NextRequest) {
     ? NextResponse.rewrite(target, passNonce)
     : NextResponse.next(passNonce);
   const out = token && slides ? withSlidingCookie(res, token) : res;
-  return isDeckPlacePath(pathname) ? out : withCsp(out);
+  return isDeckNavPath(pathname) ? out : withCsp(out);
 }
 
 export const config = {
