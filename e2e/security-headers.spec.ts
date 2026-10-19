@@ -325,7 +325,6 @@ test("a same-origin page may actually frame the stored-file route", async ({
   expect(framed.url()).toContain(`/medical/file/${id}`);
 });
 
-
 const nav = JSON.parse(
   fs.readFileSync(`public/deck-ui/${pin.version}/ui/contract/nav.json`, "utf8")
 ) as { id: string; label: string; href: string; group: string }[];
