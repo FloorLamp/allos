@@ -188,12 +188,7 @@ function crossOriginWrite(req: Request): DeviceAuth | null {
 async function authenticateSession(req: Request): Promise<DeviceAuth> {
   const blocked = crossOriginWrite(req);
   if (blocked) return blocked;
-  const session = await resolveBrowserSession(
-    req.headers.get("cookie") ?? "",
-    req.headers.get("x-forwarded-host") ??
-      req.headers.get("host") ??
-      new URL(req.url).host
-  );
+  const session = await resolveBrowserSession(req.headers.get("cookie") ?? "");
   if (!session) return { ok: false, status: 401, error: "token" };
   const here = reach(req, session.login, session.profile.id);
   if (!here) return { ok: false, status: 403, error: "profile" };
