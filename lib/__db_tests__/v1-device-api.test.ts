@@ -227,22 +227,32 @@ describe("/v1 — the device credential, verified with boarding", () => {
     }
   });
 
-  it("503s when boarding is unreachable, and again when it answers nonsense — never a device", async () => {
+  it("warns and 503s during a boarding outage, then recovers without caching the failure", async () => {
     const token = credential({ name: "m1x", scopes: ALL });
-    down = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
+      down = true;
       const res = await needs(req("/v1/needs", token));
       expect(res.status).toBe(503);
       expect(await json(res)).toEqual({ error: "boarding" });
+      expect(warn).toHaveBeenCalledWith(
+        "device api: boarding unavailable",
+        expect.stringContaining("ECONNREFUSED")
+      );
+      expect(error).not.toHaveBeenCalled();
+      down = false;
+      broken = true;
+      const malformed = await needs(req("/v1/needs", token));
+      expect(malformed.status).toBe(503);
+      broken = false;
+      const recovered = await needs(req("/v1/needs", token));
+      expect(recovered.status).toBe(200);
     } finally {
       down = false;
-    }
-    broken = true;
-    try {
-      const res = await needs(req("/v1/needs", token));
-      expect(res.status).toBe(503);
-    } finally {
       broken = false;
+      warn.mockRestore();
+      error.mockRestore();
     }
   });
 
