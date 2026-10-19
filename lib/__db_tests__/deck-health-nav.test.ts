@@ -1,15 +1,16 @@
-// DB INTEGRATION TIER — Deck's Health place on allos's own origin (FloorLamp/allos#6076,
-// part 2): the `/api` session twins of the `/v1` routes, and the owner-only place.
+// DB INTEGRATION TIER — Deck's Health page on allos's own origin (FloorLamp/allos#6076,
+// part 2): the `/api` session twins of the `/v1` routes, and the owner-only page.
 //
 // The twins are the SAME handlers, authenticated by the session cookie instead of a
 // device credential: a person reaches only the profiles their login is granted, a
-// read-only grant writes nothing, and no cookie is a 401. The place (page and module)
+// read-only grant writes nothing, and no cookie is a 401. The page (page and module)
 // is the admin role's alone: anyone else gets a 404, and the page carries the bundle's
 // own CSP. Synthetic fixtures only.
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
-// The place reads the session through the cookie jar. This tier's shared setup mocks
+// The page reads the session through the cookie jar. This tier's shared setup mocks
 // @/lib/auth for the server-action suite; this file is about the real session.
 const request = vi.hoisted(() => ({ jar: new Map<string, string>() }));
 vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
@@ -339,7 +340,7 @@ describe("/api twins — the session, not a device credential", () => {
   });
 });
 
-describe("the Health place — the owner's alone", () => {
+describe("the Health page — the owner's alone", () => {
   const as = (token: string | null) => {
     request.jar.clear();
     if (token) request.jar.set(SESSION_COOKIE, token);
@@ -361,13 +362,14 @@ describe("the Health place — the owner's alone", () => {
       const calls: string[] = [];
       const fetch = async (input: string | URL) => {
         calls.push(String(input));
-        return Response.json([
-          { id: "health", href: "https://old.test/deck/health" },
-        ]);
+        if (String(input).startsWith("https:")) return Response.json({});
+        return new Response(
+          readFileSync(`public${String(input).slice(base.length)}`, "utf8")
+        );
       };
       const mount = vi.fn();
       const host = vi.fn((transport: { fetch: typeof fetch }) => {
-        void transport.fetch("https://deck.test/api/board?profile=7");
+        void transport.fetch("https://deck.test/allos/api/board?profile=7");
         return { backends: ["allos"] };
       });
       try {
@@ -408,13 +410,23 @@ describe("the Health place — the owner's alone", () => {
           { getElementById: () => "mount" }
         );
         expect(calls).toEqual([
-          `${base}/deck-ui/${pin.version}/ui/contract/places.json`,
+          `${base}/deck-ui/${pin.version}/ui/contract/nav.json`,
           `https://deck.test${base}/api/board?profile=7`,
         ]);
         expect(mount).toHaveBeenCalledWith(
           "mount",
           { backends: ["allos"] },
-          { places: [{ id: "health", href: base || "/" }] }
+          {
+            nav: expect.arrayContaining([
+              {
+                id: "health",
+                label: "Health",
+                backend: "allos",
+                group: "top",
+                href: base || "/",
+              },
+            ]),
+          }
         );
         const pageBody = await (await page()).text();
         expect(pageBody).toContain(`src="${base}/health.js"`);
