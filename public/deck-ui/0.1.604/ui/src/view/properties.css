@@ -1,3 +1,0 @@
-.dk-properties { padding: 16px; color: var(--text); }
-.dp .dk-properties { overflow: auto; max-height: 65vh; }
-.dk-properties > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

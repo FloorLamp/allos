@@ -1,0 +1,4 @@
+.dk-papers { padding: 16px; color: var(--text); }
+.dp .dk-papers { overflow: auto; max-height: 65vh; }
+/* Identity names and expiry facts must remain readable at phone widths. */
+.dk-papers .dp-title, .dk-papers .dp-sub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

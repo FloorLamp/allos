@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="view/viewer/viewer.css">
+<link rel="stylesheet" href="view/palette.css">
+<link rel="stylesheet" href="view/glance.css">
+<link rel="stylesheet" href="view/phone-landing.css">
+<link rel="stylesheet" href="view/chart.css">
+<link rel="stylesheet" href="view/foundation.css">
+<link rel="stylesheet" href="view/person-profile.css">
+<link rel="stylesheet" href="view/collection-page.css">
+<link rel="stylesheet" href="view/vehicles.css">
+<link rel="stylesheet" href="view/properties.css">
+<link rel="stylesheet" href="view/insurance.css">
+<link rel="stylesheet" href="view/taxes.css">
+<link rel="stylesheet" href="view/things.css">
+<link rel="stylesheet" href="view/papers.css">
+<link rel="stylesheet" href="view/flightplan.css">
+<link rel="stylesheet" href="view/projects.css">
+<link rel="stylesheet" href="view/shell-bar.css">
+<style>html, body, #app, .app, .app-viewer { margin: 0; height: 100%; } body { background: transparent; overflow: hidden; }
+  /* the panel draws itself (its radius, outline and backdrop) at its own height: the shell's window fits it (window.resize); outside
+     its corners the page stays transparent */
+  /* Deck's own window: the palette fills it edge to edge; wide, the viewer beside the rows */
+  body:has(.app.window) { background: var(--panel); }
+  .app.window .app-rows { height: 100%; }
+  .app.android { display: flex; flex-direction: column; }
+  .app.android > .ds-bar { flex: none; }
+  .app.android .app-rows, .app.android .app-viewer { flex: 1; min-height: 0; height: auto; overflow: auto; }
+  .app.window .dp.panel.chrome { width: 100%; height: 100%; border: 0; border-radius: 0; }
+  .app.window .dp.panel .dp-rows { max-height: none; }
+  .app.window.side { display: grid; grid-template-columns: minmax(360px, 36%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .app.window.side .app-viewer { min-width: 0; border-left: 1px solid var(--line); }</style>
+<script type="module" src="app.js"></script>
+<link rel="modulepreload" href="../../palette/model.mjs">
+<link rel="modulepreload" href="back.js">
+<link rel="modulepreload" href="codes.js">
+<link rel="modulepreload" href="collection-dates.js">
+<link rel="modulepreload" href="collection-label.js">
+<link rel="modulepreload" href="collection-projections.js">
+<link rel="modulepreload" href="collection-reader.js">
+<link rel="modulepreload" href="collection-target.js">
+<link rel="modulepreload" href="collection-window.js">
+<link rel="modulepreload" href="controller.js">
+<link rel="modulepreload" href="details.js">
+<link rel="modulepreload" href="failure.js">
+<link rel="modulepreload" href="flightplan-live.js">
+<link rel="modulepreload" href="flightplan.js">
+<link rel="modulepreload" href="glance-data.js">
+<link rel="modulepreload" href="glance.js">
+<link rel="modulepreload" href="glyphs.js">
+<link rel="modulepreload" href="health.js">
+<link rel="modulepreload" href="host/host.js">
+<link rel="modulepreload" href="host/house-actions.js">
+<link rel="modulepreload" href="host/shell.js">
+<link rel="modulepreload" href="house-actions.js">
+<link rel="modulepreload" href="identifiers.js">
+<link rel="modulepreload" href="insurance.js">
+<link rel="modulepreload" href="lookups.js">
+<link rel="modulepreload" href="navigation.js">
+<link rel="modulepreload" href="needs-merge.js">
+<link rel="modulepreload" href="needs.js">
+<link rel="modulepreload" href="papers.js">
+<link rel="modulepreload" href="people-duplicates.js">
+<link rel="modulepreload" href="people.js">
+<link rel="modulepreload" href="phone-landing.js">
+<link rel="modulepreload" href="projects.js">
+<link rel="modulepreload" href="properties.js">
+<link rel="modulepreload" href="quantity.js">
+<link rel="modulepreload" href="readable-facts.js">
+<link rel="modulepreload" href="selftest.js">
+<link rel="modulepreload" href="status-tone.js">
+<link rel="modulepreload" href="taxes.js">
+<link rel="modulepreload" href="things.js">
+<link rel="modulepreload" href="vehicles.js">
+<link rel="modulepreload" href="view/chart.js">
+<link rel="modulepreload" href="view/collection-page.js">
+<link rel="modulepreload" href="view/controls.js">
+<link rel="modulepreload" href="view/drawer.js">
+<link rel="modulepreload" href="view/failure.js">
+<link rel="modulepreload" href="view/flightplan-motion.js">
+<link rel="modulepreload" href="view/flightplan.js">
+<link rel="modulepreload" href="view/insurance.js">
+<link rel="modulepreload" href="view/keys.js">
+<link rel="modulepreload" href="view/map.js">
+<link rel="modulepreload" href="view/markdown.js">
+<link rel="modulepreload" href="view/page-header.js">
+<link rel="modulepreload" href="view/page-selection.js">
+<link rel="modulepreload" href="view/page-state.js">
+<link rel="modulepreload" href="view/palette.js">
+<link rel="modulepreload" href="view/papers.js">
+<link rel="modulepreload" href="view/peek.js">
+<link rel="modulepreload" href="view/people-duplicates.js">
+<link rel="modulepreload" href="view/person-profile.js">
+<link rel="modulepreload" href="view/phone-landing.js">
+<link rel="modulepreload" href="view/properties.js">
+<link rel="modulepreload" href="view/rows.js">
+<link rel="modulepreload" href="view/sections/codes.js">
+<link rel="modulepreload" href="view/sections/fleet.js">
+<link rel="modulepreload" href="view/sections/fold.js">
+<link rel="modulepreload" href="view/sections/house.js">
+<link rel="modulepreload" href="view/sections/more.js">
+<link rel="modulepreload" href="view/sections/needs.js">
+<link rel="modulepreload" href="view/sections/plans.js">
+<link rel="modulepreload" href="view/sections/projects.js">
+<link rel="modulepreload" href="view/sections/recent.js">
+<link rel="modulepreload" href="view/sections/row.js">
+<link rel="modulepreload" href="view/sections/section.js">
+<link rel="modulepreload" href="view/sections/spark.js">
+<link rel="modulepreload" href="view/sections/today.js">
+<link rel="modulepreload" href="view/shell-bar.js">
+<link rel="modulepreload" href="view/stat-tiles.js">
+<link rel="modulepreload" href="view/taxes.js">
+<link rel="modulepreload" href="view/things.js">
+<link rel="modulepreload" href="view/vehicles.js">
+<link rel="modulepreload" href="view/viewer/archive.js">
+<link rel="modulepreload" href="view/viewer/card.js">
+<link rel="modulepreload" href="view/viewer/collection.js">
+<link rel="modulepreload" href="view/viewer/common.js">
+<link rel="modulepreload" href="view/viewer/conversation.js">
+<link rel="modulepreload" href="view/viewer/details.js">
+<link rel="modulepreload" href="view/viewer/email.js">
+<link rel="modulepreload" href="view/viewer/frame.js">
+<link rel="modulepreload" href="view/viewer/pages.js">
+<link rel="modulepreload" href="view/viewer/rail.js">
+<link rel="modulepreload" href="view/viewer/table.js">
+<link rel="modulepreload" href="view/viewer/text.js">
+<link rel="modulepreload" href="view/viewer/thing.js">
+<link rel="modulepreload" href="view/viewer/video.js">
+<link rel="modulepreload" href="viewer.js">
+<link rel="modulepreload" href="../vendor/entities-bin-trie-flags.mjs">
+<link rel="modulepreload" href="../vendor/entities-decode-codepoint.mjs">
+<link rel="modulepreload" href="../vendor/entities-decode-data-html.mjs">
+<link rel="modulepreload" href="../vendor/entities-decode-data-xml.mjs">
+<link rel="modulepreload" href="../vendor/entities-decode-shared.mjs">
+<link rel="modulepreload" href="../vendor/entities-decode.mjs">
+<link rel="modulepreload" href="../vendor/hooks.mjs">
+<link rel="modulepreload" href="../vendor/htm.mjs">
+<link rel="modulepreload" href="../vendor/marked.mjs">
+<link rel="modulepreload" href="../vendor/preact.mjs">
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>

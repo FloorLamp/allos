@@ -1,5 +1,0 @@
-.dk-insurance { padding: 16px; color: var(--text); }
-.dp .dk-insurance { flex: none; min-height: calc(3 * var(--row) + 80px); box-sizing: border-box; }
-.dp.panel .dk-insurance .dp-rows { overflow: visible; max-height: none; }
-.dp-insurance-found { min-height: calc(8 * var(--row) + var(--label)); }
-.dk-insurance > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
