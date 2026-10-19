@@ -60,7 +60,7 @@ npm run build
 
 ## Skills
 
-Shared workflows live in [.agents/skills](.agents/skills): `file-issue` and
+Shared workflows live in [.agents/skills](.agents/skills): `file-task` and
 `ux-walkthrough`. Read the matching `SKILL.md` when the task calls for it, even if
 the host does not discover skills automatically. `.claude/skills` contains thin
 Claude Code entrypoints to the same procedures.
