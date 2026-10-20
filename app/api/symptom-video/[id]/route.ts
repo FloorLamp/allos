@@ -71,7 +71,7 @@ export async function GET(
   // SUBJECT — which on a caregiver's cross-profile read is a different profile — rides
   // in `detail` as a bare identifier, so the trail still answers "whose bytes".
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: `symptom-video:${id}${wantPoster ? ":poster" : ""}`,

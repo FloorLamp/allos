@@ -47,9 +47,9 @@ export async function GET(req: Request) {
   // Require a live session: the callback binds tokens to the caller's ACTIVE
   // profile, so an anonymous hit has no profile to bind to. The middleware only
   // checks cookie presence (this path is no longer allowlisted), so this is the
-  // authoritative check.
+  // authoritative check. A GET that writes: an owner-read session has no say.
   const session = await getCurrentSession();
-  if (!session) {
+  if (!session || session.readOnly) {
     return NextResponse.redirect(new URL(await appUrl("/login")));
   }
   const STRAVA_PROFILE_ID = session.profile.id;

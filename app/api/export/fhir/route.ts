@@ -24,7 +24,7 @@ export async function GET() {
   );
 
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId,
     action: AUDIT_ACTIONS.exportFhir,
     target: String(bundle.entry.length),

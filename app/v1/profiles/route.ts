@@ -1,5 +1,8 @@
-import { authenticateDevice, refuse } from "@/lib/device-logins";
-import { writableProfileIdsForLogin } from "@/lib/auth";
+import {
+  authenticateDevice,
+  deviceWritableProfileIds,
+  refuse,
+} from "@/lib/device-logins";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateDevice(req, "allos:read");
   if (!auth.ok) return refuse(auth);
-  const writable = new Set(writableProfileIdsForLogin(auth.login.id));
+  const writable = new Set(deviceWritableProfileIds(auth));
   return Response.json(
     {
       profile: auth.profile.id,

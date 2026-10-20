@@ -1,5 +1,10 @@
-import { deviceJsonBody, refuse, type DeviceAuth } from "./device-logins";
-import { accessibleProfilesForLogin, writableProfileIdsForLogin } from "./auth";
+import {
+  deviceJsonBody,
+  deviceWritableProfileIds,
+  refuse,
+  type DeviceAuth,
+} from "./device-logins";
+import { accessibleProfilesForLogin } from "./auth";
 import {
   applyHealthWorkflow,
   listHealthWorkflow,
@@ -25,7 +30,7 @@ export async function healthWorkflowRequest(
     const profiles = accessibleProfilesForLogin(auth.login.id);
     if (!profiles.some((p) => p.id === auth.profile.id))
       throw new WorkflowError(403, "profile");
-    const writable = writableProfileIdsForLogin(auth.login.id);
+    const writable = deviceWritableProfileIds(auth);
     return {
       profileId: auth.profile.id,
       loginId: auth.login.id,

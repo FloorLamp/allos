@@ -71,7 +71,7 @@ export async function GET(
   const serveThumb = thumbAbs != null && fs.existsSync(thumbAbs);
 
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: `lesion-photo:${id}${serveThumb ? ":thumb" : ""}`,
