@@ -1,0 +1,74 @@
+/* The camera wall (view/house-wall.js): a kiosk filling its frame (the Pixel tablet's HA dashboard, 1280×800, no scrolling). The band
+   over three 16:9 columns (house-wall.js wallGrid sets --wall-col and --wall-row; the band takes the rest); the featured tile two
+   columns by two rows. Tones are mushroom's colour names drawn from the theme's own tokens. */
+.dh-wall-page { height: 100vh; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dh-wall-page > .dk-house-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dh-wall-page .dk-page-state { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.dh-wall { --wall-gap: var(--gap-xs); flex: 1; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: var(--wall-gap); overflow: hidden;
+  background: var(--night); }
+
+/* the band: every item the weather card's shape (glyph, value over context), at most one line each */
+.dh-band { flex: 1 1 auto; min-height: 64px; display: flex; align-items: center; gap: 0; padding: 0 var(--gap-m); overflow: hidden; background: var(--panel);
+  border-bottom: 1px solid var(--line); }
+.dh-wall-clock { flex: none; font: var(--font-clock-wall); color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  padding-right: var(--gap-l); }
+/* the chips that fit whole, in priority order, then +N (house-wall.js Chips measures a hidden copy); the rest in a sheet */
+.dh-band-chips { flex: none; display: flex; align-items: center; margin: 0; padding: 0; list-style: none; }
+.dh-band-chips li, .dh-band-measure li { display: flex; }
+.dh-band-measure { position: absolute; left: 0; top: 0; display: flex; margin: 0; padding: 0; list-style: none; visibility: hidden; pointer-events: none; }
+.dh-band { position: relative; }
+.dh-band-more { display: inline-grid; place-items: center; min-width: var(--touch); min-height: var(--touch); margin: 0 var(--gap-s); padding: 0 var(--gap-m);
+  border: 1px solid var(--line); border-radius: var(--chip-radius); background: var(--raised); color: var(--text); font: 600 var(--size-figure-small)/26px var(--sans);
+  cursor: pointer; white-space: nowrap; }
+.dh-band-sheet { display: flex; flex-direction: column; gap: var(--gap-m); margin: 0; padding: var(--gap-m) 0; list-style: none; }
+.dh-band-sheet .dh-band-item { border-left: 0; padding: 0 var(--gutter); }
+.dh-band-item { display: flex; align-items: center; gap: var(--gap-m); min-width: 0; padding: 0 var(--gap-l); border-left: 1px solid var(--line); }
+.dh-band-item.weather { flex: none; }
+.dh-band-item .glyph { flex: none; }
+.dh-band-text { display: flex; flex-direction: column; min-width: 0; }
+.dh-band-text b { font: 600 var(--size-figure-small)/26px var(--sans); color: var(--text); white-space: nowrap; }
+.dh-band-text span { font: var(--size-section-large)/22px var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the ticker takes what the chips leave, its text cut with an ellipsis; nothing when that is too little to read */
+.dh-band-ticker { flex: 1 1 0; min-width: 0; display: flex; container-type: inline-size; }
+.dh-band-ticker .dh-band-item { flex: 1; }
+.dh-band-ticker .dh-band-text b { overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 180px) { .dh-band-ticker .dh-band-item { display: none; } }
+.dh-band .dh-live { flex: none; padding: 0 var(--gap-m); }
+
+.tone-red .glyph { color: var(--bad); }
+.tone-amber .glyph { color: var(--warn); }
+.tone-orange .glyph { color: color-mix(in srgb, var(--warn) 55%, var(--bad)); }
+.tone-purple .glyph { color: color-mix(in srgb, var(--accent) 55%, var(--bad)); }
+.tone-blue .glyph { color: var(--accent); }
+.tone-green .glyph { color: var(--ok); }
+.tone-teal .glyph { color: color-mix(in srgb, var(--ok) 55%, var(--accent)); }
+.tone-grey .glyph { color: var(--muted); }
+
+/* the grid: three columns of 16:9 rows, centred when the height, not the width, limits it */
+.dh-wall-grid { flex: none; display: grid; grid-template-columns: repeat(3, var(--wall-col, 1fr)); grid-template-rows: repeat(3, var(--wall-row, 0));
+  height: var(--wall-grid, 0); gap: var(--wall-gap); justify-content: center; overflow: hidden; }
+.dh-wall-tile { position: relative; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; overflow: hidden; display: grid; place-items: center;
+  background: var(--shadow-ink); color: var(--paper); font: var(--font-sub); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.dh-wall-tile.featured { grid-column: 1 / span 2; grid-row: 1 / span 2; }
+.dh-wall-tile :is(video, img) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* a frame that must stay whole (the garage's square composite): centred on the tile's own dark surface, never black bars */
+.dh-wall-tile.fit-contain { background: color-mix(in srgb, var(--paper-ink) 55%, var(--shadow-ink)); }
+.dh-wall-tile.fit-contain :is(video, img) { object-fit: contain; }
+/* the still stands in until the video plays: the video is there from the start, shown once it does */
+.dh-wall-tile video:not(.on) { visibility: hidden; }
+.dh-wall-note { padding: var(--gap-m); color: var(--paper); text-align: center; font: var(--font-sub); opacity: .8; }
+.dh-wall-empty { grid-column: 1 / -1; grid-row: 1 / -1; align-self: center; justify-self: center; color: var(--muted); font: var(--font-body); }
+.dh-wall-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* a camera's name over a shade along the tile's bottom (one that draws no name of its own), in its bottom-right corner: where the
+   cameras that do draw theirs, so every tile's name reads in one place */
+.dh-wall-caption { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: flex-end; gap: var(--gap-xxs);
+  padding: var(--gap-l) var(--gap-s) var(--gap-s); background: linear-gradient(transparent, var(--media-overlay)); color: var(--paper); text-align: right; pointer-events: none; }
+.dh-wall-caption b { font: 600 var(--size-heading)/20px var(--sans); }
+.dh-wall-caption span { font: var(--font-sub); opacity: .85; }
+/* the featured tile's sound: a speaker chip in its top right corner, on, off (a tap on the tile) or waiting for a first tap */
+.dh-wall-sound { position: absolute; top: var(--gap-s); right: var(--gap-s); display: inline-flex; align-items: center; gap: var(--gap-xs);
+  min-height: 32px; padding: 0 var(--gap-s); border-radius: var(--chip-radius); background: var(--media-overlay); color: var(--paper);
+  font: var(--font-sub); pointer-events: none; }
+.dh-wall-sound.off, .dh-wall-sound.blocked { opacity: .85; }

@@ -495,15 +495,14 @@ describe("the Health page — the owner's alone", () => {
           "mount",
           { backends: ["allos"] },
           {
-            nav: expect.arrayContaining([
-              {
-                id: "health",
-                label: "Health",
-                backend: "allos",
-                group: "top",
-                href: base || "/",
-              },
-            ]),
+            nav: JSON.parse(
+              readFileSync(
+                `public/deck-ui/${pin.version}/ui/contract/nav.json`,
+                "utf8"
+              )
+            ).map((item: { id: string; href: string }) =>
+              item.id === "health" ? { ...item, href: base || "/" } : item
+            ),
           }
         );
         const pageBody = await (await page()).text();

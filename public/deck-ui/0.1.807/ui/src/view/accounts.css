@@ -1,0 +1,18 @@
+/* Shared Accounts groups and actions under the shell bar. */
+.da-page { background: var(--night); color: var(--text); font: var(--font-body); min-height: 100vh; }
+.da .dk-label { display: block; margin: var(--gap-l) 0 var(--gap-xs); }
+.da-row { cursor: default; grid-template-columns: minmax(0, 1fr) auto; }
+.da-row .dp-sub, .da-row .dp-title { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .da-row { grid-template-columns: minmax(0, 1fr); row-gap: var(--gap-s); }
+  .da-row .da-end { justify-content: flex-start; }
+}
+.da-end { display: flex; align-items: center; gap: var(--gap-s); flex-wrap: wrap; justify-content: flex-end; }
+.da-stale { color: var(--warn); font: var(--font-sub); }
+.da-reach { margin: 0 0 var(--gap-s); }
+
+.da-identity { font: var(--font-sub); color: var(--soft); }
+.da-group .dp-rows { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 0; }
+.da-row { margin: 0; border-radius: 0; border-top: 1px solid var(--hair); padding: var(--gap-m); }
+.da-row:first-child { border-top: 0; }
+.da-row .dp-sub:empty { display: none; }
