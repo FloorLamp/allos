@@ -1,0 +1,107 @@
+.ds-bar { position: sticky; top: 0; z-index: 20; background: var(--panel); color: var(--text); border-bottom: 1px solid var(--edge); font: var(--font-sub); }
+.ds-in { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--gap-m); padding: var(--gap-s) var(--gutter); min-width: 0; }
+/* the bar's buttons as its links, whatever the host page's own button rules */
+.ds-bar button { font: inherit; }
+.ds-bar .ds-nav-toggle { color: var(--accent); }
+.ds-bar a { color: var(--soft); text-decoration: none; padding: var(--gap-xs) var(--gap-s); border-radius: var(--chip-radius); white-space: nowrap; }
+.ds-bar a:hover { color: var(--text); background: var(--hover); }
+.ds-bar a[aria-current="page"] { color: var(--accent); background: var(--hover); }
+.ds-brand { flex: none; display: inline-flex; align-items: center; gap: var(--gap-s); font: var(--font-title); }
+.ds-menu { position: relative; flex: none; }
+.ds-nav-toggle { display: none; }
+.ds-page-shell { position: sticky; top: 0; z-index: 20; }
+.ds-toggle { cursor: pointer; }
+/* Library reads as one of the links (size, line, colour) with a chevron, current when one of its pages is. */
+.ds-bar .ds-toggle { font: inherit; padding: var(--gap-xs) var(--gap-xs) var(--gap-xs) var(--gap-s); gap: var(--gap-xxs); color: var(--soft); }
+.ds-chevron { color: var(--muted); transition: transform var(--t-select) var(--ease); }
+.ds-menu.open .ds-chevron { transform: rotate(180deg); }
+.ds-menu.open > .ds-toggle { color: var(--text); background: var(--hover); }
+@media (width >= 600px) { .ds-bar :is(.ds-toggle, .ds-sign-out) { min-height: 0; } }
+.ds-bar .ds-toggle:hover:not(:disabled) { color: var(--text); background: var(--hover); border-color: transparent; }
+.ds-menu:has(.ds-library a[aria-current="page"]) > .ds-toggle { color: var(--accent); background: var(--hover); }
+.ds-nav { display: flex; align-items: center; gap: var(--gap-xs); flex: 1 1 auto; min-width: 0; overflow: visible; }
+.ds-nav::-webkit-scrollbar { display: none; }
+.ds-nav a { flex: none; }
+.ds-actions { order: 1; flex: none; display: flex; gap: var(--gap-s); margin-left: auto; }
+.ds-actions .dk-btn { font: var(--font-sub); }
+/* wide: a glyphed action is its glyph alone, at the shared icon button size */
+@media (width >= 600px) { .ds-actions .dk-btn.glyphed { width: 36px; padding: 0; } .ds-actions .dk-btn.glyphed .ds-action-label { display: none; } }
+.ds-verdict, .ds-signin, .ds-needs { flex: none; display: flex; align-items: center; gap: var(--gap-s); }
+.ds-count, .ds-nav a[data-count]::after { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: var(--warn); color: var(--on-accent); font: var(--font-chip);
+  font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; margin-right: var(--gap-xs); }
+.ds-needs a { display: inline-flex; align-items: center; }
+.ds-member { display: inline-flex; align-items: center; gap: var(--gap-xs); min-width: 0; white-space: nowrap; }
+.ds-member-name { overflow: hidden; text-overflow: ellipsis; max-width: 16ch; }
+/* Sign out reads as one of the bar's links */
+.ds-bar .ds-sign-out { font: inherit; padding: var(--gap-xs) var(--gap-s); border-color: transparent; background: none; color: var(--soft); }
+.ds-bar .ds-sign-out:hover:not(:disabled) { color: var(--text); background: var(--hover); border-color: transparent; }
+
+/* the destinations' glyphs show in the phone's sheet; on a wide bar only Library's rows draw theirs */
+.ds-nav > a > .ds-tile { display: none; }
+/* Library's panel: a card under its trigger (shell-bar.js anchors it inside the viewport), its sections in two columns, each row the
+   palette's (a glyph tile, the name over the nav entry's hint); hover and focus as the rows', the current page as a selected row */
+.ds-library { display: none; position: absolute; top: calc(100% + var(--gap-xs)); left: 0; z-index: 100; box-sizing: border-box; width: max-content;
+  max-width: calc(100vw - 2 * var(--gutter)); max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; padding: var(--gap-xs) var(--gap-s) var(--gap-s);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px var(--shadow-medium); }
+.ds-menu.open > .ds-library { display: block; }
+.ds-sections { columns: 2 248px; column-gap: var(--gap-m); }
+@media (width < 760px) { .ds-sections { columns: 1; } }
+.ds-section { break-inside: avoid; display: grid; gap: var(--gap-xxs); padding-bottom: var(--gap-xs); }
+.ds-section-label { padding: var(--gap-m) var(--gap-s) var(--gap-xs); }
+.ds-bar .ds-library a { position: relative; display: grid; grid-template-columns: var(--tile) minmax(0, 1fr); grid-template-rows: 1fr 1fr; column-gap: var(--gap-m);
+  width: 248px; box-sizing: border-box; min-height: var(--row); padding: var(--gap-s); border-radius: var(--row-radius); font: var(--font-title); color: var(--text);
+  white-space: nowrap; align-items: end; transition: background var(--t-select) var(--ease); }
+.ds-bar .ds-library a::after { content: attr(data-hint); content: attr(data-hint) / ''; grid-column: 2; align-self: start; font: var(--font-sub); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; }
+.ds-tile { grid-row: 1 / span 2; width: var(--tile); height: var(--tile); border-radius: var(--row-radius); background: var(--raised); color: var(--soft);
+  display: grid; place-items: center; align-self: center; }
+.ds-bar .ds-library a:hover { background: var(--hover); color: var(--text); }
+.ds-bar .ds-library a:focus-visible { background: var(--hover); outline-offset: -2px; }
+.ds-bar .ds-library a[aria-current="page"] { background: var(--highlight); color: var(--accent); }
+.ds-bar .ds-library a[aria-current="page"]::before { content: ''; position: absolute; left: 0; top: var(--gap-s); bottom: var(--gap-s); width: var(--accent-bar);
+  border-radius: 1px; background: var(--accent); }
+.ds-bar .ds-library a[aria-current="page"]::after { color: var(--soft); }
+.ds-bar .ds-library a[aria-current="page"] .ds-tile { background: var(--panel); color: var(--accent); }
+.ds-tiles { display: none; font: var(--font-sub); }
+@media (width < 600px) {
+  .ds-in { gap: var(--gap-s); padding: var(--gap-xs) var(--gap-s); flex-wrap: wrap; }
+  .ds-brand { margin-right: auto; }
+  .ds-bar a, .ds-bar button { min-height: 44px; min-width: 44px; box-sizing: border-box; display: inline-flex; align-items: center; }
+  .ds-nav-toggle { display: inline-flex; }
+  .ds-nav { display: none; }
+  /* the Menu sheet: the destinations as rows under the bar, a card sized to its content up to the screen below the bar */
+  .ds-sheet-open .ds-nav { display: grid; align-content: start; gap: var(--gap-xs); position: absolute; top: calc(100% + var(--gap-xs)); left: var(--gap-s); right: var(--gap-s);
+    max-height: calc(var(--ds-sheet-room, 80dvh) - var(--gap-s) * 2); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: var(--gap-s);
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px var(--shadow-medium); }
+  /* Library's sections follow the destinations in the sheet, always shown: its button has nothing to disclose there */
+  .ds-sheet-open .ds-library { display: block; }
+  .ds-nav .ds-library { position: static; width: auto; max-width: none; max-height: none; overflow: visible; border: 0; padding: 0; background: none; box-shadow: none; }
+  .ds-nav .ds-toggle { display: none; }
+  .ds-sections { columns: 1; }
+  .ds-section { padding: 0; gap: var(--gap-xs); }
+  .ds-section-label { padding: var(--gap-m) var(--gap-m) var(--gap-xs); }
+  /* every row the same: the glyph's tile, the name (over a Library entry's hint) */
+  .ds-bar .ds-nav a, .ds-bar .ds-library a { display: grid; grid-template-columns: var(--tile) minmax(0, 1fr) auto; column-gap: var(--gap-m); align-items: center; width: auto;
+    min-height: var(--row); padding: var(--gap-s) var(--gap-s); border-radius: var(--row-radius); font: var(--font-body); color: var(--text); }
+  .ds-bar .ds-library a { grid-template-rows: auto auto; align-content: center; row-gap: 0; }
+  .ds-bar .ds-library a::after { grid-row: 2; }
+  .ds-nav > a > .ds-tile { display: grid; grid-row: auto; }
+  .ds-bar .ds-nav a { position: relative; }
+  .ds-bar .ds-nav a[aria-current="page"] { color: var(--accent); background: var(--highlight); }
+  .ds-bar .ds-nav a[aria-current="page"]::before { content: ''; position: absolute; left: 0; top: var(--gap-s); bottom: var(--gap-s); width: var(--accent-bar);
+    border-radius: 1px; background: var(--accent); }
+  .ds-bar .ds-nav a[aria-current="page"] .ds-tile { background: var(--panel); color: var(--accent); }
+  /* the host's actions: rows as the destinations are (height, look), two to a line */
+  .ds-actions { order: -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-xs); margin: 0 0 var(--gap-xs); padding-bottom: var(--gap-s); border-bottom: 1px solid var(--hair); }
+  .ds-bar .ds-actions .dk-btn { justify-content: flex-start; gap: var(--gap-s); min-height: var(--row); padding: 0 var(--gap-m); border: 0; border-radius: var(--row-radius); background: none; font: var(--font-body); color: var(--text); }
+  .ds-bar .ds-actions .dk-btn:hover:not(:disabled) { background: var(--hover); }
+  .ds-actions .glyph { color: var(--soft); flex: none; }
+  /* the Needs row carries its count, as the bar does beside Menu */
+  .ds-nav a[data-count]::after { content: attr(data-count) / ''; grid-column: 3; margin: 0; }
+  .ds-needs-label { display: none; }
+  .ds-count { margin-right: 0; }
+  .ds-verdict { flex-basis: 100%; order: 1; }
+  .ds-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-s); padding: var(--gap-s); }
+  .ds-tiles a { display: block; padding: var(--gap-m); color: var(--text); background: var(--panel); border: 1px solid var(--edge); border-radius: var(--chip-radius); text-decoration: none; }
+  .ds-tiles a[aria-current="page"] { color: var(--accent); }
+}
