@@ -1,0 +1,6 @@
+/* Notes: the shared rows, search and pager; a note in the drawer */
+.dn-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s) var(--gap-m); margin-bottom: var(--gap-m); }
+.dn-status { font: var(--font-sub); color: var(--muted); }
+.dn-note > .dk-state { margin-bottom: var(--gap-m); }
+.dn-editor { box-sizing: border-box; width: 100%; min-height: 50vh; resize: vertical; background: var(--raised); color: var(--text); border: 1px solid var(--hair); border-radius: var(--radius); padding: var(--gap-m); font: inherit; }
+.dn-body { overflow-wrap: anywhere; white-space: normal; }
