@@ -625,6 +625,37 @@ describe("Boarding's agent member — the owner's reads, never a write", () => {
     expect((await dose("owner", "clear")).status).toBe(200);
   });
 
+  it.each(["agent", "owner", "stranger"])(
+    "serves the mounted Health shell and module only for owner reads (%s)",
+    async (who) => {
+      signIn(who);
+      for (const [path, destination, handler, type] of [
+        ["/health", "/deck/health", page, "text/html"],
+        ["/health/health.js", "/deck/health.js", script, "text/javascript"],
+      ] as const) {
+        const forwarded = middleware(
+          new NextRequest(`https://trusted.test${path}`, {
+            headers: { cookie: cookie(who) },
+          })
+        );
+        expect(forwarded.headers.get("x-middleware-rewrite")).toBe(
+          `https://trusted.test${destination}`
+        );
+        request.method = forwarded.headers.get(
+          "x-middleware-request-x-allos-method"
+        )!;
+        const response = await handler();
+        expect(response.status).toBe(who === "stranger" ? 404 : 200);
+        if (who !== "stranger") {
+          expect(response.headers.get("content-type")).toContain(type);
+          expect(await response.text()).toContain(
+            path === "/health" ? 'src="/health/health.js"' : "mountHealth"
+          );
+        }
+      }
+    }
+  );
+
   it("is refused by every write guard; the owner still passes them", async () => {
     signIn("agent");
     expect(await requireSession()).toMatchObject({
