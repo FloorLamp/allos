@@ -26,7 +26,7 @@ export async function GET(
   // ZIP, so "someone exported the whole <dataset>" is logged here too, not only on
   // the ZIP path. detail records how many rows left the app.
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.exportDataset,
     target: ds.key,

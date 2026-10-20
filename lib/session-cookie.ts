@@ -122,3 +122,11 @@ export function shouldSlideSessionCookie(
 ): boolean {
   return method === "GET" || method === "HEAD" || !hasSlideMark;
 }
+
+// The request's method, stamped by middleware on every request it passes on
+// (overwriting any client copy): `headers()` has no method, and an owner-read
+// Boarding session (lib/auth.ts resolveBrowserSession) exists only for a safe one.
+export const REQUEST_METHOD_HEADER = "x-allos-method";
+export function isSafeMethod(method: string | null | undefined): boolean {
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}

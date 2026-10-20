@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   // Audit the full export up front — the request was made and authorized, and this
   // is exactly the "someone took everything" event the log exists to capture.
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId,
     action: AUDIT_ACTIONS.exportFull,
     target: String(profileId),

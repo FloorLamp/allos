@@ -65,7 +65,7 @@ export async function GET(
 
   // Audit the PHI access (the file id only — never its contents).
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: String(id),

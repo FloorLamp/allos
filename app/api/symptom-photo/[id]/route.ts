@@ -82,7 +82,7 @@ export async function GET(
   // `active_profile_id` keeps its meaning (the acting profile); the SUBJECT rides in
   // `detail` as a bare identifier, so a cross-profile read still names whose photo it was.
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: `symptom-photo:${id}${serveThumb ? ":thumb" : ""}`,

@@ -5,18 +5,23 @@
 // device credential: a person reaches only the profiles their login is granted, a
 // read-only grant writes nothing, and no cookie is a 401. The page (page and module)
 // is the admin role's alone: anyone else gets a 404, and the page carries the bundle's
-// own CSP. Synthetic fixtures only.
+// own CSP. Boarding's agent member reads as the owner and writes nothing. Synthetic
+// fixtures only.
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 // The page reads the session through the cookie jar. This tier's shared setup mocks
 // @/lib/auth for the server-action suite; this file is about the real session.
-const request = vi.hoisted(() => ({ jar: new Map<string, string>() }));
+const request = vi.hoisted(() => ({
+  jar: new Map<string, string>(),
+  method: "GET",
+}));
 vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 vi.mock("next/headers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/headers")>()),
-  headers: async () => new Headers({ host: "allos.test" }),
+  headers: async () =>
+    new Headers({ host: "allos.test", "x-allos-method": request.method }),
   cookies: async () => ({
     get: (name: string) =>
       request.jar.has(name)
@@ -42,13 +47,22 @@ import { middleware } from "@/middleware";
 import {
   SESSION_COOKIE,
   createSession,
+  getCurrentSession,
+  requireAdmin,
+  requireLoginWriteAccess,
+  requireProfileWriteAccess,
+  requireSession,
+  requireWriteAccess,
   resolveBrowserSession,
 } from "@/lib/auth";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { aiLogSize } from "@/lib/ai-log";
 import { answerRecordQuestion } from "@/lib/record-qa-answer";
 import { seedProfile } from "./fixtures";
 import { GET as me } from "@/app/api/me/route";
 import { GET as board } from "@/app/api/board/route";
+import { GET as profilesTwin } from "@/app/api/profiles/route";
+import { GET as fhirExport } from "@/app/api/export/fhir/route";
 import { POST as boardDose } from "@/app/api/board/[doseId]/route";
 import * as askRoute from "@/app/api/ask/route";
 import { GET as page } from "@/app/deck/health/route";
@@ -160,12 +174,18 @@ describe("/api twins — the session, not a device credential", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       db.prepare("UPDATE logins SET role = 'member' WHERE id = ?").run(id);
       expect(
-        await resolveBrowserSession("__Host-boarding_member=synthetic-session")
+        await resolveBrowserSession(
+          "__Host-boarding_member=synthetic-session",
+          "GET"
+        )
       ).toBeNull();
       db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(id);
       const extra = makeLogin("extra-boarding-admin", "admin");
       expect(
-        await resolveBrowserSession("__Host-boarding_member=synthetic-session")
+        await resolveBrowserSession(
+          "__Host-boarding_member=synthetic-session",
+          "GET"
+        )
       ).toBeNull();
       expect(warn).toHaveBeenCalled();
       db.prepare("DELETE FROM logins WHERE id = ?").run(extra);
@@ -192,7 +212,10 @@ describe("/api twins — the session, not a device credential", () => {
       await Promise.all([board(req()), board(req())]);
       expect(fetch).toHaveBeenCalledTimes(beforeConcurrent + 1);
       const calls = fetch.mock.calls.length;
-      await resolveBrowserSession("__Host-boarding_member=another-session");
+      await resolveBrowserSession(
+        "__Host-boarding_member=another-session",
+        "GET"
+      );
       expect(fetch).toHaveBeenCalledTimes(calls + 1);
       vi.stubEnv("DECK_ORIGIN", "https://other-trusted.test");
       await board(req());
@@ -500,5 +523,145 @@ describe("the Health page — the owner's alone", () => {
     );
     expect(await res.text()).not.toMatch(/<script(?![^>]* src=)/);
     expect((await script()).status).toBe(200);
+  });
+});
+
+describe("Boarding's agent member — the owner's reads, never a write", () => {
+  const verdicts: Record<string, unknown> = {
+    agent: { owner: false, ownerRead: true, who: "agent (probe)" },
+    owner: { owner: true, ownerRead: true, who: "owner (phone)" },
+    stranger: { owner: false, ownerRead: false },
+  };
+  const cookie = (who: string) => `__Host-boarding_member=${who}-session`;
+  const signIn = (who: string, method = "GET") => {
+    request.jar.clear();
+    request.jar.set("__Host-boarding_member", `${who}-session`);
+    request.method = method;
+  };
+  const dose = (who: string, action: string) =>
+    boardDose(
+      new Request(`http://allos.test/api/board/${myDoseId}`, {
+        method: "POST",
+        headers: {
+          host: "allos.test",
+          origin: "http://allos.test",
+          "content-type": "application/json",
+          cookie: cookie(who),
+        },
+        body: JSON.stringify({ action }),
+      }),
+      { params: Promise.resolve({ doseId: String(myDoseId) }) }
+    );
+  let admins: { id: number }[];
+  let id: number;
+
+  beforeAll(() => {
+    vi.stubEnv("DECK_ORIGIN", "https://trusted.test");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { headers: { cookie: string } }) =>
+        Response.json(verdicts[init.headers.cookie.split("=")[1].split("-")[0]])
+      )
+    );
+    admins = db.prepare("SELECT id FROM logins WHERE role = 'admin'").all() as {
+      id: number;
+    }[];
+    db.prepare("UPDATE logins SET role = 'member' WHERE role = 'admin'").run();
+    id = makeLogin("boarding-owner-read", "admin");
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      mine.profileId,
+      id
+    );
+    return () => {
+      request.jar.clear();
+      request.method = "GET";
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      db.prepare("DELETE FROM logins WHERE id = ?").run(id);
+      for (const admin of admins)
+        db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(
+          admin.id
+        );
+    };
+  });
+
+  it("resolves the owner's login and profile, read-only, for a safe method only", async () => {
+    expect(await resolveBrowserSession(cookie("agent"), "GET")).toMatchObject({
+      login: { id, role: "admin" },
+      profile: { id: mine.profileId },
+      access: "read",
+      readOnly: { who: "agent (probe)" },
+    });
+    for (const method of ["POST", "PUT", "DELETE", null])
+      expect(await resolveBrowserSession(cookie("agent"), method)).toBeNull();
+    expect(await resolveBrowserSession(cookie("stranger"), "GET")).toBeNull();
+    const owner = await resolveBrowserSession(cookie("owner"), "POST");
+    expect(owner).toMatchObject({ login: { id }, access: "write" });
+    expect(owner?.readOnly).toBeUndefined();
+  });
+
+  it("reads the owner's records through the twins and writes none", async () => {
+    const get = (path: string) =>
+      new Request(`http://allos.test${path}`, {
+        headers: { cookie: cookie("agent") },
+      });
+    const read = await board(get("/api/board"));
+    expect(read.status).toBe(200);
+    expect((await read.json()).meds).toHaveLength(1);
+    expect(await (await me(get("/api/me"))).json()).toMatchObject({
+      login: { id },
+      owner: true,
+      readOnly: true,
+    });
+    const { profiles } = (await (
+      await profilesTwin(get("/api/profiles"))
+    ).json()) as { profiles: { id: number; access: string }[] };
+    expect(profiles.map((p) => p.id)).toContain(theirs.profileId);
+    expect(profiles.every((p) => p.access === "read")).toBe(true);
+
+    const refused = await dose("agent", "clear");
+    expect(refused.status).toBe(401);
+    expect(await refused.json()).toEqual({ error: "token" });
+    expect((await dose("owner", "clear")).status).toBe(200);
+  });
+
+  it("is refused by every write guard; the owner still passes them", async () => {
+    signIn("agent");
+    expect(await requireSession()).toMatchObject({
+      login: { id },
+      readOnly: { who: "agent (probe)" },
+    });
+    expect((await page()).status).toBe(200);
+    for (const guard of [
+      requireWriteAccess,
+      requireAdmin,
+      requireLoginWriteAccess,
+      () => requireProfileWriteAccess(mine.profileId),
+    ])
+      await expect(guard()).rejects.toThrow("NEXT_REDIRECT");
+    signIn("agent", "POST");
+    expect(await getCurrentSession()).toBeNull();
+
+    signIn("owner", "POST");
+    expect((await requireWriteAccess()).writeProfileId).toBe(mine.profileId);
+    expect((await requireAdmin()).login.id).toBe(id);
+    expect(
+      (await requireProfileWriteAccess(theirs.profileId)).writeProfileId
+    ).toBe(theirs.profileId);
+
+    signIn("stranger");
+    expect(await getCurrentSession()).toBeNull();
+  });
+
+  it("audits its reads as Boarding's name for it, never as the owner", async () => {
+    signIn("agent");
+    expect((await fhirExport()).status).toBe(200);
+    expect(
+      db
+        .prepare(
+          "SELECT login_id AS loginId, detail FROM audit_events WHERE action = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(AUDIT_ACTIONS.exportFhir)
+    ).toEqual({ loginId: null, detail: "agent (probe)" });
   });
 });

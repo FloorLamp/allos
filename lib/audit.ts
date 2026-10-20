@@ -23,11 +23,21 @@ import { monthsAgoModifier } from "./retention";
 
 const log = createLogger("audit");
 
+// The session a read is audited for (lib/auth.ts CurrentSession's shape).
+export interface AuditSession {
+  login: { id: number };
+  readOnly?: { who: string };
+}
+
 export interface AuditInput {
   // The acting login, or null for token-authed / pre-login events (a failed
   // login, a public share-link view). The id is stored raw (no FK) so the record
   // survives the login's later deletion.
   loginId?: number | null;
+  // Or the acting session, in place of loginId: its login, except an owner-read
+  // session (Boarding's agent member), which reads as the owner's login but is
+  // recorded as itself — no login, Boarding's name for it leading the detail.
+  session?: AuditSession;
   // The profile the login was acting as, or null when there's no profile context.
   profileId?: number | null;
   // A dotted, kebab-case action (see AUDIT_ACTIONS in lib/audit-actions.ts).
@@ -57,12 +67,15 @@ const INSERT_STMT = hoistedStatement(
 // audited request is never broken by its own audit write.
 export function recordAudit(e: AuditInput): void {
   try {
+    const who = e.session?.readOnly?.who;
     INSERT_STMT.run(
-      e.loginId ?? null,
+      who !== undefined ? null : (e.session?.login.id ?? e.loginId ?? null),
       e.profileId ?? null,
       e.action,
       cap(e.target),
-      cap(e.detail)
+      cap(
+        who !== undefined ? [who, e.detail].filter(Boolean).join(" ") : e.detail
+      )
     );
   } catch (err) {
     log.error("failed to record audit event", { action: e.action, err });
