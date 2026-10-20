@@ -97,6 +97,9 @@ export type DeviceAuth =
       // one, else the login's own profile, else its first reachable one.
       profile: SessionProfile;
       profiles: SessionProfile[];
+      // A session twin call from an owner-read Boarding session (lib/auth.ts): reads
+      // as its login, writes nothing.
+      readOnly?: { who: string };
     }
   | { ok: false; status: 401 | 403 | 415 | 503; error: DeviceRefusal };
 
@@ -188,11 +191,20 @@ function crossOriginWrite(req: Request): DeviceAuth | null {
 async function authenticateSession(req: Request): Promise<DeviceAuth> {
   const blocked = crossOriginWrite(req);
   if (blocked) return blocked;
-  const session = await resolveBrowserSession(req.headers.get("cookie") ?? "");
+  const session = await resolveBrowserSession(
+    req.headers.get("cookie") ?? "",
+    req.method
+  );
   if (!session) return { ok: false, status: 401, error: "token" };
   const here = reach(req, session.login, session.profile.id);
   if (!here) return { ok: false, status: 403, error: "profile" };
-  return { ok: true, device: "session", login: session.login, ...here };
+  return {
+    ok: true,
+    device: "session",
+    login: session.login,
+    readOnly: session.readOnly,
+    ...here,
+  };
 }
 
 // Backend-wide reads need a scoped credential, without access to health profiles.
@@ -244,9 +256,17 @@ export async function authenticateDevice(
   return { ok: true, device: who.device, login, ...here };
 }
 
-// The write gate for `allos:log` routes: the same answer requireProfileWriteAccess
-// gives a Server Action (reach, then write access, then demo restriction), from the
-// one set-shaped resolver that composes all three.
+// The profiles an authenticated call may write: the same answer
+// requireProfileWriteAccess gives a Server Action (reach, then write access, then demo
+// restriction), from the one set-shaped resolver that composes all three. An
+// owner-read session writes none.
+export function deviceWritableProfileIds(
+  auth: DeviceAuth & { ok: true }
+): readonly number[] {
+  return auth.readOnly ? [] : writableProfileIdsForLogin(auth.login.id);
+}
+
+// The write gate for `allos:log` routes.
 export function deviceMayWrite(auth: DeviceAuth & { ok: true }): boolean {
-  return writableProfileIdsForLogin(auth.login.id).includes(auth.profile.id);
+  return deviceWritableProfileIds(auth).includes(auth.profile.id);
 }

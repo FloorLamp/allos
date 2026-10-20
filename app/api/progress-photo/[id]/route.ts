@@ -56,7 +56,7 @@ export async function GET(
   if (!fs.existsSync(abs)) return jsonError("file missing", 410);
 
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: `progress-photo:${id}${wantThumb ? ":thumb" : ""}`,

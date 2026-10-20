@@ -12,19 +12,19 @@ Needs: `allos:read` only.
 `{error}` refusals: 401 `token`; 403 `scope`, `device`, `profile`, `access`;
 503 `boarding`; 400 invalid input; 409 stale form.
 
-`?profile=<id>` selects the subject (default: own, then first reachable).
+`?profile=<id>`: subject, default own, else first reachable.
 Workflows require selection. Days: profile-local; `at`: instant.
 
 ## Routes
 
-[Coverage](../lib/__tests__/device-api-routes.test.ts): `/api` twins except `needs` and `practices`.
+[Coverage](../lib/__tests__/device-api-routes.test.ts): `/api` twins except `needs`, `practices`.
 
 | Route                         | Scope  | Answer                                                                                                                                                                                                                                       |
 | ----------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                | none   | `{ok, status, reason?, needs}`; database reachable: 200; unreachable: 503                                                                                                                                                                    |
 | `GET /v1/accounts`            | `read` | `{accounts, generated}`; ETag/304                                                                                                                                                                                                            |
 | `GET /v1/needs`               | `read` | `{needs: []}`                                                                                                                                                                                                                                |
-| `GET /v1/me`                  | `read` | `{login: {id, label}, owner, profiles: [{id, label}]}`; `owner`: admin                                                                                                                                                                       |
+| `GET /v1/me`                  | `read` | `{login: {id, label}, owner, readOnly, profiles: [{id, label}]}`; `owner`: admin                                                                                                                                                             |
 | `GET /v1/profiles`            | `read` | `{profile, profiles: [{id, name, access: read\|write}]}`                                                                                                                                                                                     |
 | `GET /v1/find?q=&limit=20`    | `read` | `{results: [{kind, loggedKind?, key, title, subtitle, date, href}]}`; `limit` 1–50                                                                                                                                                           |
 | `GET /v1/record?key=`         | `read` | `{kind, key, record: {…}}`; unsupported kind: 404                                                                                                                                                                                            |
@@ -46,18 +46,19 @@ Workflows require selection. Days: profile-local; `at`: instant.
 
 ## Web twins and the Health page
 
-`/api` twins: Allos/Boarding sessions and grants. Writes require same-origin JSON.
+`/api` twins: Allos/Boarding sessions, grants; same-origin JSON writes.
 `POST /api/ask` `{q, profile?}`; GET: 405. `/api/accounts`: `DECK_ORIGIN` CORS, even 401.
 `CAPCOM_URL`: AI setup. `ALLOWED_DEV_ORIGINS`: comma-separated hosts.
 
 `/health`: admin-only deck-ui mount/CSP. `DECK_BASE_PATH`:
-page/module/assets/API (empty: `/`). `/deck/health` redirects to `DECK_ORIGIN` + mount.
+page/module/assets/API (empty: `/`). `/deck/health` → `DECK_ORIGIN` + mount.
 Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`; pin: `lib/deck-ui-pin.json`.
 
 [Boarding](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
 `/owner`: HTTPS `DECK_ORIGIN`; verdict/failure TTL: 10s. Sole admin:
-write, own/first. Zero/multiple: deny+warn/minute. Uncached permissions.
-`/boarding/client.js` loads; `/boarding/*` proxies to Boarding.
+write, own/first; `ownerRead` (_agent member_): read-only, audit `who`.
+Zero/multiple: deny+warn/minute. Uncached permissions.
+`/boarding/client.js` loads; `/boarding/*` → Boarding.
 
 `accounts_rover_origins`: portal-account ID → `rover:<login-id>` dedup. `generated`: latest run/success or epoch.
 

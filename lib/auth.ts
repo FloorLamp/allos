@@ -1,14 +1,16 @@
 import { cache } from "react";
 import crypto from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db, hoistedStatement } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
 import {
+  REQUEST_METHOD_HEADER,
   SESSION_COOKIE,
   SESSION_SLIDE_MARK_COOKIE,
   SESSION_TTL_SEC,
+  isSafeMethod,
   sessionCookieOptions,
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
@@ -81,6 +83,9 @@ export interface CurrentSession {
   // WHICH SESSION THIS IS, safe to hand to the browser (#2908). Opaque, stable for
   // the life of one session, and different for every other one. See deviceSessionKey.
   deviceSessionKey: string;
+  // Boarding's agent member: reads as the owner's login, never writes. Every write
+  // guard refuses it; `who` is Boarding's name for the caller, for the audit trail.
+  readOnly?: { who: string };
 }
 
 // ── The write-authorized profile id (#5348) ───────────────────────────────────
@@ -455,28 +460,32 @@ export function resolveSessionToken(token: string): CurrentSession | null {
   };
 }
 
+// Boarding's verdict for a member cookie: the owner (reads and writes as the sole
+// admin), owner-read (the agent member: reads as the owner, never writes), or nothing.
+type BoardingVerdict = { access: "owner" | "read"; who: string } | null;
+
 // Cache only Boarding's verdict; login roles and profiles stay live. Revocation
 // reaches every process within 10 seconds. Bound memory even for random cookies.
 const boardingOwners = new Map<
   string,
-  { until: number; owner: Promise<boolean> }
+  { until: number; verdict: Promise<BoardingVerdict> }
 >();
 let boardingAdminWarningUntil = 0;
 
-async function boardingOwner(member: string): Promise<boolean> {
+async function boardingOwner(member: string): Promise<BoardingVerdict> {
   let host: string;
   try {
     const origin = new URL(process.env.DECK_ORIGIN ?? "");
-    if (origin.protocol !== "https:") return false;
+    if (origin.protocol !== "https:") return null;
     host = origin.host;
   } catch {
-    return false;
+    return null;
   }
   const endpoint = `${process.env.BOARDING_URL || "http://boarding:9816"}/owner`;
   const key = hashToken(`${endpoint}\n${host}\n${member}`);
   const cached = boardingOwners.get(key);
-  if (cached && cached.until > Date.now()) return cached.owner;
-  const owner = (async () => {
+  if (cached && cached.until > Date.now()) return cached.verdict;
+  const verdict = (async (): Promise<BoardingVerdict> => {
     try {
       const res = await fetch(endpoint, {
         headers: { cookie: member, "x-forwarded-host": host },
@@ -484,21 +493,32 @@ async function boardingOwner(member: string): Promise<boolean> {
         redirect: "error",
         signal: AbortSignal.timeout(3000),
       });
-      return res.status === 200 && (await res.json())?.owner === true;
+      if (res.status !== 200) return null;
+      const body = await res.json();
+      const who = typeof body?.who === "string" ? body.who : "boarding";
+      if (body?.owner === true) return { access: "owner", who };
+      if (body?.ownerRead === true) return { access: "read", who };
+      return null;
     } catch {
-      return false;
+      return null;
     }
   })();
   if (boardingOwners.size >= 1000) {
     boardingOwners.delete(boardingOwners.keys().next().value!);
   }
-  boardingOwners.set(key, { until: Date.now() + 10_000, owner });
-  return owner;
+  boardingOwners.set(key, { until: Date.now() + 10_000, verdict });
+  return verdict;
 }
 
 // Boarding owns the browser session; never mint an independent Allos session.
+//
+// An owner-read verdict (spaceport boarding/README.md, *The agent member*) gets the
+// owner's login and profile for a safe method only: any other method — a Server
+// Action, a write route — has no session, even when it skips Caddy's /check (the LAN
+// address). `method` is the request's; unknown is not safe.
 export async function resolveBrowserSession(
-  cookie: string
+  cookie: string,
+  method: string | null
 ): Promise<CurrentSession | null> {
   const token = cookie
     .split(/;\s*/)
@@ -509,7 +529,9 @@ export async function resolveBrowserSession(
   const member = cookie
     .split(/;\s*/)
     .find((c) => c.startsWith("__Host-boarding_member="));
-  if (!member || !(await boardingOwner(member))) return null;
+  const verdict = member ? await boardingOwner(member) : null;
+  if (!member || !verdict) return null;
+  if (verdict.access === "read" && !isSafeMethod(method)) return null;
   // Multiple admins do not identify which Allos login belongs to the owner.
   const logins = db
     .prepare("SELECT id, username, role FROM logins WHERE role = 'admin'")
@@ -526,12 +548,16 @@ export async function resolveBrowserSession(
   const profile =
     profiles.find((p) => p.id === ownProfileForLogin(login.id)) ?? profiles[0];
   if (!profile) return null;
-  return {
-    login,
-    profile,
-    access: "write",
-    deviceSessionKey: deviceSessionKey(hashToken(member)),
-  };
+  const key = deviceSessionKey(hashToken(member));
+  return verdict.access === "owner"
+    ? { login, profile, access: "write", deviceSessionKey: key }
+    : {
+        login,
+        profile,
+        access: "read",
+        deviceSessionKey: key,
+        readOnly: { who: verdict.who },
+      };
 }
 
 // Resolve the caller's session from the cookie, or null.
@@ -552,7 +578,10 @@ export const getCurrentSession = cache(
     if (local) return local;
     const member = jar.get("__Host-boarding_member")?.value;
     if (!member) return null;
-    return resolveBrowserSession(`__Host-boarding_member=${member}`);
+    return resolveBrowserSession(
+      `__Host-boarding_member=${member}`,
+      (await headers()).get(REQUEST_METHOD_HEADER)
+    );
   }
 );
 
@@ -570,6 +599,7 @@ export async function requireSession(): Promise<CurrentSession> {
 export async function requireAdmin(): Promise<WriteSession> {
   const session = await requireSession();
   if (session.login.role !== "admin") redirect("/");
+  assertMayWrite(session);
   return writeSession(session, session.profile.id);
 }
 
@@ -588,18 +618,19 @@ export async function requireWriteAccess(): Promise<WriteSession> {
   // refused HERE regardless of the grant, so a misconfigured 'write' grant can't
   // let a demo visitor mutate the synthetic data. Admins stay fully functional to
   // maintain the instance. This is independent of the #33 access check below.
-  assertNotDemoRestricted(session.login.role);
+  assertMayWrite(session);
   if (session.access !== "write") redirect("/");
   return writeSession(session, session.profile.id);
 }
 
-// The ONE demo-mode refusal, shared by every guard that blocks demo mutations
-// (requireWriteAccess, requireProfileWriteAccess, requireLoginWriteAccess), so
-// "who is locked down in demo" stays a single decision — lib/demo's pure
-// isDemoRestricted — with a single posture: redirect() throws NEXT_REDIRECT, so a
-// forged POST aborts server-side regardless of what the UI renders.
-function assertNotDemoRestricted(role: Role): void {
-  if (isDemoRestricted(isDemoMode(), role)) redirect("/");
+// The ONE write refusal shared by every write guard (requireWriteAccess,
+// requireProfileWriteAccess, requireLoginWriteAccess, requireAdmin): an owner-read
+// session never writes, and demo mode's lockdown stays a single decision — lib/demo's
+// pure isDemoRestricted (an admin passes it). One posture: redirect() throws
+// NEXT_REDIRECT, so a forged POST aborts server-side regardless of what the UI renders.
+function assertMayWrite(session: CurrentSession): void {
+  if (session.readOnly || isDemoRestricted(isDemoMode(), session.login.role))
+    redirect("/");
 }
 
 // Login-mutation guard (issue #278): the gate for Server Actions that mutate the
@@ -613,7 +644,7 @@ function assertNotDemoRestricted(role: Role): void {
 // mode this is exactly requireSession(); the demo admin stays fully functional.
 export async function requireLoginWriteAccess(): Promise<CurrentSession> {
   const session = await requireSession();
-  assertNotDemoRestricted(session.login.role);
+  assertMayWrite(session);
   return session;
 }
 
@@ -634,8 +665,8 @@ export async function requireProfileWriteAccess(
   const { login } = session;
   // Demo mode (#181): the same belt-and-braces block as requireWriteAccess — a
   // demo member may not mutate ANY profile (active or cross-profile), even with a
-  // misconfigured grant. Admins pass.
-  assertNotDemoRestricted(login.role);
+  // misconfigured grant. Admins pass. An owner-read session never does.
+  assertMayWrite(session);
   const reachable = accessibleProfiles(login.id, login.role).some(
     (p) => p.id === profileId
   );

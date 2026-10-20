@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { accountsCors } from "./lib/accounts-cors";
 import {
+  REQUEST_METHOD_HEADER,
   SESSION_COOKIE,
   SESSION_SLIDE_MARK_COOKIE,
   SESSION_SLIDE_MARK_TTL_SEC,
@@ -133,6 +134,7 @@ export function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("content-security-policy", csp);
+  requestHeaders.set(REQUEST_METHOD_HEADER, req.method);
   const passNonce = { request: { headers: requestHeaders } };
 
   // Apply the response-header CSP to any response before it leaves middleware.

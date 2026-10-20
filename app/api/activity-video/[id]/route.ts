@@ -54,7 +54,7 @@ export async function GET(
   }
 
   recordAudit({
-    loginId: session.login.id,
+    session,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.medicalFileView,
     target: `activity-video:${id}${wantPoster ? ":poster" : ""}`,
