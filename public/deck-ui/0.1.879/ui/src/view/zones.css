@@ -1,0 +1,71 @@
+/* The zone editor (view/zones.js, zone-map.js): the map beside the list on a wide screen, above it under 900px. Circles, labels,
+   handles and Leaflet's own controls in the theme's tokens; the OpenStreetMap tiles dimmed in the dark theme. */
+.dz-page { font: var(--font-body); }
+.dz-page h2 { margin: 0 0 var(--gap-s); font: var(--font-title); color: var(--text); }
+.dz-page .dk-label { display: block; margin: var(--gap-l) 0 var(--gap-xs); }
+.dz-line { margin: 0 0 var(--gap-s); color: var(--muted); font: var(--font-sub); }
+.dz-line.warn, .dz-warn { color: var(--warn); }
+
+.dz-search { margin: 0 0 var(--gap-m); }
+.dz-search form { display: flex; gap: var(--gap-s); max-width: 560px; }
+.dz-search input { flex: 1; }
+.dz-results { max-width: 560px; margin-top: var(--gap-s); display: grid; justify-items: start; gap: var(--gap-xs); }
+.dz-results > :first-child { width: 100%; }
+
+.dz-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--gap-l); align-items: start; }
+.dz-map-wrap { position: sticky; top: var(--gap-m); min-width: 0; }
+.dz-map { height: min(640px, calc(100dvh - 160px)); min-height: 360px; border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; }
+.dz-map-state { position: absolute; inset: 0; display: grid; place-items: center; background: var(--panel); border-radius: var(--radius); }
+.dz-side { min-width: 0; }
+.dz-side > section > .dk-label:first-child { margin-top: 0; }
+@media (max-width: 900px) {
+  .dz-layout { grid-template-columns: minmax(0, 1fr); gap: var(--gap-l); }
+  .dz-map-wrap { position: relative; top: auto; }
+  .dz-map { height: 52dvh; min-height: 280px; }
+}
+
+.dz-editor { margin: 0 0 var(--gap-l); padding: var(--gap-m); border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+.dz-editor h2 { margin-bottom: var(--gap-m); font: var(--font-heading); display: flex; align-items: center; gap: var(--gap-xs); overflow-wrap: anywhere; }
+.dz-editor form { display: grid; gap: var(--gap-s); }
+.dz-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-s); }
+.dz-actions { display: flex; flex-wrap: wrap; gap: var(--gap-xs); }
+.dz-actions .dz-delete { margin-left: auto; }
+.dz-confirm { display: grid; gap: var(--gap-s); padding: var(--gap-s); border: 1px solid var(--bad); border-radius: var(--chip-radius); }
+.dz-confirm p { margin: 0; }
+.dz-sync { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-xs) var(--gap-s); font: var(--font-sub); color: var(--muted); }
+.dz-sync.bad .dz-sync-line { color: var(--bad); }
+.dz-sync-line { flex: 1; min-width: 12ch; overflow-wrap: anywhere; }
+
+.dz-drift { margin-top: var(--gap-l); }
+.dz-drift-item .dz-actions { padding: 0 var(--gutter) var(--gap-m); }
+@media (max-width: 560px) { .dz-drift-item .dz-actions { padding-inline: var(--gap-s); } }
+
+.dz-status { position: fixed; left: 50%; bottom: var(--gap-l); transform: translateX(-50%); z-index: 1000; font: var(--font-sub); pointer-events: none; max-width: calc(100vw - 2 * var(--gutter)); }
+.dz-status span { display: block; padding: var(--gap-s) var(--gap-m); border-radius: var(--chip-radius); background: var(--raised); color: var(--text); border: 1px solid var(--line); }
+.dz-status span.bad { border-color: var(--bad); }
+
+/* the map: Leaflet's controls and our circles in the theme */
+.dz-map.leaflet-container { background: var(--raised); font: var(--font-sub); color: var(--text); }
+.dz-map.adding, .dz-map.adding .leaflet-interactive:not(.sel) { cursor: crosshair; }
+/* the page's own zoom buttons and attribution over the map (Leaflet's set markup from strings) */
+.dz-zoom { position: absolute; top: var(--gap-s); left: var(--gap-s); z-index: 500; display: grid; gap: var(--gap-xxs); }
+.dz-zoom .dk-btn { font: var(--font-heading); background: var(--panel); }
+.dz-attribution { position: absolute; right: 0; bottom: 0; z-index: 500; margin: 0; padding: 0 var(--gap-xs); border-top-left-radius: var(--chip-radius);
+  background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--muted); font: var(--font-chip); }
+.dz-attribution a { color: var(--accent); }
+.dz-map path.dz-zone { stroke: var(--accent); stroke-width: 2px; fill: var(--accent); fill-opacity: .12; }
+.dz-map path.dz-zone.core { stroke: var(--muted); fill: var(--muted); stroke-dasharray: 6 4; }
+.dz-map path.dz-zone.failed { stroke: var(--bad); fill: var(--bad); }
+.dz-map path.dz-zone.draft { stroke-dasharray: 6 4; }
+.dz-map path.dz-zone.sel { stroke-width: 3px; fill-opacity: .28; }
+.dz-map path.dz-zone.movable { cursor: move; }
+.dz-map .dz-label { padding: 0 var(--gap-xs); border: 0; border-radius: var(--chip-radius); background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--text); font: var(--font-chip); box-shadow: none; white-space: nowrap; }
+.dz-map .dz-label.sel { color: var(--accent); }
+.dz-map .dz-label::before { display: none; }
+.dz-map .dz-label.leaflet-tooltip-bottom { margin-top: 0; }
+.dz-map .dz-handle { box-sizing: border-box; display: block; border-radius: 50%; border: 2px solid var(--on-accent); background: var(--accent); box-shadow: 0 1px 4px var(--shadow-medium); }
+.dz-map .dz-handle.move { cursor: move; }
+.dz-map .dz-handle.size { cursor: ew-resize; border-radius: 4px; }
+:root[data-theme="dark"] .dz-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dz-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }
