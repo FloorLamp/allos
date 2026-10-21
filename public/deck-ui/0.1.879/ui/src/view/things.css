@@ -1,0 +1,65 @@
+.dk-things { padding: 16px; color: var(--text); font-family: var(--sans); }
+
+.dk-things img { max-width: 100%; max-height: 280px; object-fit: contain; }
+/* Purchases (purchases.js): its page, or a section of Things set off from the owned things under it */
+.dk-purchases-filter { max-width: 320px; margin: 0 0 var(--gap-l); }
+.dk-purchases-note { margin: var(--gap-m) 0 0; font: var(--font-sub); color: var(--muted); }
+.dk-things > .dk-purchases { margin: 0; padding-bottom: var(--space-section); border-bottom: 1px solid var(--hair); }
+/* a thing opened in place: its photo a thumbnail, never the card's width */
+.dk-things img.thing-card-photo, .thing-card-photo { display: block; width: 120px; height: 90px; object-fit: cover; border-radius: var(--row-radius); border: 1px solid var(--line); }
+
+/* A thing's page, its hub (view/thing-hub.js): what it is, its House controls (House's tiles), the 12-week strip of use days */
+.dk-hub-head h2 { margin: 0; }
+.dk-hub-what { margin: var(--gap-xs) 0 0; color: var(--soft); font: var(--font-body); }
+.dk-hub-head .dk-note { margin-top: var(--gap-xxs); }
+.dk-hub-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: var(--gap-m); margin: 0 0 var(--space-item); }
+.dk-hub-device + .dk-hub-device { margin-top: var(--space-item); }
+.dk-hub-device > .dk-label { margin: 0 0 var(--gap-xs); }
+.dk-hub-usage > .dk-hub-summary { margin: 0; font: var(--font-body); color: var(--text); }
+.dk-hub-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; max-width: 264px; margin: var(--space-item) 0; }
+.dk-hub-week { display: grid; grid-template-rows: repeat(7, auto); gap: 3px; }
+.dk-hub-day { display: block; aspect-ratio: 1; border-radius: 2px; background: var(--line); }
+.dk-hub-day.used { background: var(--accent); }
+.dk-hub-day.future { visibility: hidden; }
+.dk-hub-usage > .dk-hub-health { margin: 0 0 var(--space-item); font: var(--font-sub); color: var(--soft); }
+.dk-hub-more { margin-top: var(--space-item); }
+.dk-hub-lines .dk-note { margin: 0; }
+.dk-hub-lines { display: grid; gap: var(--gap-xxs); }
+.dk-hub-unavailable > .dk-btn.text { padding: 0; height: auto; min-height: 0; vertical-align: baseline; }
+/* A physical thing (physical-thing.js) and its house record (house-record.js): shared facts, sections and lists; what is its own is
+   the open items' list, the edit form, values edited in place, the photo grid and a device's or alert's name */
+.thing-detail > .dk-facts + .dk-section, .thing-detail > :is(.thing-events, .thing-breakers) { margin-top: var(--space-section); }
+.thing-device { margin-top: var(--space-item); }
+.thing-device h4 { margin: 0 0 var(--gap-xs); font: var(--font-sub); color: var(--text); }
+.thing-notes { margin: 0; font: var(--font-body); color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.thing-link.thing-link { min-height: 0; height: auto; padding: 0; font: inherit; white-space: normal; text-align: inherit; }
+.thing-open { display: flex; flex-direction: column; gap: var(--gap-s); margin: 0; padding: 0; list-style: none; }
+.thing-open-item { display: flex; flex-direction: column; gap: var(--gap-s); padding: var(--gap-m); border: 1px solid var(--line); border-radius: var(--row-radius); background: var(--panel); }
+.thing-open-lines { display: flex; flex-direction: column; gap: var(--gap-xxs); min-width: 0; }
+.thing-open-lines b { font: var(--font-title); color: var(--text); overflow-wrap: anywhere; }
+.thing-open-lines span { font: var(--font-sub); color: var(--muted); overflow-wrap: anywhere; }
+.thing-open-lines .thing-link { align-self: flex-start; margin-top: var(--gap-xxs); font: var(--font-sub); }
+.thing-open-actions, .thing-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s); }
+.thing-open-actions .thing-open-other { margin-left: var(--gap-xs); font: var(--font-body); }
+.thing-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--gap-m); }
+.thing-form .dk-form-field:has(textarea), .thing-form .dk-form-field:has([name="title"]), .thing-form-actions, .thing-form-error { grid-column: 1 / -1; }
+.thing-form-error { margin: 0; }
+.thing-form .dk-form-field { align-content: start; }
+.thing-form-title { grid-column: 1 / -1; font: var(--font-title); color: var(--text); }
+.thing-events .thing-form, .thing-breakers .thing-form, .thing-fact-edit .thing-form { margin-top: var(--gap-m); padding: var(--gap-m); border: 1px solid var(--line); border-radius: var(--row-radius); background: var(--panel); }
+.thing-facts > .thing-fact-edit { display: block; }
+.thing-fact-edit .thing-form { margin: 0; }
+/* a value a writer edits: the value itself, quiet until hovered */
+.thing-value.thing-value { min-height: 0; height: auto; padding: 0; font: inherit; color: inherit; white-space: normal; text-align: inherit; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.thing-value.thing-value:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.thing-value.thing-text { display: block; font: var(--font-body); text-align: left; overflow-wrap: anywhere; white-space: pre-line; }
+.thing-open-link.thing-open-link { min-height: 0; height: auto; padding: 0 0 0 var(--gap-xs); font: inherit; }
+.thing-facts dd { display: flex; justify-content: flex-end; align-items: baseline; gap: var(--gap-xxs); min-width: 0; }
+.thing-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s); margin-left: auto; font: var(--font-sub); color: var(--text); }
+.thing-form-actions .thing-delete { margin-left: auto; }
+.thing-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--gap-s); }
+.thing-photo.thing-photo { aspect-ratio: 4 / 3; height: auto; padding: 0; overflow: hidden; white-space: normal; color: var(--muted); background: var(--raised); border-color: var(--line); }
+.thing-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thing-photo > span { padding: var(--gap-xs); font: var(--font-label); overflow-wrap: anywhere; }
+@media (width < 600px) { .thing-open-actions .dk-btn, .thing-open-actions button, .thing-form-actions button { min-height: 44px; } }
+@media (forced-colors: active) { .thing-open-item, .thing-photo { border-color: CanvasText; } }

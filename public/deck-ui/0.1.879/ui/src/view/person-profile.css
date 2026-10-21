@@ -1,0 +1,102 @@
+.dk-people { font: var(--size-body)/1.5 var(--sans); }
+.dk-people *, .dk-people *::before, .dk-people *::after { box-sizing: border-box; }
+.person-profile { min-width: 0; }
+.person-profile-identity { display: flex; align-items: center; gap: var(--gap-l); padding-bottom: var(--gap-l); }
+.person-portrait { --avatar: 72px; font-size: var(--size-figure-small); }
+.person-profile-identity > div { min-width: 0; }
+.person-profile-identity h2 { margin: 0; font: var(--font-figure); overflow-wrap: anywhere; }
+.person-profile-identity p { margin: var(--gap-xs) 0 0; color: var(--muted); font: var(--font-sub); }
+.person-actions { display: flex; flex-wrap: wrap; gap: var(--gap-s); margin-top: var(--gap-m); }
+.person-profile > .dk-section, .person-profile > div > .dk-section { margin-top: var(--space-section); }
+.person-profile .dk-fact-link { color: inherit; text-decoration: none; }
+.person-profile .dk-fact-link:hover { color: var(--accent); }
+.person-links { display: flex; flex-wrap: wrap; gap: var(--gap-s) var(--gap-l); overflow-wrap: anywhere; }
+.person-links .dk-btn { max-width: 100%; padding-inline: 0; text-align: left; white-space: normal; }
+/* the duplicates review: the two people side by side (stacked on a phone), why bridge asks above, the decision and its keys under them */
+.dk-duplicates { padding: var(--gap-l); margin: 0 0 var(--space-section); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); scroll-margin-top: 64px; container-type: inline-size; }
+.dk-duplicates:focus { outline: none; }
+.dk-duplicates:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-duplicates .dk-section-head { margin-bottom: var(--gap-s); }
+.dk-duplicate-why { margin: 0 0 var(--gap-m); color: var(--muted); font: var(--font-sub); }
+.dk-duplicate-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-l); }
+.dk-duplicate-person { min-width: 0; padding: var(--gap-m); border-radius: var(--radius); background: var(--raised); }
+.dk-duplicate-who { display: flex; align-items: center; gap: var(--gap-m); margin-bottom: var(--gap-s); min-width: 0; }
+.dk-duplicate-who > .dk-avatar { --avatar: 48px; font-size: var(--size-title); }
+.dk-duplicate-who > div { min-width: 0; }
+.dk-duplicate-who h3 { margin: 0; font: var(--font-title); overflow-wrap: anywhere; }
+.dk-duplicate-who p { margin: 0; color: var(--muted); font: var(--font-sub); }
+.dk-duplicate-person .dk-facts dd { overflow-wrap: anywhere; }
+.dk-duplicate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s); margin-top: var(--gap-m); }
+.dk-duplicate-actions .dk-key { margin-left: var(--gap-s); }
+.dk-duplicate-actions [data-variant="primary"] .dk-key { color: inherit; border-color: currentColor; }
+.dk-duplicate-undo { margin-left: auto; }
+/* narrow (a phone, a profile's drawer): one person over the other; touch has no keys to show */
+@container (width < 560px) {
+  .dk-duplicate-compare { grid-template-columns: minmax(0, 1fr); gap: var(--gap-s); }
+  .dk-duplicate-actions .dk-key { display: none; }
+}
+/* a profile's merges: who joined it and how, Undo merge at the right */
+.person-merges ul { margin: 0; padding: 0; list-style: none; }
+.person-merges li { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-m); padding: var(--gap-s) 0; border-top: 1px solid var(--hair); }
+.person-merges li:first-child { border-top: 0; }
+.person-merges li > div { display: flex; flex-direction: column; min-width: 0; }
+.person-merges li b { font: var(--font-body); font-weight: 600; overflow-wrap: anywhere; }
+.person-merges li span { color: var(--muted); font: var(--font-sub); }
+.person-merges li .dk-btn { flex: none; }
+/* a profile's face (view/person-face.js): the linked one and how it came, or Link a face and bridge's suggestions in a row each */
+.person-face-linked > div, .person-face-suggestions li > div:not(.dk-face-actions) { display: flex; flex-direction: column; min-width: 0; }
+.person-face-linked b, .person-face-suggestions li b { font: var(--font-body); font-weight: 600; overflow-wrap: anywhere; }
+.person-face-linked span, .person-face-suggestions li span { color: var(--muted); font: var(--font-sub); }
+.person-face-suggestions { margin-top: var(--gap-m); }
+.person-face-suggestions h4 { margin: 0 0 var(--gap-xs); color: var(--soft); font: var(--font-label); letter-spacing: var(--tracking-label); text-transform: uppercase; }
+.person-face-suggestions ul { margin: 0; padding: 0; list-style: none; }
+.person-face-suggestions li { display: flex; align-items: center; gap: var(--gap-m); padding: var(--gap-s) 0; border-top: 1px solid var(--hair); }
+.person-face-suggestions li:first-child { border-top: 0; }
+.person-face-suggestions li > div:not(.dk-face-actions) { flex: 1; }
+.person-face-suggestions .dk-face-thumb { --avatar: 48px; font-size: var(--size-title); }
+.dk-face-actions { display: flex; flex: none; flex-wrap: wrap; gap: var(--gap-s); }
+.dk-face-move { margin: var(--gap-m) 0; padding: var(--gap-m); border: 1px solid var(--warn); border-radius: var(--radius); background: var(--raised); }
+.dk-face-move p { margin: 0 0 var(--gap-s); font: var(--font-body); overflow-wrap: anywhere; }
+/* the face picker, unfolded in place (the Face section, a record card): its title and Close, the search, then the faces as tiles
+   (thumbnail, name, photos, whose), More under them */
+.dk-face-picker { margin: var(--gap-m) 0; padding: var(--gap-m) var(--gap-l) var(--gap-l); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel); container-type: inline-size; scroll-margin: 64px 0 16px; }
+.dk-face-picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-m); }
+.dk-face-picker-head b { font: var(--font-title); font-weight: 600; }
+.dk-face-picker-head .dk-btn { flex: none; }
+.dk-face-picker .dk-note { margin-top: var(--gap-xs); }
+.dk-face-picker .dk-collection-tools { margin: var(--gap-m) 0; }
+.dk-face-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--gap-s); margin: 0; padding: 0; list-style: none; }
+.dk-face-tile { display: flex; flex-direction: column; align-items: stretch; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised); }
+.dk-face-tile.mine { border-color: var(--accent); }
+.dk-face-pick { display: flex; flex: 1; flex-direction: column; align-items: center; gap: var(--gap-xxs); min-width: 0; padding: var(--gap-m) var(--gap-s) var(--gap-s);
+  border: 0; border-radius: var(--radius) var(--radius) 0 0; background: transparent; text-align: center; }
+.dk-face-pick:hover:not(:disabled) { background: var(--hover); }
+.dk-face-pick:disabled { background: transparent; color: var(--text); cursor: default; }
+.dk-face-pick .dk-face-thumb { --avatar: 64px; margin-bottom: var(--gap-xs); font-size: var(--size-figure-small); }
+.dk-face-pick b { max-width: 100%; font: var(--font-body); font-weight: 600; overflow-wrap: anywhere; }
+.dk-face-pick span { color: var(--muted); font: var(--font-sub); }
+.dk-face-pick .dk-face-holder { color: var(--warn); }
+.dk-face-tile.mine .dk-face-holder { color: var(--accent); }
+.dk-face-tile > .dk-btn { min-height: 36px; margin: 0 var(--gap-xs) var(--gap-xs); font: var(--font-sub); }
+.dk-face-more { display: flex; justify-content: center; margin-top: var(--gap-l); }
+.dk-face-picker .dk-state.inline { margin-top: var(--gap-m); }
+/* a narrow picker (a phone, a record card): the count under the field, two tiles a row */
+@container (width < 480px) {
+  .dk-face-picker .dk-collection-tools > p { flex-basis: 100%; margin-bottom: 0; text-align: left; }
+  .dk-face-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .dk-face-picker { padding: var(--gap-s) var(--gap-m) var(--gap-m); }
+  .dk-face-picker-head .dk-btn.icon { min-width: 44px; min-height: 44px; }
+  .person-face-suggestions li { flex-wrap: wrap; }
+  .person-face-suggestions .dk-face-actions { width: 100%; padding-left: calc(48px + var(--gap-m)); }
+  .dk-face-tile > .dk-btn { min-height: 44px; }
+}
+@media (forced-colors: active) { .dk-face-tile, .dk-face-move { border-color: CanvasText; } }
+@media (max-width: 600px) {
+  .dk-duplicates { padding: var(--gap-m); }
+  .person-profile-identity { gap: var(--gap-m); }
+  .person-portrait { --avatar: 64px; }
+}
+@media (forced-colors: active) { .dk-duplicates { border-color: CanvasText; } }

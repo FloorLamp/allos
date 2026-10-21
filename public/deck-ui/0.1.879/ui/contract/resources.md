@@ -1,0 +1,46 @@
+# Resources
+
+## Resources
+
+GET only; anything else refused. Paths (the UI asks with `/v1/…`):
+
+- `/v1/doc/<id>[/message/<m>][/attachment/<a>[/attachment/<e>]]/(page/<n>|video)`, query `w`, `v` (a find row's `document.thumb`, the focused row's
+  preview upgrades it to `page/1?w=2400`, preserving `v`)
+- `/v1/doc/<id>/message/<m>/inline/<part>`
+- `/v1/doc/<id>/image?u=`
+- `/v1/texts/<conv>/message/<m>/attachment/<a>[/attachment/<e>]/(page/<n>|video)`, query `w`, `v` (shell only in practice: the site has no `texts`)
+- `/v1/people/<person.id>/photo`, query `w`, `v` (a person's portrait, their latest face, `w` px square: the avatar's drawn size times the
+  screen's density; asked lazily as it nears the view, never on a shared screen; 404 keeps the initials: `view/avatar.js`; `v` the
+  portrait's version on this page, one more after each link or unlink of their face; bridge ignores it)
+- `/v1/people/<person.id>/logo`, query `w` (an org's logo, from its own site, `w` px at most: drawn as the portrait is, in a rounded
+  square; 404 keeps the initials)
+- `/v1/people/faces/<uuid>/thumbnail` (an Immich face's thumbnail, the face picker's; [people](people.md) *Faces*)
+- `/v1/photos/<Immich id>/thumbnail` (a Find photo's preview: the strip's thumbnails and the viewer's photo; device hosts only, the
+  site has no route and gets no photos: palette SPEC.md *Photos*)
+- `/local/recent/<id>[/thumb]` (shell only)
+
+Web: `/api/…` (same path). Windows: `https://deck.example/bridge/v1/…`, Mac `deck-app://app/bridge/v1/…`, served by the shell's
+speed layer (disk cache, ETag, keep-alive, Range; video with Range and `Retry-After` passed through).
+
+## Email bodies
+
+The UI shows bridge's sanitised html in `<iframe sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcdoc>`
+with its own CSP `default-src 'none'; img-src data:; style-src 'unsafe-inline'`: no scripts can run in it (never `allow-scripts`);
+`allow-same-origin` lets the UI size the frame to its body and hand its links to `url.open`. Every image is a data URL the UI fetched
+through `resource()` (`data-inline-src` at once, `data-remote-src` after Load images); a host needs nothing for it beyond those
+resources.
+
+## CSP
+
+`default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src
+'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`: the bundled UI's, and the
+site's base policy on pages that mount it. Bridge owns the response header in `src/server.mjs`; Caddy passes it through.
+Flightplan uses `/flightplan/api` on the same origin and requires no cross-origin `connect-src` entry. Bridge's
+`test/deck-ui.test.mjs` covers its policy, including `/flightplan`.
+
+## Token
+
+The shell reads bridge's token (`~/.config/bridge/client.json`) and adds it only to its own https requests to bridge: never in a
+result, event, header or URL the UI sees (contract test). The site has no token: its session is Caddy's (family network) or
+boarding's (a member's passkey).
+

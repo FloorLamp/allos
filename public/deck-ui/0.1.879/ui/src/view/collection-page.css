@@ -1,0 +1,26 @@
+.dk-collection-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 20px; margin: 16px 0; min-width: 0; }
+.dk-collection-search { display: flex; flex: 1 1 240px; flex-direction: column; gap: 6px; min-width: 0; color: var(--text); font: var(--font-sub); }
+.dk-collection-filter { display: flex; flex: 0 1 200px; flex-direction: column; gap: 6px; min-width: 0; color: var(--text); font: var(--font-sub); }
+.dk-collection-filter .dk-field { width: 100%; min-height: 44px; }
+/* the field and a row's selects share one height and text size (body; the box size on a phone) */
+.dk-collection-search .dk-field { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; }
+/* the count keeps one width, so the field does not move as it changes */
+.dk-collection-tools > p { flex: 0 0 11em; margin: 0 0 12px; color: var(--muted); font: var(--font-sub); font-size: var(--size-sub); text-align: right; }
+.dk-collection-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 24px; min-width: 0; }
+.dk-collection-pager > span { color: var(--muted); font: var(--font-sub); font-size: var(--size-sub); text-align: center; }
+.dk-collection-pager .dk-btn { flex: none; min-height: 44px; height: auto; padding: 8px 12px; white-space: normal; }
+/* cursor pages: a turn that does not exist leaves its place empty, the page count stays centred */
+.dk-collection-pager.cursor { display: grid; grid-template-columns: 1fr auto 1fr; }
+.dk-collection-pager.cursor > :first-child:not(span) { grid-column: 1; justify-self: start; }
+.dk-collection-pager.cursor > span { grid-column: 2; }
+.dk-collection-pager.cursor > span ~ .dk-btn { grid-column: 3; justify-self: end; }
+.dk-collection-pager.cursor .dk-btn { max-width: 100%; }
+/* a drawer is narrow at every width: the count goes under the field */
+.dk-drawer .dk-collection-tools > p { flex-basis: 100%; margin-bottom: 0; text-align: left; }
+@media (width < 600px) {
+  .dk-collection-tools { gap: 8px; }
+  .dk-collection-search, .dk-collection-filter { flex-basis: 100%; }
+  .dk-collection-tools > p { flex-basis: auto; margin-bottom: 0; text-align: left; }
+  .dk-collection-pager { gap: 8px; }
+  .dk-collection-pager .dk-btn { max-width: 40%; font-size: var(--size-sub); }
+}
