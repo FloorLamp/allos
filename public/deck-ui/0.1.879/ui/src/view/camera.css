@@ -1,0 +1,40 @@
+/* One camera live with its sound (view/camera.js LiveCamera; contract/house.md *Live camera*): the House page and the palette's viewer.
+   The frame on the media's own dark surface, the still until the video plays; under it a bar with the name, what the stream is doing,
+   the sound, pop out and close buttons. Opened, it scrolls into view clear of the site's sticky bar. */
+.dk-live { margin: 0; display: grid; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); scroll-margin-block: 64px var(--gap-m); }
+.dk-live-box { display: grid; min-width: 0; }
+.dk-live-frame { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; background: var(--shadow-ink); }
+.dk-live-frame :is(video, img) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* the whole frame (a portrait doorbell, a square composite), centred on the dark surface; `cover` fills it */
+:is(.dk-live.fit-contain, :root[data-surface="camera"]) .dk-live-frame :is(video, img) { object-fit: contain; }
+.dk-live-frame video:not(.on) { visibility: hidden; }
+.dk-live-note { padding: var(--gap-m); color: var(--paper); text-align: center; font: var(--font-sub); opacity: .8; }
+
+.dk-live-bar { display: flex; align-items: center; gap: var(--gap-s); min-height: calc(36px + 2 * var(--gap-s)); padding: var(--gap-s) var(--gap-s) var(--gap-s) var(--gap-m); }
+.dk-live-title { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--gap-s); }
+.dk-live-title b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--font-title); color: var(--text); }
+.dk-live-state { font: var(--font-chip); color: var(--muted); white-space: nowrap; }
+.dk-live-state.on { color: var(--ok); }
+.dk-live-state.on::before { content: "● "; }
+.dk-live-state.off { color: var(--warn); }
+.dk-live-sound { flex: none; gap: var(--gap-xs); }
+.dk-live-sound.on { color: var(--accent); }
+:is(.dk-live-pop, .dk-live-close) { flex: none; }
+.dk-live-pop.out { color: var(--accent); }
+/* its box in a picture-in-picture window: what stays in the page */
+.dk-live-away { margin: 0; padding: var(--gap-l) var(--gap-m); color: var(--muted); font: var(--font-sub); text-align: center; }
+.dk-live-away[hidden] { display: none; }
+
+/* A camera in a window of its own (data-surface="camera": the shells' camera window, camera.html, and a Document Picture-in-Picture
+   window): the frame fills the window under a thin strip (the name, the stream's state, the sound and close buttons; the shell's
+   window: its drag region), the controls at the desktop's compact size. */
+:root[data-surface="camera"], :root[data-surface="camera"] body { height: 100%; margin: 0; overflow: hidden; background: var(--shadow-ink); }
+:root[data-surface="camera"] :is(#app, .dk-live, body > .dk-live-box) { height: 100%; }
+:root[data-surface="camera"] .dk-live { border: 0; border-radius: 0; background: var(--shadow-ink); }
+:root[data-surface="camera"] .dk-live-box { grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+:root[data-surface="camera"] .dk-live-frame { order: 1; aspect-ratio: auto; }
+:root[data-surface="camera"] .dk-live-bar { min-height: 32px; box-sizing: border-box; gap: var(--gap-xs); padding: 2px 2px 2px var(--gap-s); background: var(--panel);
+  border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; }
+:root[data-surface="camera"] .dk-live-bar[data-window-drag] { cursor: default; }
+:root[data-surface="camera"] .dk-live-title b { font: var(--font-chip); }
+:root[data-surface="camera"] .dk-live-bar .dk-btn { min-height: 28px; height: 28px; min-width: 28px; padding: 0 var(--gap-xs); font: var(--font-chip); }

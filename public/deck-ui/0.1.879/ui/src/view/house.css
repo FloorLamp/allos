@@ -1,0 +1,193 @@
+/* The House page (view/house.js): the tablet fills its screen (1280×800, a kiosk: no scrolling, big targets), the phone and admin
+   scroll under the shell bar. Tiles: on (accent), warn (an open door, a lock unlocked), busy (sent, waiting for its state). */
+.dh-page { background: var(--night); color: var(--text); font: var(--font-body); min-height: 100vh; }
+.dh { box-sizing: border-box; }
+:is(.dh, .dh-location) .dk-label { display: block; margin: var(--gap-l) 0 var(--gap-xs); }
+
+.dh-tile { display: grid; grid-template-rows: auto 1fr auto; justify-items: start; gap: var(--gap-xs); min-height: 96px; padding: var(--gap-m);
+  border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); color: var(--soft); font: var(--font-sub); text-align: left;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.dh-tile:hover { border-color: var(--edge); }
+.dh-tile:active { background: var(--raised); }
+.dh-tile .dh-tname { font: var(--font-title); color: var(--text); align-self: end; }
+.dh-tile .dh-tstate { color: var(--muted); }
+.dh-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.dh-tile.on .glyph { color: var(--accent); }
+.dh-tile.warn { border-color: var(--warn); }
+.dh-tile.warn .glyph, .dh-tile.warn .dh-tstate { color: var(--warn); }
+.dh-tile.stale { opacity: var(--alpha-disabled); }
+.dh-tile.busy { opacity: .7; }
+.dh-tile.busy .dh-tstate::after { content: " · sent"; }
+.dh-tile:disabled { opacity: var(--alpha-disabled); cursor: default; }
+.dh-tile.confirming { border-color: var(--warn); outline: 2px solid var(--warn); outline-offset: 2px; position: relative; z-index: 10; }
+.dh-scrim { position: fixed; inset: 0; z-index: 9; background: color-mix(in srgb, var(--night) 60%, transparent); }
+
+.dh-ticker { display: flex; gap: var(--gap-xl); margin: 0; padding: 0 var(--gutter); list-style: none; overflow: hidden; white-space: nowrap; align-items: center;
+  font: var(--font-title); color: var(--soft); }
+.dh-ticker li { display: inline-flex; align-items: baseline; gap: var(--gap-s); }
+.dh-age { font: var(--font-sub); color: var(--muted); }
+.dh-live { font: var(--font-chip); color: var(--warn); white-space: nowrap; }
+.dh-live.on { color: var(--ok); }
+.dh-live::before { content: "● "; }
+
+.dh-confirm { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: var(--gap-m);
+  padding: var(--gap-m) var(--gap-l); border-radius: var(--radius); border: 1px solid var(--warn); background: var(--panel); box-shadow: 0 8px 24px var(--shadow-dialog);
+  font: var(--font-title); }
+.dh-confirm .dk-btn { height: var(--touch); padding: 0 var(--gap-l); font: var(--font-title); }
+.dh-confirm.anchored { bottom: auto; transform: none; box-sizing: border-box; } /* beside its tile: view/house.js Confirm sets top, left and a whole-tiles width */
+.dh-confirm.anchored > span { margin-right: auto; }
+.dh-none { margin: var(--gap-s) 0; font: var(--font-sub); color: var(--muted); }
+
+/* the tablet: a kiosk filling its screen edge to edge (no shell bar, page header or page column); the strip on top, cameras and the
+   chart beside the quick controls, the ticker along the bottom */
+/* heights chain from the page to the board, so a host that sizes the page (Habitat's /house/tablet: `.tablet .dh-page` 100% of its
+   grid row) sizes the board too */
+.dh-tablet-page { height: 100vh; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dh-tablet-page > .dk-house-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dh-tablet-page .dk-page-state { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dh-tablet-page > .dk-house-content > .dk-state { margin: auto; width: min(560px, 100% - 2 * var(--gutter)); }
+.dh-tablet { flex: 1; height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) 48px; overflow: hidden; }
+.dh-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s) var(--gap-xl); padding: var(--gap-m) var(--gap-xl); border-bottom: 1px solid var(--line); background: var(--panel);
+  overflow: hidden; }
+.dh-clock { display: flex; flex-direction: column; flex-shrink: 0; }
+.dh-clock b { font: 600 var(--size-clock)/38px var(--sans); color: var(--text); font-variant-numeric: tabular-nums; }
+.dh-clock span, .dh-stat span { font: var(--font-sub); color: var(--muted); }
+.dh-stat { display: flex; flex-direction: column; flex-shrink: 0; max-width: min(32ch, 100%); }
+.dh-stat b { font: var(--font-heading); color: var(--text); }
+.dh-stat.warn b { color: var(--warn); }
+.dh-strip .dh-live { margin-left: auto; }
+.dh-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--gap-l); padding: var(--gap-l) var(--gap-xl); min-height: 0; }
+.dh-left { display: flex; flex-direction: column; gap: var(--gap-l); min-height: 0; overflow: hidden; }
+/* spread (a house whose controls fit, view/house.js SPREAD_ROWS): cameras and controls on top, as tall as the controls; the chart along the bottom */
+.dh-main.spread { grid-template-rows: auto minmax(0, 1fr); }
+.dh-main.spread > .dh-chart { grid-column: 1 / -1; min-height: 0; }
+/* view/house.js FittedQuick sets --rows: as many as the column holds at a tile's least height (its TILE), sharing the height */
+.dh-fit { display: flex; flex-direction: column; min-height: 0; }
+.dh-fit > .dh-paged { flex: 1; }
+.dh-tablet .dh-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 4), 72px); gap: var(--gap-s);
+  align-content: start; min-height: 0; overflow: hidden; }
+/* compact tiles (72px, view/house.js TILE): the glyph beside the name (two lines at most) and the state */
+.dh-tablet .dh-tile { min-height: 0; overflow: hidden; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; align-content: center;
+  align-items: center; column-gap: var(--gap-m); row-gap: var(--gap-xxs); padding: var(--gap-s) var(--gap-m); }
+.dh-tablet .dh-tile .glyph { grid-row: 1 / 3; }
+.dh-tablet .dh-tname { align-self: end; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.dh-tablet .dh-tstate { align-self: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dh-tablet .dh-ticker { border-top: 1px solid var(--line); background: var(--panel); }
+
+/* the phone: chips, two tiles a row, rooms as rows */
+.dh-phone, .dh-admin { min-width: 0; }
+.dh-chips { display: flex; flex-wrap: wrap; gap: var(--gap-xs); align-items: center; }
+.dh-chip { font: var(--font-chip); color: var(--muted); border: 1px solid var(--line); border-radius: var(--chip-radius); padding: 2px var(--gap-s); background: var(--panel); }
+.dh-chip b { color: var(--text); font-weight: 600; }
+.dh-chip.warn, .dh-chip.warn b { color: var(--warn); border-color: var(--warn); }
+/* the phone's status: a heading with Live beside it, the figures as a grid of label-over-value cells, then what the house says now as chips */
+.dh-now-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--gap-m); }
+.dh-now-head .dk-label { margin-top: 0; }
+.dh-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--gap-xs); margin: 0; }
+.dh-stats .dh-stat { max-width: none; padding: var(--gap-s) var(--gap-m); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.dh-stats dt { font: var(--font-sub); color: var(--muted); }
+.dh-stats dd { margin: 0; font: var(--font-title); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.dh-stats .dh-stat.warn { border-color: var(--warn); }
+.dh-stats .dh-stat.warn dd { color: var(--warn); }
+.dh-phone .dh-ticker { margin-top: var(--gap-s); padding: 0; white-space: normal; }
+.dh-chip .dh-age { margin-left: var(--gap-xs); font: inherit; }
+/* the House page: its Cameras row (the first four, the way to every one), its ~20 most used controls (or a search's matches), the status */
+.dh-phone .dh-controls { margin-bottom: var(--gap-l); }
+.dh-phone .dh-controls > .dk-label:first-child { margin-top: 0; }
+.dh-phone .dh-paged + .dh-now { margin-top: var(--gap-l); }
+.dh-phone .dh-search .dk-collection-tools { margin-bottom: var(--gap-s); }
+.dh-phone .dh-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-s); }
+/* a section's heading with its way to the rest (`All 9 cameras ›`) on the right */
+.dh-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-m); margin-bottom: var(--gap-xs); }
+.dh .dh-section-head .dk-label { margin: 0; }
+.dh-camrow { margin-bottom: var(--gap-l); }
+.dh-cameras.dh-camrow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dh-camrow-grid .dh-camera { min-height: 0; }
+@media (min-width: 600px) { .dh-cameras.dh-camrow-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* the Cameras place (/house/cameras): every camera, three columns wide, two at a tablet's width, one on a phone */
+.dh-cameras.dh-cameras-all { grid-template-columns: minmax(0, 1fr); gap: var(--gap-m); }
+@media (min-width: 600px) { .dh-cameras.dh-cameras-all { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .dh-cameras.dh-cameras-all { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 600px) { .dh-phone .dh-quick { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.dh-phone .dh-tile { min-height: 84px; }
+/* a tile off the kiosks (view/house.js LinkedTile): the thing it is linked to on its last line, its menu at its corner (shown on hover
+   or focus where there is a pointer, always on touch) */
+.dh-tile-box { position: relative; display: grid; min-width: 0; }
+.dh-tile-box > .dh-tile { width: 100%; }
+.dh-tile-box.linked > .dh-tile { padding-bottom: calc(var(--gap-m) + 20px); }
+.dh-tile-thing { position: absolute; left: var(--gap-m); right: var(--gap-m); bottom: var(--gap-s); line-height: 20px; font: var(--font-sub);
+  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.dh-tile-thing { text-decoration: underline; text-decoration-color: var(--edge); text-underline-offset: 2px; }
+a.dh-tile-thing:hover { color: var(--accent); text-decoration-color: currentColor; }
+.dh-tile-more { position: absolute; top: var(--gap-xs); right: var(--gap-xs); color: var(--muted); }
+@media (hover: hover) {
+  .dh-tile-more { opacity: 0; }
+  .dh-tile-box:is(:hover, :focus-within) .dh-tile-more, .dh-tile-more[aria-expanded="true"] { opacity: 1; }
+}
+.dh-tile-menu { position: absolute; top: 44px; right: var(--gap-xs); z-index: 20; }
+
+/* the admin: needs, rules, a filter over every entity */
+.dh-filter { display: flex; flex-direction: column; gap: var(--gap-s); margin-bottom: var(--gap-s); }
+.dh-filter .dk-field { height: 36px; font: var(--font-body); }
+
+/* admin: each need's management buttons under its row */
+.dh-need-actions { display: flex; flex-wrap: wrap; gap: var(--gap-xs); padding: 0 var(--gutter) var(--gap-m); }
+@media (max-width: 560px) { .dh-need-actions { padding-inline: var(--gap-s); } }
+
+/* Zigbee reconnect: the owner's permit-join on one line, wrapping on a phone */
+.dh-zigbee-join { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--gap-s); margin-bottom: var(--gap-m); }
+.dh-zigbee-join .dk-note { flex-basis: 100%; }
+
+.dh-location-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-s) var(--gap-m); }
+.dh-day { display: inline-flex; align-items: center; gap: var(--gap-xs); }
+.dh-day-text { min-width: 12ch; text-align: center; font: var(--font-title); font-variant-numeric: tabular-nums; }
+
+/* a setting a row: its name, its control; one Save under them all */
+.dh-setting { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 16ch); align-items: center; gap: var(--gap-s) var(--gap-m);
+  min-height: 44px; padding-block: var(--gap-s); border-bottom: 1px solid var(--line); }
+.dh-setting-name { color: var(--text); }
+/* a setting's checkbox: one box the size of its line, filled when on */
+.dh-setting input[type="checkbox"] { justify-self: start; width: 20px; height: 20px; min-height: 0; padding: 0; border: 1.5px solid var(--edge); border-radius: 5px; background-color: var(--panel); }
+.dh-setting input[type="checkbox"]:checked { border-color: var(--accent); }
+.dh-setting .dk-field-error { grid-column: 1 / -1; }
+.dh-settings-save { display: flex; align-items: center; gap: var(--gap-m); padding-top: var(--gap-m); }
+@media (max-width: 599px) { .dh-setting:not(.bool) { grid-template-columns: minmax(0, 1fr); } .dh-setting.bool { grid-template-columns: minmax(0, 1fr) auto; } }
+
+.dh-cameras { display: grid; gap: var(--gap-s); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); min-height: 0; }
+.dh-camera { position: relative; aspect-ratio: 16 / 9; min-height: 120px; overflow: hidden; border-radius: var(--radius); background: var(--panel); display: grid; place-items: center; }
+.dh-camera img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dh-camera b { position: absolute; bottom: 0; left: 0; padding: var(--gap-s); background: var(--panel); font: var(--font-sub); border-top-right-radius: var(--row-radius); }
+/* the phone's (and a desktop's): the whole tile opens it live (view/camera.js LiveCamera) in its place, the grid's whole width; a Live cue
+   in its top right says so */
+.dh-camera-open { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer;
+  display: flex; align-items: flex-start; justify-content: flex-end; -webkit-tap-highlight-color: transparent; }
+.dh-camera-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dh-camera-cue { display: inline-flex; align-items: center; gap: var(--gap-xxs); margin: var(--gap-s); padding: var(--gap-xxs) var(--gap-s); border-radius: var(--chip-radius);
+  background: var(--media-overlay); color: var(--paper); font: var(--font-chip); }
+.dh-camera [role="status"] { position: relative; z-index: 1; }
+/* a still not (yet) there: what happened in a word over the tile, Retry under it (above the tile's own press) */
+.dh-camera-note { display: flex; flex-direction: column; align-items: center; gap: var(--gap-xs); padding: var(--gap-s) var(--gap-m) var(--gap-xl); text-align: center;
+  font: var(--font-sub); color: var(--muted); }
+.dh-camera-why { color: var(--text); font-weight: 600; }
+.dh-cameras > .dk-live { grid-column: 1 / -1; }
+/* view/house.js CameraGrid sets the columns and rows; each frame (.dh-frame) its image's shape, from its cell's top left (one grid's lines) */
+.dh-tablet .dh-cameras { flex: 1; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-template-rows: repeat(var(--camera-rows, 1), minmax(0, 1fr)); }
+.dh-tablet .dh-camera { aspect-ratio: auto; min-height: 0; overflow: visible; background: none; border-radius: 0; place-items: start; }
+.dh-frame { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--panel); display: grid; place-items: center; }
+.dh-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+
+.dh-paged { min-width: 0; }
+.dh-tablet .dh-paged { display: flex; flex-direction: column; min-height: 0; }
+.dh-tablet .dh-left > .dh-paged { flex: 1; }
+.dh-tablet .dh-paged > .dh-quick { flex: 1; }
+.dh-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-s); padding-block: var(--gap-s); font: var(--font-sub); }
+.dh-pager button { min-height: 44px; min-width: 44px; }
+
+/* the Rules page (view/house-rules.js): its filter chips under the search, each with its count; phones scroll them sideways */
+.dh-rule-filters { display: flex; flex-wrap: wrap; gap: var(--gap-xs); margin: 0 0 var(--gap-m); }
+.dh-rule-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.dh-rule-filters .dk-chip.on .dh-rule-count { color: inherit; }
+@media (width < 600px) {
+  .dh-rule-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--gap-m)); padding-inline: var(--gap-m); }
+  .dh-rule-filters .dk-chip { flex: none; min-height: 36px; }
+}

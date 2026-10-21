@@ -1,0 +1,498 @@
+[
+  {
+    "id": "search",
+    "label": "Find",
+    "href": "/",
+    "group": "top",
+    "glyph": "find",
+    "pages": [
+      {
+        "id": "document",
+        "label": "Documents",
+        "href": "/doc",
+        "glyph": "document",
+        "find": {
+          "records": [
+            "document"
+          ]
+        },
+        "from": [],
+        "via": "find"
+      },
+      {
+        "id": "due-soon",
+        "label": "Due soon",
+        "href": "/#dg-due-soon",
+        "glyph": "day",
+        "hint": "What is overdue or due in the next 30 days",
+        "find": {
+          "words": [
+            "due"
+          ]
+        },
+        "from": [],
+        "via": "home"
+      }
+    ]
+  },
+  {
+    "id": "todo",
+    "label": "Todo",
+    "href": "/todo",
+    "backend": "flightplan",
+    "group": "top",
+    "glyph": "check",
+    "find": {
+      "words": [
+        "todos",
+        "tasks"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "flightplan",
+    "label": "Flightplan",
+    "href": "/flightplan",
+    "backend": "flightplan",
+    "group": "top",
+    "glyph": "todo",
+    "find": {
+      "words": [
+        "board",
+        "epics"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "money",
+    "label": "Money",
+    "href": "/money",
+    "group": "top",
+    "glyph": "money",
+    "find": {
+      "words": [
+        "spending",
+        "transactions"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "house",
+    "label": "House",
+    "href": "/house",
+    "backend": "habitat",
+    "group": "top",
+    "glyph": "house",
+    "hint": "Controls, cameras and rules",
+    "find": {
+      "words": [
+        "house",
+        "controls"
+      ]
+    },
+    "from": [],
+    "pages": [
+      {
+        "id": "admin",
+        "label": "Admin",
+        "href": "/house/admin",
+        "glyph": "settings",
+        "hint": "Habitat settings, needs and every entity",
+        "owner": true,
+        "find": {
+          "words": [
+            "house admin",
+            "habitat settings"
+          ]
+        },
+        "from": [],
+        "via": "header"
+      },
+      {
+        "id": "zones",
+        "label": "Zones",
+        "href": "/house/zones",
+        "glyph": "place",
+        "hint": "Home Assistant's zones on a map",
+        "find": {
+          "words": [
+            "zones",
+            "house zones",
+            "geofence"
+          ]
+        },
+        "from": [],
+        "via": "menu"
+      }
+    ]
+  },
+  {
+    "id": "health",
+    "label": "Health",
+    "href": "/health",
+    "backend": "allos",
+    "group": "top",
+    "glyph": "health",
+    "find": {
+      "words": [
+        "doses",
+        "labs"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "people",
+    "label": "People",
+    "href": "/people",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "person",
+    "hint": "Family, friends and contacts",
+    "collection": true,
+    "find": {
+      "records": [
+        "person"
+      ],
+      "words": [
+        "contacts"
+      ]
+    },
+    "from": [
+      "document"
+    ]
+  },
+  {
+    "id": "vehicles",
+    "label": "Vehicles",
+    "href": "/vehicles",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "car",
+    "hint": "Cars, registrations and service",
+    "collection": true,
+    "find": {
+      "records": [
+        "vehicle"
+      ],
+      "words": [
+        "car",
+        "cars",
+        "auto",
+        "automobiles"
+      ]
+    },
+    "from": [
+      "document"
+    ]
+  },
+  {
+    "id": "properties",
+    "label": "Properties",
+    "href": "/properties",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "place",
+    "hint": "Homes, deeds and permits",
+    "collection": true,
+    "find": {
+      "records": [
+        "property"
+      ],
+      "words": [
+        "property",
+        "home",
+        "homes",
+        "real estate"
+      ]
+    },
+    "from": [
+      "document"
+    ]
+  },
+  {
+    "id": "cameras",
+    "label": "Cameras",
+    "href": "/house/cameras",
+    "backend": "habitat",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "video",
+    "hint": "Every House camera, live",
+    "collection": true,
+    "find": {
+      "words": [
+        "cameras",
+        "camera",
+        "cams",
+        "cctv"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "things",
+    "label": "Things",
+    "href": "/things",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "thing",
+    "hint": "Devices, products and manuals",
+    "collection": true,
+    "find": {
+      "records": [
+        "thing"
+      ],
+      "words": [
+        "products",
+        "belongings",
+        "devices"
+      ]
+    },
+    "from": [
+      "purchase",
+      "cluster",
+      "document"
+    ]
+  },
+  {
+    "id": "rules",
+    "label": "House rules",
+    "href": "/house/rules",
+    "backend": "habitat",
+    "group": "library",
+    "section": "People & places",
+    "glyph": "bolt",
+    "hint": "What the house does on its own",
+    "find": {
+      "words": [
+        "rules",
+        "house rules",
+        "automations"
+      ]
+    },
+    "from": [],
+    "native": false
+  },
+  {
+    "id": "papers",
+    "label": "Papers",
+    "href": "/papers",
+    "group": "library",
+    "section": "Papers & money",
+    "glyph": "id",
+    "hint": "IDs, passports and certificates",
+    "collection": true,
+    "find": {
+      "words": [
+        "papers",
+        "identity",
+        "passport",
+        "passports",
+        "IDs"
+      ]
+    },
+    "from": [],
+    "pages": [
+      {
+        "id": "attention",
+        "label": "Attention",
+        "href": "/attention",
+        "glyph": "document",
+        "hint": "Unread documents, gaps and coverage",
+        "find": {
+          "words": [
+            "attention",
+            "unread"
+          ]
+        },
+        "from": [],
+        "via": "header"
+      }
+    ]
+  },
+  {
+    "id": "taxes",
+    "label": "Taxes",
+    "href": "/taxes",
+    "group": "library",
+    "section": "Papers & money",
+    "glyph": "form",
+    "hint": "Returns and tax documents",
+    "collection": true,
+    "find": {
+      "words": [
+        "taxes",
+        "tax",
+        "tax returns"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "insurance",
+    "label": "Insurance",
+    "href": "/insurance",
+    "group": "library",
+    "section": "Papers & money",
+    "glyph": "umbrella",
+    "hint": "Policies and coverage",
+    "collection": true,
+    "find": {
+      "words": [
+        "insurance",
+        "policy",
+        "policies",
+        "coverage"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "purchases",
+    "label": "Purchases",
+    "href": "/purchases",
+    "group": "library",
+    "section": "Papers & money",
+    "glyph": "receipt",
+    "hint": "Orders and receipts",
+    "collection": true,
+    "find": {
+      "words": [
+        "purchases",
+        "what did we buy",
+        "receipts",
+        "orders"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "texts",
+    "label": "Texts",
+    "href": "/texts",
+    "group": "library",
+    "section": "Messages & notes",
+    "glyph": "chat",
+    "hint": "Text message threads",
+    "collection": true,
+    "find": {
+      "words": [
+        "texts",
+        "messages",
+        "text messages"
+      ]
+    },
+    "from": [],
+    "pages": [
+      {
+        "id": "messages-pair",
+        "label": "Pair Messages",
+        "href": "/messages/pair",
+        "glyph": "chat",
+        "hint": "Pair Google Messages with Deck",
+        "find": {
+          "words": [
+            "pair"
+          ]
+        },
+        "from": [],
+        "via": "menu"
+      },
+      {
+        "id": "whatsapp-pair",
+        "label": "Pair WhatsApp",
+        "href": "/whatsapp/pair",
+        "glyph": "chat",
+        "hint": "Link WhatsApp to Deck",
+        "find": {
+          "words": [
+            "pair",
+            "whatsapp"
+          ]
+        },
+        "from": [],
+        "via": "menu"
+      }
+    ]
+  },
+  {
+    "id": "notes",
+    "label": "Notes",
+    "href": "/notes",
+    "group": "library",
+    "section": "Messages & notes",
+    "glyph": "note",
+    "hint": "Notes you’ve written",
+    "collection": true,
+    "find": {
+      "words": [
+        "notes",
+        "note"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "clusters",
+    "label": "Clusters",
+    "href": "/clusters",
+    "group": "library",
+    "section": "Collections",
+    "glyph": "cluster",
+    "hint": "Documents grouped by topic",
+    "collection": true,
+    "native": false,
+    "find": {
+      "records": [
+        "cluster"
+      ],
+      "words": [
+        "document groups"
+      ]
+    },
+    "from": [
+      "person",
+      "document"
+    ]
+  },
+  {
+    "id": "accounts",
+    "label": "Sign-ins",
+    "href": "/accounts",
+    "group": "library",
+    "section": "Access",
+    "glyph": "password",
+    "hint": "Shared logins and accounts",
+    "collection": true,
+    "find": {
+      "words": [
+        "logins",
+        "sign ins",
+        "signins",
+        "accounts"
+      ]
+    },
+    "from": []
+  },
+  {
+    "id": "security",
+    "label": "Security",
+    "href": "/security",
+    "group": "library",
+    "section": "Access",
+    "glyph": "shield",
+    "hint": "Secrets, tokens and exposure",
+    "native": false,
+    "find": {
+      "words": [
+        "secrets",
+        "tokens"
+      ]
+    },
+    "from": []
+  }
+]
