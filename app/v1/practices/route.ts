@@ -11,9 +11,22 @@ import { normalizePracticeName, practiceIdentity } from "@/lib/practice";
 import { getPracticeSpellingsMap } from "@/lib/queries/wellness";
 import { getTimezone } from "@/lib/settings";
 import { revalidateRoute } from "@/lib/revalidate";
+import { devicePractices } from "@/lib/device-practices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function GET(req: Request): Promise<Response> {
+  const auth = await authenticateDevice(req, "allos:read");
+  if (!auth.ok) return refuse(auth);
+  return Response.json(
+    {
+      profile: auth.profile.id,
+      practices: await devicePractices(auth.profile.id),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
 
 export async function POST(req: Request): Promise<Response> {
   const auth = await authenticateDevice(req, "allos:log");
