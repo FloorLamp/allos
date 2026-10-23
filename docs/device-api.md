@@ -53,7 +53,8 @@ Days: profile-local; `at`: instant.
 
 Practices: `habitat:<entity>:<start>` → entity `attributes.thing_id` UUID
 → `{id,url:"/things#<UUID>"}`; unlinked: omit `thing`.
-`HABITAT_URL` (mount included), `HABITAT_TOKEN` (`habitat:read`): uncached
+Liftoff `habitat-url`/`habitat-token`: `HABITAT_URL` (mounted)/`HABITAT_TOKEN`
+(`habitat:read`), uncached
 `/v1/entities`; unconfigured/unavailable: no links. Local: `practice:<id>`.
 
 `ALLOWED_DEV_ORIGINS`: CSV hosts.
