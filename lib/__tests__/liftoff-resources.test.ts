@@ -41,7 +41,7 @@ it("binds Allos resources while preserving other host scope under concurrent run
       },
       encoding: "utf8" as const,
     };
-    const step = resolve("deploy/steps/0008-resource-bindings.sh");
+    const step = resolve("deploy/steps/0009-resource-bindings-atomic.sh");
     expect(spawnSync("sh", [step, "check"], options).status).toBe(1);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(original);
     const { spawn } = await import("node:child_process");
@@ -115,6 +115,57 @@ it("repairs the host manifest without replacing host settings", () => {
     expect(JSON.parse(repaired)).toEqual({ ...app, timeout: 180 });
     expect(run("run").status).toBe(0);
     expect(readFileSync(join(dir, "liftoff.json"), "utf8")).toBe(repaired);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it("binds exactly the declared secrets in the host scope, keeping other apps and fields", () => {
+  const dir = makeTmpDir("resource-bindings");
+  const step = resolve("deploy/steps/0008-resource-bindings.sh");
+  try {
+    writeFileSync(join(dir, "liftoff.json"), JSON.stringify(app));
+    const scope = join(dir, "resources.json");
+    const other = {
+      secrets: { immich: { kind: "env", source: "/x/.env", key: "K" } },
+    };
+    const data = {
+      database: { kind: "sqlite", source: "/opt/health/data/allos.db" },
+    };
+    const ai = {
+      kind: "env",
+      source: "/opt/compose/allos/.env",
+      key: "ANTHROPIC_API_KEY",
+    };
+    writeFileSync(
+      scope,
+      JSON.stringify({
+        version: 1,
+        apps: { kinfolk: other, allos: { data, secrets: { ai } } },
+      })
+    );
+    const library = join(dir, "step-lib.sh");
+    writeFileSync(library, ":\n");
+    const run = (mode: string) =>
+      spawnSync("sh", [step, mode], {
+        cwd: dir,
+        env: { ...process.env, STEP_LIB: library, STEP_RESOURCES: scope },
+        encoding: "utf8",
+      });
+    expect(run("check").status).toBe(1);
+    expect(run("run").status).toBe(0);
+    expect(run("check").status).toBe(0);
+    const bound = JSON.parse(readFileSync(scope, "utf8"));
+    expect(bound.apps.kinfolk).toEqual(other);
+    expect(bound.apps.allos.data).toEqual(data);
+    expect(Object.keys(bound.apps.allos.secrets).toSorted()).toEqual(
+      app.resources.secrets.map((s: { name: string }) => s.name).toSorted()
+    );
+    expect(bound.apps.allos.secrets["habitat-token"]).toEqual({
+      kind: "env",
+      source: "/opt/compose/allos/.env",
+      key: "HABITAT_TOKEN",
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1,61 +1,17 @@
 #!/bin/sh
-# Bind the declared Allos environment resources after the manifest update (FP-3348).
-# area: resource-bindings
-# after: 0007-habitat-resources
-# provides: secrets.ai secrets.allowed-dev-origins secrets.capcom-url secrets.deck-origin secrets.deck-ui-channel secrets.habitat-token
+# Bind every declared secret in Allos's host scope from its .env and drop the unread `ai` binding (houston liftoff/allos/deploy-failed; #6113, #6110, #6186).
+# area: habitat-read
+# provides: secrets.habitat-url secrets.habitat-token secrets.deck-origin secrets.capcom-url secrets.deck-ui-channel secrets.allowed-dev-origins secrets.ai
 set -eu
 . "$STEP_LIB"
-python3 - "$1" "$STEP_RESOURCES" "$STEP_COMPOSE/.env" <<'PY'
-import fcntl
-import json
-import os
-import signal
-import sys
-import tempfile
-from pathlib import Path
-
-mode, path, source = sys.argv[1:]
-if mode not in ('check', 'run'):
-    sys.exit(2)
-bindings = {
-    name: {'kind': 'env', 'source': source, 'key': key}
-    for name, key in (
-        ('allowed-dev-origins', 'ALLOWED_DEV_ORIGINS'),
-        ('capcom-url', 'CAPCOM_URL'),
-        ('deck-origin', 'DECK_ORIGIN'),
-        ('deck-ui-channel', 'DECK_UI_CHANNEL'),
-        ('habitat-token', 'HABITAT_TOKEN'),
-    )
-}
-if mode == 'check':
-    config = json.loads(Path(path).read_text())
-    secrets = config['apps']['allos']['secrets']
-    sys.exit(int('ai' in secrets or any(secrets.get(k) != v for k, v in bindings.items())))
-# Serialize writers on a stable lock file and reread inside the lock. Replace
-# atomically so other apps' resource gates never read a partial policy.
-with open(path + '.lock', 'a') as lock:
-    signal.alarm(10)
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    signal.alarm(0)
-    policy = Path(path)
-    original = policy.read_text()
-    config = json.loads(original)
-    secrets = config['apps']['allos']['secrets']
-    if 'ai' not in secrets and all(secrets.get(k) == v for k, v in bindings.items()):
-        sys.exit(0)
-    secrets.pop('ai', None)
-    secrets.update(bindings)
-    fd, candidate = tempfile.mkstemp(dir=policy.parent, prefix='.allos-resources-')
-    try:
-        with os.fdopen(fd, 'w') as output:
-            os.fchmod(output.fileno(), policy.stat().st_mode & 0o777)
-            json.dump(config, output, indent=2)
-            output.write('\n')
-        # Refuse a stale write if a writer outside this lock changed the policy.
-        if policy.read_text() != original:
-            sys.exit('STEP_ERROR: resource policy changed; retry the step')
-        os.replace(candidate, path)
-    finally:
-        if os.path.exists(candidate):
-            os.unlink(candidate)
-PY
+# Same binding shape as mothership's allos-habitat provisioning (FP-3314), which fills HABITAT_URL and HABITAT_TOKEN later.
+bindings=$(jq -c '[.resources.secrets[] | {key:.name, value:{kind:"env", source:"/opt/compose/allos/.env", key:.env}}] | from_entries' liftoff.json)
+case "$1" in
+  check) jq -e --argjson b "$bindings" '.apps.allos.secrets == $b' "$STEP_RESOURCES" >/dev/null ;;
+  run)
+    umask 077
+    jq --argjson b "$bindings" '.apps.allos.secrets = $b' "$STEP_RESOURCES" > "$STEP_RESOURCES.allos-tmp" &&
+      mv "$STEP_RESOURCES.allos-tmp" "$STEP_RESOURCES"
+    ;;
+  *) exit 2 ;;
+esac
