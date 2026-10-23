@@ -39,7 +39,10 @@ import { GET as ask } from "@/app/v1/ask/route";
 import { GET as board } from "@/app/v1/board/route";
 import { POST as boardDose } from "@/app/v1/board/[doseId]/route";
 import { GET as readings, POST as logReading } from "@/app/v1/readings/route";
-import { POST as logPractice } from "@/app/v1/practices/route";
+import {
+  GET as practices,
+  POST as logPractice,
+} from "@/app/v1/practices/route";
 import { createWellnessPractice } from "@/lib/practice-store";
 import { deletePracticeSession } from "@/lib/practice-log";
 import { setTimezone } from "@/lib/settings";
@@ -75,6 +78,7 @@ let broken = false;
 // `failing`: a well-formed device answer under a non-200 status (boarding erroring
 // mid-answer) must still fail closed: the status is checked, not only the body.
 let failing = false;
+let habitatResponse = () => Response.json([]);
 
 function credential(answer: Answer): string {
   const token = `dev_${randomBytes(32).toString("base64url")}`;
@@ -87,6 +91,10 @@ beforeAll(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (String(_url).startsWith("http://habitat.test/")) {
+        expect(init?.headers).toEqual({ Authorization: "Bearer fake-habitat" });
+        return habitatResponse();
+      }
       if (down) throw new Error("ECONNREFUSED");
       if (broken) return new Response("boom", { status: 500 });
       const { sha256 } = JSON.parse(String(init?.body)) as { sha256: string };
@@ -1322,5 +1330,90 @@ describe("POST /v1/practices", () => {
     );
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error });
+  });
+});
+
+describe("GET /v1/practices", () => {
+  it("reads local days and joins only linked Habitat entities, through device and session grants", async () => {
+    setTimezone(mine.profileId, "America/New_York");
+    vi.stubEnv("HABITAT_URL", "http://habitat.test");
+    vi.stubEnv("HABITAT_TOKEN", "fake-habitat");
+    const id = "12345678-1234-4234-8234-123456789abc";
+    habitatResponse = () =>
+      Response.json([
+        { id: "switch.panel", attributes: { thing_id: id } },
+        { id: "switch.unlinked", attributes: {} },
+        { id: "switch.invalid", attributes: { thing_id: "bad" } },
+      ]);
+    const keys = [
+      "habitat:switch.panel:2026-10-19T03:50:00Z",
+      "habitat:switch.unlinked:123",
+      "habitat:switch.invalid:123",
+      "manual-test",
+    ];
+    for (const key of keys) {
+      expect(
+        (
+          await logPractice(
+            post("/v1/practices", phone, {
+              practice: "Test practice",
+              end: "2026-10-19T04:10:00Z",
+              durationMin: 20,
+              key,
+            })
+          )
+        ).status
+      ).toBe(200);
+    }
+    const result = await practices(req("/v1/practices", readOnlyScopes));
+    expect(result.headers.get("Cache-Control")).toBe("no-store");
+    const body = await json(result);
+    expect(body.profile).toBe(mine.profileId);
+    const rows = body.practices as Array<{ key: string; thing?: unknown }>;
+    expect(rows.map((row) => row.key)).toEqual(expect.arrayContaining(keys));
+    expect(rows.find((row) => row.key === keys[0])).toEqual({
+      key: keys[0],
+      name: "Test practice",
+      logged: "2026-10-18",
+      thing: { id, url: `/things#${id}` },
+    });
+    for (const key of keys.slice(1))
+      expect(rows.find((row) => row.key === key)).not.toHaveProperty("thing");
+    expect(
+      (await practices(req(`/v1/practices?profile=${theirs.profileId}`, phone)))
+        .status
+    ).toBe(403);
+    const other = await json(
+      await practices(
+        req(`/v1/practices?profile=${theirs.profileId}`, ownerDesk)
+      )
+    );
+    expect(other.practices).toEqual([]);
+    expect((await practices(req("/v1/practices", null))).status).toBe(401);
+    const logOnly = credential({ name: "pixel", scopes: ["allos:log"] });
+    expect((await practices(req("/v1/practices", logOnly))).status).toBe(403);
+    const login = makeLogin("practice-session", "admin");
+    const session = createSession(login);
+    const { GET: webPractices } = await import("@/app/api/practices/route");
+    const web = await webPractices(
+      new Request(`http://allos.test/api/practices?profile=${mine.profileId}`, {
+        headers: {
+          cookie: `${SESSION_COOKIE}=${session.token}`,
+          host: "allos.test",
+        },
+      })
+    );
+    expect(await json(web)).toEqual(body);
+    habitatResponse = () => {
+      throw new Error("offline");
+    };
+    const offline = await json(await practices(req("/v1/practices", phone)));
+    expect(offline.practices).toEqual(
+      rows.map(({ thing: _thing, ...row }) => row)
+    );
+    vi.stubEnv("HABITAT_TOKEN", "");
+    expect(await json(await practices(req("/v1/practices", phone)))).toEqual(
+      offline
+    );
   });
 });
