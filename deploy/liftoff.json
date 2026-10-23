@@ -10,6 +10,18 @@
     "version": 1,
     "secrets": [
       {
+        "name": "habitat-url",
+        "services": ["allos", "allos-notify"],
+        "env": "HABITAT_URL",
+        "required": false
+      },
+      {
+        "name": "habitat-token",
+        "services": ["allos", "allos-notify"],
+        "env": "HABITAT_TOKEN",
+        "required": false
+      },
+      {
         "name": "deck-origin",
         "services": ["allos", "allos-notify"],
         "env": "DECK_ORIGIN",
