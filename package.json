@@ -90,7 +90,7 @@
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.11.2",
     "next": "^16.4.2",
-    "nodemailer": "^10.0.15",
+    "nodemailer": "^10.1.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1",
