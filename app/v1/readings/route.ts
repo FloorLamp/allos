@@ -9,12 +9,14 @@ import { getLatestBodyMetricDated, getVitalsLatestModel } from "@/lib/queries";
 import { insertBodyMetric, insertVitals } from "@/lib/offline/writes";
 import { isPastWriteAccepted } from "@/lib/log-manifest";
 import { revalidateRoute } from "@/lib/revalidate";
+import { readingSeries, TREND_DAYS } from "@/lib/device-health-records";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // The latest readings: the body metrics (canonical kg, %, bpm) and the Latest-vitals
-// card's blood pressure, each dated by its own profile-local day.
+// card's blood pressure, each dated by its own profile-local day, with its trend:
+// the series' last TREND_DAYS days with data, oldest first.
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateDevice(req, "allos:read");
   if (!auth.ok) return refuse(auth);
@@ -24,7 +26,13 @@ export async function GET(req: Request): Promise<Response> {
   const body = (kind: "weight" | "body_fat" | "resting_hr", unit: string) => {
     const latest = getLatestBodyMetricDated(pid, kind);
     if (latest)
-      readings.push({ kind, value: latest.value, unit, date: latest.date });
+      readings.push({
+        kind,
+        value: latest.value,
+        unit,
+        date: latest.date,
+        trend: readingSeries(pid, kind, TREND_DAYS).points,
+      });
   };
   body("weight", "kg");
   body("body_fat", "%");
@@ -38,6 +46,7 @@ export async function GET(req: Request): Promise<Response> {
       unit: "mmHg",
       date: bp.date,
       freshness: bp.freshness,
+      trend: readingSeries(pid, "blood_pressure", TREND_DAYS).points,
     });
   return Response.json(
     { profile: pid, day, readings },

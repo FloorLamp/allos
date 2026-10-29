@@ -47,6 +47,8 @@ import { createWellnessPractice } from "@/lib/practice-store";
 import { deletePracticeSession } from "@/lib/practice-log";
 import { setTimezone } from "@/lib/settings";
 import { GET as labs } from "@/app/v1/labs/route";
+import { GET as marker } from "@/app/v1/marker/route";
+import { GET as readingSeries } from "@/app/v1/readings/series/route";
 
 import * as healthMedications from "@/app/v1/health/medications/route";
 import * as healthDocuments from "@/app/v1/health/documents/route";
@@ -393,6 +395,13 @@ describe("/v1 — each route's shape", () => {
         unit: "mg/dL",
         date: mine.todayStr,
         freshness: "current",
+        trend: [
+          {
+            date: mine.todayStr,
+            value: mine.glucoseValueNum,
+            unit: "mg/dL",
+          },
+        ],
       }),
     ]);
   });
@@ -509,6 +518,9 @@ describe("/v1 — each route's shape", () => {
       value: expect.closeTo(81.65, 1),
       unit: "kg",
       date: mine.todayStr,
+      trend: expect.arrayContaining([
+        { date: mine.todayStr, value: expect.closeTo(81.65, 1) },
+      ]),
     });
 
     const empty = await logReading(post("/v1/readings", phone, {}));
@@ -521,6 +533,82 @@ describe("/v1 — each route's shape", () => {
       post("/v1/readings", reader, { weight: 80 })
     );
     expect(readOnly.status).toBe(403);
+  });
+
+  it("/v1/marker reads one marker's readings, range, source document and panel", async () => {
+    const doc = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, extraction_status, doc_type, source, document_date)
+           VALUES (?, 'old-labs.pdf', '', 'done', 'lab', 'Example Lab', '2024-03-01')`
+        )
+        .run(mine.profileId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, value_num, reference_range, flag, document_id)
+       VALUES (?, '2024-03-01', 'lab', 'Glucose', '88', 'mg/dL', 'Glucose', 88, '70-99', 'normal', ?)`
+    ).run(mine.profileId, doc);
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, value_num)
+       VALUES (?, '2024-03-01', 'lab', 'Hemoglobin A1c', '5.4', '%', 'Hemoglobin A1c', 5.4)`
+    ).run(mine.profileId);
+
+    const res = await marker(req("/v1/marker?name=glucose", phone));
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.name).toBe("Glucose");
+    const points = body.points as {
+      date: string;
+      value: number;
+      document: unknown;
+    }[];
+    expect(points.map((p) => [p.date, p.value])).toEqual([
+      ["2024-03-01", 88],
+      [mine.todayStr, mine.glucoseValueNum],
+    ]);
+    expect(points[0].document).toEqual({
+      key: `document:${doc}`,
+      title: "Example Lab",
+    });
+    expect(body.latest).toEqual(
+      expect.objectContaining({ date: mine.todayStr })
+    );
+    expect(body.documents).toEqual([
+      { key: `document:${doc}`, title: "Example Lab", date: "2024-03-01" },
+    ]);
+    expect(body.related).toEqual([
+      expect.objectContaining({
+        name: "Hemoglobin A1c",
+        value: "5.4",
+        unit: "%",
+      }),
+    ]);
+
+    expect((await marker(req("/v1/marker?name=nothing", phone))).status).toBe(
+      404
+    );
+    expect(
+      (await marker(req("/v1/marker?name=glucose", stranger))).status
+    ).toBe(403);
+  });
+
+  it("/v1/readings/series reads a reading's days oldest first and refuses unknown kinds", async () => {
+    const body = await json(
+      await readingSeries(req("/v1/readings/series?kind=weight", phone))
+    );
+    expect(body.kind).toBe("weight");
+    expect(body.unit).toBe("kg");
+    const points = body.points as { date: string; value: number }[];
+    expect(points.length).toBeGreaterThan(0);
+    expect(points.map((p) => p.date)).toEqual(
+      [...points.map((p) => p.date)].sort()
+    );
+    expect(
+      (await readingSeries(req("/v1/readings/series?kind=mood", phone))).status
+    ).toBe(400);
   });
 });
 
@@ -1219,6 +1307,27 @@ describe("Deck Health workflow forms", () => {
         )
       ).status
     ).toBe(400);
+  });
+  it("reads one workflow item by id, none for another profile's, and refuses a malformed id", async () => {
+    const at = (id: string, token = phone) =>
+      healthMedications.GET(
+        req(
+          `/v1/health/medications?profile=${mine.profileId}&id=${encodeURIComponent(id)}`,
+          token
+        )
+      );
+    const one = (await (await at(`intake:${mine.medicationId}`)).json()) as {
+      items: WorkflowItem[];
+      next: null;
+    };
+    expect(one.items.map((i) => i.id)).toEqual([`intake:${mine.medicationId}`]);
+    expect(one.next).toBeNull();
+    const other = (await (
+      await at(`intake:${theirs.medicationId}`)
+    ).json()) as { items: WorkflowItem[] };
+    expect(other.items).toEqual([]);
+    expect((await at("intake:new")).status).toBe(400);
+    expect((await at("trash:1")).status).toBe(400);
   });
   it("serves the same forms via a session twin and refuses cross-origin writes", async () => {
     const login = makeLogin("workflow-session", "admin");

@@ -48,7 +48,8 @@ export async function healthWorkflowRequest(
             actor(),
             kind,
             params.get("q") ?? "",
-            params.get("cursor") ?? ""
+            params.get("cursor") ?? "",
+            params.get("id") ?? ""
           )
         ),
         { headers: { "Cache-Control": "no-store" } }
