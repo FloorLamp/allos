@@ -16,7 +16,11 @@ import { getBiomarkerSeries } from "@/lib/queries/medical/biomarkers";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { panelLabel } from "@/lib/biomarker-panels";
 import { biomarkerFamily } from "@/lib/canonical-name";
-import { parseReferenceRange, referenceRange } from "@/lib/reference-range";
+import {
+  optimalBand,
+  parseReferenceRange,
+  referenceRange,
+} from "@/lib/reference-range";
 import {
   getProfileAgeOn,
   getProfileReproductiveStatus,
@@ -44,6 +48,13 @@ export interface MarkerDetail {
     text: string | null;
     source: "lab" | "standard";
   } | null;
+  // The band the `non-optimal-*` flags judge against, in the definition's unit;
+  // only the bound its direction reads (higher_better: low, lower_better: high).
+  optimal: {
+    low: number | null;
+    high: number | null;
+    unit: string | null;
+  } | null;
   panel: string | null;
   provider: string | null;
   points: MarkerPoint[];
@@ -60,7 +71,8 @@ export interface MarkerDetail {
 /**
  * One marker (a find row's `clinical-result:<name>`, matched case-insensitively on
  * its canonical name): every reading oldest first, its newest reading's range (the
- * lab's own reported range, else the standard one for the profile), its source
+ * lab's own reported range, else the standard one for the profile), its optimal
+ * band for the profile (null when the definition has none), its source
  * documents and the panel's other current readings. Null when the profile has none.
  */
 export function markerDetail(
@@ -97,6 +109,9 @@ export function markerDetail(
       r.document_id != null ? (docRef.get(r.document_id) ?? null) : null,
   });
   const latest = series[series.length - 1];
+  const definition = getCanonicalResultDefinition(canonical);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAgeOn(profileId, latest.date);
   const reported = parseReferenceRange(latest.reference_range);
   let range: MarkerDetail["range"] = null;
   if (latest.reference_range?.trim())
@@ -108,9 +123,9 @@ export function markerDetail(
     };
   else {
     const standard = referenceRange(
-      getCanonicalResultDefinition(canonical),
-      getProfileSex(profileId),
-      getProfileAgeOn(profileId, latest.date),
+      definition,
+      sex,
+      age,
       getProfileReproductiveStatus(profileId)
     );
     if (standard.low != null || standard.high != null)
@@ -121,6 +136,14 @@ export function markerDetail(
         source: "standard",
       };
   }
+  const band = optimalBand(definition, sex, age);
+  const optimalLow = definition?.direction === "lower_better" ? null : band.low;
+  const optimalHigh =
+    definition?.direction === "higher_better" ? null : band.high;
+  const optimal =
+    optimalLow != null || optimalHigh != null
+      ? { low: optimalLow, high: optimalHigh, unit: definition?.unit ?? null }
+      : null;
   const siblings = getPanelSiblings(profileId, canonical);
   const siblingNames = new Set(
     (siblings?.names ?? []).map((n) => n.toLowerCase())
@@ -152,6 +175,7 @@ export function markerDetail(
     name: canonical,
     latest: point(latest),
     range,
+    optimal,
     panel: siblings ? panelLabel(siblings.panelId) : (latest.panel ?? null),
     provider: latest.provider_name ?? null,
     points: series.map(point),

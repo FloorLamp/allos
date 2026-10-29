@@ -587,6 +587,40 @@ describe("/v1 — each route's shape", () => {
       }),
     ]);
 
+    // the optimal band its non-optimal flags judge against, only the bound its
+    // direction reads
+    const definition = db
+      .prepare(
+        "SELECT optimal_low, optimal_high, direction FROM canonical_result_definitions WHERE name = 'Glucose'"
+      )
+      .get() as Record<string, unknown>;
+    const band = db.prepare(
+      "UPDATE canonical_result_definitions SET optimal_low = ?, optimal_high = ?, direction = ? WHERE name = 'Glucose'"
+    );
+    try {
+      band.run(75, 90, "in_range");
+      const banded = await json(
+        await marker(req("/v1/marker?name=glucose", phone))
+      );
+      expect(banded.optimal).toEqual({ low: 75, high: 90, unit: "mg/dL" });
+      band.run(75, 90, "higher_better");
+      expect(
+        (await json(await marker(req("/v1/marker?name=glucose", phone))))
+          .optimal
+      ).toEqual({ low: 75, high: null, unit: "mg/dL" });
+      band.run(null, null, "in_range");
+      expect(
+        (await json(await marker(req("/v1/marker?name=glucose", phone))))
+          .optimal
+      ).toBeNull();
+    } finally {
+      band.run(
+        definition.optimal_low,
+        definition.optimal_high,
+        definition.direction
+      );
+    }
+
     expect((await marker(req("/v1/marker?name=nothing", phone))).status).toBe(
       404
     );
