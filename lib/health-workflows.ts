@@ -865,8 +865,16 @@ export function listHealthWorkflow(
   actor: WorkflowActor,
   kind: HealthWorkflow,
   q: string,
-  cursor: string
+  cursor: string,
+  id = ""
 ) {
+  // One item by its id (a record page's read): itself, or none.
+  if (id) {
+    const match = new RegExp(`^${prefixes[kind]}:([1-9][0-9]*)$`).exec(id);
+    if (!match || q || cursor) fail("id");
+    const e = readers[kind](actor, Number(match[1]));
+    return { items: e ? [e.item] : [], next: null };
+  }
   const offset = cursor
     ? Number(Buffer.from(cursor, "base64url").toString("utf8"))
     : 0;
