@@ -249,5 +249,6 @@
   "20260916-care-plan-metric-sample-links.ts": "1d52322946ca2befcdb6079fec1a8beca18f6ece07dc648e7e065442c23da1c3",
   "20260922-food-log-event-properties.ts": "09e03c159ef03760bf8576e43024d2d23eb32bd7692c59054553b568f8b5954b",
   "20261015-device-logins.ts": "91f57605145f7e5626e672b58713d731779985bbd66d6693b6c038cc2b976eb2",
-  "20261016-portal-success-index.ts": "dd492b8f9498dee12764cdb88c220f95cf752de35404ccf8e286e39b60aa1348"
+  "20261016-portal-success-index.ts": "dd492b8f9498dee12764cdb88c220f95cf752de35404ccf8e286e39b60aa1348",
+  "20261106-sync-success-index.ts": "6120a0c6a78780bfb85509f5067a7c54ccde2dadba6b45cd5e1b552b46cae454"
 }
