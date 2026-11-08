@@ -1588,7 +1588,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
   // instant rather than the wall clock, so the reading cannot pass by coincidence.
   it("states each administration time, in the profile's timezone", async () => {
     const pid = newProfile("Clock Cleo");
-    setTimezone(pid, "America/New_York");
+    setTimezone(pid, "Pacific/Honolulu");
     const a = seedDose(pid, "Cleo A");
     const b = seedDose(pid, "Cleo B");
     const c = seedDose(pid, "Cleo C");
@@ -1601,15 +1601,16 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     markDoseTaken(pid, b.doseId, b.itemId, date, "page");
     markDoseTaken(pid, c.doseId, c.itemId, date, "page");
     markDoseSkipped(pid, d.doseId, d.itemId, date, "page");
-    // 12:12 UTC is 08:12 in New York — the whole point of formatting in the profile's
-    // zone rather than the host's. A and B share the displayed minute; C is later.
+    // 12:12 UTC is 02:12 in Honolulu — the whole point of formatting in the profile's
+    // zone rather than the host's (a zone without DST, so the hour holds all year). A and
+    // B share the displayed minute; C is later.
     stampDoseTakenAt(pid, a.doseId, `${date} 12:12:04`);
     stampDoseTakenAt(pid, b.doseId, `${date} 12:12:51`);
     stampDoseTakenAt(pid, c.doseId, `${date} 15:45:00`);
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "Cleo A, Cleo B taken 08:12 · Cleo C taken 11:45 · Cleo D skipped."
+      "Cleo A, Cleo B taken 02:12 · Cleo C taken 05:45 · Cleo D skipped."
     );
   });
 
@@ -1625,7 +1626,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
   // spans two rendered dates, so both clauses must carry one.
   it("dates a corrected dose by the instant it names, not by its adherence day", async () => {
     const pid = newProfile("Crossing Cora");
-    setTimezone(pid, "America/New_York");
+    setTimezone(pid, "Pacific/Honolulu");
     const a = seedDose(pid, "Cora A");
     const b = seedDose(pid, "Cora B");
     seedLoginTelegram(pid, "5552869");
@@ -1634,16 +1635,16 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     const date = today(pid);
     markDoseTaken(pid, a.doseId, a.itemId, date, "page");
     markDoseTaken(pid, b.doseId, b.itemId, date, "page");
-    // Both rows keep TODAY as their adherence date. 03:50Z on that date is 23:50 the
-    // PREVIOUS evening in New York — the shape a correction back across midnight leaves.
+    // Both rows keep TODAY as their adherence date. 03:50Z on that date is 17:50 the
+    // PREVIOUS evening in Honolulu — the shape a correction back across midnight leaves.
     stampDoseTakenAt(pid, a.doseId, `${date} 03:50:00`);
     stampDoseTakenAt(pid, b.doseId, `${date} 12:12:00`);
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const yesterday = shiftDateStr(date, -1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      `Cora A taken ${formatMonthDay(yesterday, DEFAULT_FORMAT_PREFS)}, 23:50 · ` +
-        `Cora B taken ${formatMonthDay(date, DEFAULT_FORMAT_PREFS)}, 08:12.`
+      `Cora A taken ${formatMonthDay(yesterday, DEFAULT_FORMAT_PREFS)}, 17:50 · ` +
+        `Cora B taken ${formatMonthDay(date, DEFAULT_FORMAT_PREFS)}, 02:12.`
     );
   });
 
@@ -1651,7 +1652,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     // The older-data shape: `occurred_at` postdates these rows, so the read COALESCEs
     // to `recorded_at`. The receipt states a time either way, and never guesses one.
     const pid = newProfile("Legacy Lena");
-    setTimezone(pid, "America/New_York");
+    setTimezone(pid, "Pacific/Honolulu");
     const a = seedDose(pid, "Lena A");
     seedLoginTelegram(pid, "5552868");
     await sendMorningReminder(pid);
@@ -1662,7 +1663,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "Lena A taken 08:12."
+      "Lena A taken 02:12."
     );
   });
 
