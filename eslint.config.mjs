@@ -1111,8 +1111,6 @@ const config = [
       ".claude/worktrees/",
       ".next/",
       ".next-demo/",
-      // Deck's web UI, vendored byte for byte (scripts/deck-ui.mjs).
-      "public/deck-ui/",
       "node_modules/",
       "data/",
       "coverage/",

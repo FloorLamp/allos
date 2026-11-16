@@ -61,9 +61,8 @@ Liftoff `habitat-url`/`habitat-token`: `HABITAT_URL` (mounted)/`HABITAT_TOKEN`
 
 `ALLOWED_DEV_ORIGINS`: CSV hosts.
 
-`/health`: admin-only deck-ui mount/CSP. `DECK_BASE_PATH`:
-page/module/assets/API (empty `/`). `/deck/health` → `DECK_ORIGIN` + mount.
-Vendor: `DECK_UI_CHANNEL=… node scripts/deck-ui.mjs <version>`; `lib/deck-ui-pin.json`.
+Deck serves the Health page; Allos serves its root `/api` session twins through
+Deck’s `/allos/api` proxy.
 
 [Boarding](https://github.com/FloorLamp/spaceport/blob/main/shared/backend/boarding-browser-sessions.md)
 `/owner`: HTTPS `DECK_ORIGIN`; TTL 10s. Sole admin:

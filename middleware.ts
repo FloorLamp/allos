@@ -10,17 +10,8 @@ import {
   sessionCookieOptions,
   shouldSlideSessionCookie,
 } from "./lib/session-cookie";
-import {
-  buildCsp,
-  generateNonce,
-  isDeckNavPath,
-  isSelfFramedPath,
-} from "./lib/csp";
-import {
-  deckBasePath,
-  deckDestination,
-  isPublicPath,
-} from "./lib/public-paths";
+import { buildCsp, generateNonce, isSelfFramedPath } from "./lib/csp";
+import { isPublicPath } from "./lib/public-paths";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
 // this only checks for the *presence* of a session cookie: it bounces obviously
@@ -93,17 +84,7 @@ function withSlidingCookie(res: NextResponse, token: string): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
-  const { pathname: externalPath, search } = req.nextUrl;
-  if (externalPath === "/deck/health") {
-    const target = new URL(
-      deckBasePath() || "/",
-      process.env.DECK_ORIGIN || req.nextUrl.origin
-    );
-    target.search = search;
-    return NextResponse.redirect(target, 301);
-  }
-  const destination = deckDestination(externalPath);
-  const pathname = destination ?? externalPath;
+  const { pathname, search } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   // See withSlidingCookie: sliding the cookie on a POST makes that Server Action
   // response a page-refreshing one, so a non-navigation only slides once the
@@ -172,20 +153,14 @@ export function middleware(req: NextRequest) {
       );
     }
     const url = req.nextUrl.clone();
-    const health = isDeckNavPath(pathname);
-    url.pathname = health ? "/boarding/sign-in" : "/login";
+    url.pathname = "/login";
     url.search = "";
-    url.searchParams.set(health ? "to" : "next", externalPath + search);
+    url.searchParams.set("next", pathname + search);
     return withCsp(NextResponse.redirect(url));
   }
 
-  const target = req.nextUrl.clone();
-  target.pathname = pathname;
-  const res = destination
-    ? NextResponse.rewrite(target, passNonce)
-    : NextResponse.next(passNonce);
-  const out = token && slides ? withSlidingCookie(res, token) : res;
-  return isDeckNavPath(pathname) ? out : withCsp(out);
+  const res = NextResponse.next(passNonce);
+  return withCsp(token && slides ? withSlidingCookie(res, token) : res);
 }
 
 export const config = {
