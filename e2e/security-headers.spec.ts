@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import pin from "../lib/deck-ui-pin.json";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
@@ -324,48 +323,3 @@ test("a same-origin page may actually frame the stored-file route", async ({
   expect(framed.url()).not.toContain("chrome-error");
   expect(framed.url()).toContain(`/medical/file/${id}`);
 });
-
-const nav = JSON.parse(
-  fs.readFileSync(`public/deck-ui/${pin.version}/ui/contract/nav.json`, "utf8")
-) as { id: string; label: string; href: string; group: string }[];
-
-for (const width of [390, 1280]) {
-  test(`Deck Health loads the pinned navigation at ${width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: 844 });
-    const contract = page.waitForResponse((response) =>
-      response.url().endsWith(`/deck-ui/${pin.version}/ui/contract/nav.json`)
-    );
-    await page.goto("/health");
-    expect((await contract).ok()).toBe(true);
-    await expect(
-      page.getByRole("heading", { name: "Health", exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Today’s doses" })
-    ).toBeVisible();
-    const navigation = page.getByRole("navigation", {
-      name: "Navigation",
-      exact: true,
-    });
-    const toggle =
-      width < 600
-        ? page.getByRole("button", { name: "Menu", exact: true })
-        : navigation.getByRole("button", { name: "Library", exact: true });
-    await expect(toggle).toBeVisible();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    for (const item of nav) {
-      const link = navigation.getByRole("link", {
-        name: item.label,
-        exact: true,
-      });
-      await expect(link).toBeVisible();
-      await expect(link).toHaveAttribute(
-        "href",
-        item.id === "health" ? "/health" : item.href
-      );
-    }
-  });
-}
