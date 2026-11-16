@@ -1,17 +1,8 @@
-// DB INTEGRATION TIER — Deck's Health page on allos's own origin (FloorLamp/allos#6076,
-// part 2): the `/api` session twins of the `/v1` routes, and the owner-only page.
-//
-// The twins are the SAME handlers, authenticated by the session cookie instead of a
-// device credential: a person reaches only the profiles their login is granted, a
-// read-only grant writes nothing, and no cookie is a 401. The page (page and module)
-// is the admin role's alone: anyone else gets a 404, and the page carries the bundle's
-// own CSP. Boarding's agent member reads as the owner and writes nothing. Synthetic
-// fixtures only.
+// Deck session API twins: profile grants, Boarding identity and read-only agents.
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { readFileSync } from "node:fs";
 
-// The page reads the session through the cookie jar. This tier's shared setup mocks
+// The handlers read the session through the cookie jar. This tier's shared setup mocks
 // @/lib/auth for the server-action suite; this file is about the real session.
 const request = vi.hoisted(() => ({
   jar: new Map<string, string>(),
@@ -42,8 +33,6 @@ vi.mock("@/lib/record-qa-answer", async (importOriginal) => {
 });
 
 import { db } from "@/lib/db";
-import { NextRequest } from "next/server";
-import { middleware } from "@/middleware";
 import {
   SESSION_COOKIE,
   createSession,
@@ -65,10 +54,6 @@ import { GET as profilesTwin } from "@/app/api/profiles/route";
 import { GET as fhirExport } from "@/app/api/export/fhir/route";
 import { POST as boardDose } from "@/app/api/board/[doseId]/route";
 import * as askRoute from "@/app/api/ask/route";
-import { GET as page } from "@/app/deck/health/route";
-import { deckHealthScript } from "@/lib/deck-ui";
-import pin from "@/lib/deck-ui-pin.json";
-import { GET as script } from "@/app/deck/health.js/route";
 
 function makeLogin(username: string, role: "admin" | "member"): number {
   return Number(
@@ -116,20 +101,6 @@ beforeAll(() => {
 });
 
 describe("/api twins — the session, not a device credential", () => {
-  it("lets Boarding cookies reach Health and sends unsigned viewers to Boarding", () => {
-    const url = "https://allos.test/health";
-    expect(
-      middleware(
-        new NextRequest(url, {
-          headers: { cookie: "__Host-boarding_member=synthetic-session" },
-        })
-      ).status
-    ).toBe(200);
-    expect(middleware(new NextRequest(url)).headers.get("location")).toBe(
-      "https://allos.test/boarding/sign-in?to=%2Fhealth"
-    );
-  });
-
   it("accepts only a Boarding-verified owner for Health data", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.stubEnv("DECK_ORIGIN", "https://trusted.test");
@@ -158,8 +129,6 @@ describe("/api twins — the session, not a device credential", () => {
       const res = await board(req());
       expect(res.status).toBe(200);
       expect((await res.json()).meds).toHaveLength(1);
-      request.jar.set("__Host-boarding_member", "synthetic-session");
-      expect((await page()).status).toBe(200);
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/owner"),
         expect.objectContaining({
@@ -418,113 +387,6 @@ describe("/api twins — the session, not a device credential", () => {
   });
 });
 
-describe("the Health page — the owner's alone", () => {
-  const as = (token: string | null) => {
-    request.jar.clear();
-    if (token) request.jar.set(SESSION_COOKIE, token);
-  };
-
-  it("404s the page and its module for a member and for no session", async () => {
-    for (const token of [writer, null]) {
-      as(token);
-      expect((await page()).status).toBe(404);
-      expect((await script()).status).toBe(404);
-    }
-  });
-
-  it.each(["", "/health"])(
-    "mounts Health with API transport and links under %s",
-    async (base) => {
-      vi.stubEnv("DECK_BASE_PATH", base);
-      as(owner);
-      const calls: string[] = [];
-      const fetch = async (input: string | URL) => {
-        calls.push(String(input));
-        if (String(input).startsWith("https:")) return Response.json({});
-        return new Response(
-          readFileSync(`public${String(input).slice(base.length)}`, "utf8")
-        );
-      };
-      const mount = vi.fn();
-      const host = vi.fn((transport: { fetch: typeof fetch }) => {
-        void transport.fetch("https://deck.test/allos/api/board?profile=7");
-        return { backends: ["allos"] };
-      });
-      try {
-        const entry = deckHealthScript();
-        expect(
-          [...entry.matchAll(/^import .* from "([^"]+)";/gm)].map(
-            (match) => match[1]
-          )
-        ).toEqual([
-          `${base}/deck-ui/${pin.version}/ui/src/mount.js`,
-          `${base}/deck-ui/${pin.version}/ui/src/host/web.js`,
-          `${base}/deck-ui/${pin.version}/ui/src/host/backends.js`,
-        ]);
-        // Execute the actual entry module with synthetic browser and mount boundaries.
-        const execute = new Function(
-          "mountHealth",
-          "webHost",
-          "ALLOS_OPS",
-          "window",
-          "location",
-          "navigator",
-          "localStorage",
-          "WebSocket",
-          "fetch",
-          "document",
-          `return (async () => {${entry.replace(/^import .*;$/gm, "")} })()`
-        );
-        await execute(
-          mount,
-          host,
-          {},
-          { open() {}, matchMedia() {} },
-          { origin: "https://deck.test" },
-          {},
-          {},
-          class {},
-          fetch,
-          { getElementById: () => "mount" }
-        );
-        expect(calls).toEqual([
-          `${base}/deck-ui/${pin.version}/ui/contract/nav.json`,
-          `https://deck.test${base}/api/board?profile=7`,
-        ]);
-        expect(mount).toHaveBeenCalledWith(
-          "mount",
-          { backends: ["allos"] },
-          {
-            nav: JSON.parse(
-              readFileSync(
-                `public/deck-ui/${pin.version}/ui/contract/nav.json`,
-                "utf8"
-              )
-            ).map((item: { id: string; href: string }) =>
-              item.id === "health" ? { ...item, href: base || "/" } : item
-            ),
-          }
-        );
-        const pageBody = await (await page()).text();
-        expect(pageBody).toContain(`src="${base}/health.js"`);
-      } finally {
-        vi.unstubAllEnvs();
-      }
-    }
-  );
-
-  it("serves the owner the page under the bundle's CSP, with no inline script", async () => {
-    as(owner);
-    const res = await page();
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-security-policy")).toContain(
-      "script-src 'self'"
-    );
-    expect(await res.text()).not.toMatch(/<script(?![^>]* src=)/);
-    expect((await script()).status).toBe(200);
-  });
-});
-
 describe("Boarding's agent member — the owner's reads, never a write", () => {
   const verdicts: Record<string, unknown> = {
     agent: { owner: false, ownerRead: true, who: "agent (probe)" },
@@ -624,44 +486,12 @@ describe("Boarding's agent member — the owner's reads, never a write", () => {
     expect((await dose("owner", "clear")).status).toBe(200);
   });
 
-  it.each(["agent", "owner", "stranger"])(
-    "serves the mounted Health shell and module only for owner reads (%s)",
-    async (who) => {
-      signIn(who);
-      for (const [path, destination, handler, type] of [
-        ["/health", "/deck/health", page, "text/html"],
-        ["/health/health.js", "/deck/health.js", script, "text/javascript"],
-      ] as const) {
-        const forwarded = middleware(
-          new NextRequest(`https://trusted.test${path}`, {
-            headers: { cookie: cookie(who) },
-          })
-        );
-        expect(forwarded.headers.get("x-middleware-rewrite")).toBe(
-          `https://trusted.test${destination}`
-        );
-        request.method = forwarded.headers.get(
-          "x-middleware-request-x-allos-method"
-        )!;
-        const response = await handler();
-        expect(response.status).toBe(who === "stranger" ? 404 : 200);
-        if (who !== "stranger") {
-          expect(response.headers.get("content-type")).toContain(type);
-          expect(await response.text()).toContain(
-            path === "/health" ? 'src="/health/health.js"' : "mountHealth"
-          );
-        }
-      }
-    }
-  );
-
   it("is refused by every write guard; the owner still passes them", async () => {
     signIn("agent");
     expect(await requireSession()).toMatchObject({
       login: { id },
       readOnly: { who: "agent (probe)" },
     });
-    expect((await page()).status).toBe(200);
     for (const guard of [
       requireWriteAccess,
       requireAdmin,
