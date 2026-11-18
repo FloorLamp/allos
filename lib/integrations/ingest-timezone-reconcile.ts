@@ -81,13 +81,13 @@ import type { NormBodyMetric } from "./normalize";
 // The three measures, each with the incoming field that states ITS instant. The stored
 // column and the parser's instant field are named together here so a fourth measure
 // cannot be added to one without the other.
-const MEASURES = [
+export const MEASURES = [
   { column: "weight_kg", instant: "weight_at" },
   { column: "body_fat_pct", instant: "body_fat_at" },
   { column: "resting_hr", instant: "resting_hr_at" },
 ] as const;
 
-type MeasureColumn = (typeof MEASURES)[number]["column"];
+export type MeasureColumn = (typeof MEASURES)[number]["column"];
 
 interface StoredRow {
   edited: number | null;

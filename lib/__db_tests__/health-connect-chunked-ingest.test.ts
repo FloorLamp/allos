@@ -223,6 +223,8 @@ describe("HC chunked ingest — orchestration (#1064)", () => {
       skipped: 0,
       details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
+      recordRefs: [],
+      deleted: [],
     };
     const res = ingestHealthConnectPayload(
       profileId,
@@ -392,6 +394,8 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
       skipped: 0,
       details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
+      recordRefs: [],
+      deleted: [],
     };
 
     let caught: unknown;

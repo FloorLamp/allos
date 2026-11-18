@@ -148,6 +148,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "re-import suppression bookkeeping (merged/deleted source-owned natural keys); operational dedup state, not health data",
   },
   {
+    table: "health_connect_record_refs",
+    why: "Health Connect record id → stored-row keys (FP-9634), so a phone deletion finds its rows; operational sync state, not health data",
+  },
+  {
     table: "document_coverage_markers",
     why: "acquirer inventory bookkeeping (#1828): the content hashes an automated client OFFERED and allos refused because it already holds those clinical entries. It is a record of an offer that was never stored — no bytes, no document, no health data — and it is re-earned the next time a client offers the same file. The records it points at round-trip through the covering document's own datasets.",
   },

@@ -73,6 +73,13 @@ const ALLOW: {
   trigger: string;
 }[] = [
   {
+    file: "lib/integrations/health-connect-deletions.ts",
+    sql: "DELETE FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?",
+    reaches: true,
+    trigger:
+      "A HEALTH CONNECT PUSH naming a deleted record id, never a zone change. It removes the day's row only when the deleted record is the reading its last measure reports (instant match) and the row is unedited. FP-9634.",
+  },
+  {
     file: "lib/integrations/ingest-timezone-reconcile.ts",
     sql: "DELETE FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?",
     reaches: true,
