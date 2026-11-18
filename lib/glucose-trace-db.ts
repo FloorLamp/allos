@@ -266,3 +266,39 @@ export function recordGlucoseTrace(
   });
   return out;
 }
+
+/**
+ * Remove one point the source deleted (FP-9634) and refresh the day it leaves, inside
+ * the caller's transaction. `sources` lists every source the point may sit under: a
+ * qualified source absorbs its bare one, so a reading stored bare may now be qualified.
+ * A day left with no points loses its derived samples too, so the two stores agree.
+ */
+export function removeGlucoseTracePoint(
+  profileId: number,
+  sources: readonly string[],
+  ts: string
+): number {
+  const zone = profileDayZone(profileId);
+  const day = localDayOf(zone, ts);
+  let removed = 0;
+  for (const source of sources) {
+    const n = db
+      .prepare(
+        "DELETE FROM glucose_trace WHERE profile_id = ? AND ts = ? AND source = ?"
+      )
+      .run(profileId, ts, source).changes;
+    if (n === 0 || !day) continue;
+    removed += n;
+    if (getGlucoseTraceDay(profileId, day, source).length > 0) {
+      recomputeDay(profileId, day, source);
+      continue;
+    }
+    const { startUtc } = localDayRange(zone, day);
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND started_at = ?
+          AND metric IN (${GLUCOSE_DERIVED_METRICS.map(() => "?").join(", ")})`
+    ).run(profileId, source, startUtc, ...GLUCOSE_DERIVED_METRICS);
+  }
+  return removed;
+}

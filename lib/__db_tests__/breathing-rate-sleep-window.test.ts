@@ -34,7 +34,11 @@
 // SYNTHETIC ONLY: fictional profiles, invented readings, no PHI.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import {
+  applyHealthConnectDeletions,
+  recordHealthConnectRefs,
+} from "@/lib/integrations/health-connect-deletions";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { getTimezone, setTimezone } from "@/lib/settings";
@@ -1276,6 +1280,38 @@ describe("deleting the carried sample frees the WHOLE link", () => {
         .get(carePlanItemId)
     ).toBeTruthy();
     expect(followUpItems(profileId, "2026-12-01")).toEqual([]);
+    expect(fkViolations().length).toBe(0);
+  });
+
+  it("frees it when Health Connect deletes the record (FP-9634)", () => {
+    const { profileId, carePlanItemId, sampleId } =
+      carriedFollowUp("HC deletion, seam");
+    const sample = db
+      .prepare(
+        "SELECT metric, origin, started_at FROM metric_samples WHERE id = ?"
+      )
+      .get(sampleId) as { metric: string; origin: string; started_at: string };
+    writeTx(() => {
+      recordHealthConnectRefs(profileId, [
+        {
+          recordId: "rr-1",
+          target: "metric_samples",
+          key: [sample.metric, sample.origin, sample.started_at],
+        },
+      ]);
+      expect(
+        applyHealthConnectDeletions(profileId, "health-connect", ["rr-1"])
+          .removed
+      ).toBe(1);
+    });
+
+    expect(followUpRow(carePlanItemId)).toEqual({
+      source_kind: null,
+      source_medical_record_id: null,
+      source_metric_sample_id: null,
+      resolved_by_medical_record_id: null,
+      resolved_by_metric_sample_id: null,
+    });
     expect(fkViolations().length).toBe(0);
   });
 
