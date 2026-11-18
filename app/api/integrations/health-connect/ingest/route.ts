@@ -27,6 +27,7 @@ import type { IngestCounts } from "@/lib/integrations/normalize";
 import {
   HealthConnectWriteError,
   ingestHealthConnectPayload,
+  type ChunkedIngestResult,
 } from "@/lib/integrations/health-connect-ingest";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { parseUtcSql } from "@/lib/date";
@@ -219,17 +220,15 @@ export async function POST(req: Request) {
   let split: UpsertCounts;
   let vitalIds: number[] = [];
   let provenance: ProvenanceEntry[] = [];
+  let deletions: ChunkedIngestResult["deletions"];
   try {
     // Chunked write path (#1064): each record type is upserted in bounded per-chunk
     // IMMEDIATE transactions, so the connection is never blocked longer than one chunk
     // and a mid-batch failure leaves the committed chunks in place (the next rolling-
     // window push re-covers the rest). Every chunk's split still folds into the ONE
     // sync event below (the #14 accounting is per-push, not per-chunk).
-    ({ counts, split, vitalIds, provenance } = ingestHealthConnectPayload(
-      INGEST_PROFILE_ID,
-      parsed,
-      HEALTH_CONNECT_ID
-    ));
+    ({ counts, split, vitalIds, provenance, deletions } =
+      ingestHealthConnectPayload(INGEST_PROFILE_ID, parsed, HEALTH_CONNECT_ID));
   } catch (err) {
     log.error("health-connect ingest failed", { err: String(err) });
     // Best-effort failure event (never rethrows) — the window is known from the parse
@@ -352,5 +351,5 @@ export async function POST(req: Request) {
     "/integrations/health-connect",
   ]);
 
-  return Response.json({ ok: true, counts: summary });
+  return Response.json({ ok: true, counts: summary, deletions });
 }

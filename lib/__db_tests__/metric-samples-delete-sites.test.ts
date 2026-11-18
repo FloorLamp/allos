@@ -184,6 +184,20 @@ const SITES: Site[] = [
     why: "Health Connect's day-bucket supersede (`supersedeMetricSampleOverlaps`), scoped to that source and to the tiling day-bucket metrics. No seam precedes it.",
   },
   {
+    file: "lib/integrations/health-connect-deletions.ts",
+    sql: "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?",
+    reaches: true,
+    frees: "seam",
+    why: "A Health Connect push naming a deleted record id (FP-9634): `removeMetricSample` runs `unlinkFollowUpsForMetricSample` before this statement, in the same transaction.",
+  },
+  {
+    file: "lib/glucose-trace-db.ts",
+    sql: 'DELETE FROM metric_samples WHERE profile_id = ? AND source = ? AND started_at = ? AND metric IN (${GLUCOSE_DERIVED_METRICS.map(() => "?").join(", ")})',
+    reaches: true,
+    frees: "backstop",
+    why: "A CGM day left with no trace points after a Health Connect deletion (FP-9634): its derived glucose summaries go with it. Those summaries are computed, never a follow-up's cited reading, so no seam is needed.",
+  },
+  {
     file: "lib/integrations/sleep-overlap-db.ts",
     sql: "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?",
     reaches: true,

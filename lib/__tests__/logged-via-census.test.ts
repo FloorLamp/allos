@@ -142,6 +142,7 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   // ── ingest and import machinery: `source` is the authoritative axis there ──
   genomic_variants: "imported panel results; `source` names the producer",
   glucose_trace: "a sensor stream, not a tap",
+  health_connect_record_refs: "import machinery",
   hr_minutes: "a device stream, not a tap",
   import_jobs: "import machinery",
   import_pair_decisions: "import machinery",

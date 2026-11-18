@@ -17,20 +17,22 @@ Health Connect data reaches Allos through an Android exporter:
 3. Configure a webhook with that URL and an `Authorization: Bearer <token>`
    header. Choose an interval or schedule, then use **Sync Now** to test.
 
-The exporter's default window covers the past 48 hours. Data outside that window
-may need a historical export. Allos accepts body measurements, activity totals,
-sleep, heart rate, HRV, exercise sessions, vitals, nutrition, and hydration.
-Exercise sessions appear in training history; measurements appear in their
-metric histories and clinical-result views.
+The exporter's default window: 48 hours. Allos accepts body measurements,
+activity totals, sleep, heart rate, HRV, exercise, vitals, nutrition, and
+hydration.
 
 Allos skips implausible values and timestamps, reports skipped/suppressed rows,
 and rejects oversized batches. Repeated pushes deduplicate; manual corrections
 and deletion suppression survive later syncs.
 
+Deletions: a top-level `deleted` array of Health Connect record ids removes the
+rows of each record a push carried with `metadata.id`; hand-edited rows stay.
+Unknown or replayed ids are no-ops. The response carries
+`deletions: { records, unmatched, removed, edited }`.
+
 Rotate the token, set its expiry, and inspect last use on the setup page.
-Rotation invalidates the previous token. Keep it secret: it permits uploads.
-`HEALTH_CONNECT_TOKEN` is a headless-bootstrap fallback for profile 1, without
-the UI token's expiry, rotation, or last-use tracking; prefer a UI-managed token.
+Keep it secret: it permits uploads. `HEALTH_CONNECT_TOKEN` is a headless
+fallback for profile 1 without expiry, rotation, or last-use tracking.
 
 ## Strava
 

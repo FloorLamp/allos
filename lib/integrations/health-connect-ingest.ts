@@ -33,6 +33,11 @@ import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
+import {
+  applyHealthConnectDeletions,
+  recordHealthConnectRefs,
+  type HealthConnectDeletions,
+} from "./health-connect-deletions";
 
 const log = createLogger("health-connect-ingest");
 
@@ -66,6 +71,8 @@ export interface ChunkedIngestResult {
   // Per-row provenance (#1333) accumulated across every chunk — the caller links it
   // to the sync event id after recordSyncEvent (which needs the whole push's split).
   provenance: ProvenanceEntry[];
+  // What the push's `deleted` list did (FP-9634).
+  deletions: HealthConnectDeletions;
 }
 
 // A mid-batch write failure that carries the accounting for the chunks that ACTUALLY
@@ -109,6 +116,12 @@ export function ingestHealthConnectPayload(
   // inserted/updated rows they persist; the id captured is committed by the chunk's
   // writeTx, so it's a stable target for the drill-in links.
   const provenance: ProvenanceEntry[] = [];
+  let deletions: HealthConnectDeletions = {
+    records: 0,
+    unmatched: 0,
+    removed: 0,
+    edited: 0,
+  };
 
   // The result as it stands RIGHT NOW — only committed chunks are folded in, so this
   // is exactly what a partial-failure event may claim.
@@ -131,6 +144,7 @@ export function ingestHealthConnectPayload(
     ]),
     vitalIds,
     provenance,
+    deletions,
   });
 
   // Keep provenance TRANSACTIONAL with its chunk (#1614, the #1617 pattern): the
@@ -420,6 +434,23 @@ export function ingestHealthConnectPayload(
     }
   }
 
+  // ── DELETIONS (FP-9634) ── after every write, so a record created and deleted
+  // between two pushes ends deleted. One transaction: the ledger rows this push's
+  // records wrote, then the deleted ids applied against the ledger. Removed rows fold
+  // into `superseded`, the split's count of stored rows the app deleted.
+  try {
+    deletions = writeTx(() => {
+      recordHealthConnectRefs(profileId, parsed.recordRefs);
+      return applyHealthConnectDeletions(profileId, source, parsed.deleted);
+    });
+    samples = foldCounts([
+      samples,
+      { ...emptyCounts(), superseded: deletions.removed },
+    ]);
+  } catch (err) {
+    throw new HealthConnectWriteError(err, snapshot());
+  }
+
   // THE FRONTIER OBSERVATION (#2341). Every declared continuous stream is asked, on
   // every SUCCESSFUL push, whether this push moved it — and the answer is stored.
   //
@@ -476,5 +507,6 @@ export function ingestHealthConnectPayload(
     ]),
     vitalIds,
     provenance,
+    deletions,
   };
 }

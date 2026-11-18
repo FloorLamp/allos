@@ -147,6 +147,9 @@ export const OWNED_TABLES = [
   // table (written by the accept/dismiss actions, not the document import).
   "med_link_decisions",
   "import_tombstones",
+  // Health Connect record id → the rows it wrote (FP-9634), read by a push's
+  // `deleted` list. Nothing FKs into it; deleteProfile clears it by profile_id.
+  "health_connect_record_refs",
   "ai_usage_counters",
   "deleted_rows",
   "replayed_keys",

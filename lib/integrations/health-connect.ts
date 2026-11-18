@@ -401,7 +401,7 @@ export function countUnknownRecords(body: unknown): number {
   if (!body || typeof body !== "object") return 0;
   let total = 0;
   for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
-    if (KNOWN_HEALTH_CONNECT_KEYS.has(key)) continue;
+    if (KNOWN_HEALTH_CONNECT_KEYS.has(key) || key === DELETED_KEY) continue;
     if (Array.isArray(value)) total += value.length;
   }
   return total;
@@ -432,6 +432,37 @@ export interface ParsedPayload {
   // Zone-qualified or nothing: a bare local date-time would resolve against the
   // SERVER's zone, which must never decide whether a health row is deleted.
   pushedAt: string | null;
+  // Which stored rows each record carrying `metadata.id` wrote (FP-9634).
+  recordRefs: HealthConnectRecordRef[];
+  // Record ids the phone deleted (the payload's `deleted` list).
+  deleted: string[];
+}
+
+// The top-level key carrying deleted Health Connect record ids (FP-9634). Not a record
+// type: its entries are ids, never counted as skipped records.
+export const DELETED_KEY = "deleted";
+
+/**
+ * One stored row (or span) a Health Connect record wrote, keyed so a later deletion of
+ * that record id can find it. `key` per target:
+ * - `metric_samples`: [metric, origin or "", started_at]
+ * - `body_metrics`: [measure column, date, the measure's UTC instant]
+ * - `medical_records` / `activities`: [external_id]
+ * - `glucose_trace`: [origin or "", UTC minute]
+ * - `hr_minutes`: [first UTC minute, last UTC minute] of the record's samples
+ */
+export type HealthConnectRefTarget =
+  | "metric_samples"
+  | "body_metrics"
+  | "medical_records"
+  | "activities"
+  | "glucose_trace"
+  | "hr_minutes";
+
+export interface HealthConnectRecordRef {
+  recordId: string;
+  target: HealthConnectRefTarget;
+  key: string[];
 }
 
 /**
@@ -525,6 +556,14 @@ function dataOrigin(rec: Record<string, unknown>): string | null {
   const metadata = rec.metadata;
   if (!metadata || typeof metadata !== "object") return null;
   const raw = (metadata as Record<string, unknown>).data_origin;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+// The Health Connect record id (`metadata.id`), when the sender states it (FP-9634).
+function recordIdOf(rec: Record<string, unknown>): string | null {
+  const metadata = rec.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const raw = (metadata as Record<string, unknown>).id;
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
@@ -860,6 +899,8 @@ export function parseHealthConnectPayload(
     skipped: 0,
     details: { warnings: [], origins: [], tally: {} },
     pushedAt: null,
+    recordRefs: [],
+    deleted: [],
   };
   if (!body || typeof body !== "object") {
     return out;
@@ -868,6 +909,24 @@ export function parseHealthConnectPayload(
     (body as Record<string, unknown>).timestamp
   );
   const payload = body as Record<string, unknown>;
+
+  // Deleted record ids (FP-9634): strings; anything else is a skipped entry.
+  const deletedRaw = payload[DELETED_KEY];
+  if (Array.isArray(deletedRaw)) {
+    for (const id of deletedRaw) {
+      if (typeof id === "string" && id.trim()) out.deleted.push(id.trim());
+      else out.skipped++;
+    }
+  }
+  // Remember what a record with an id wrote, so its later deletion finds it.
+  const refer = (
+    rec: Record<string, unknown>,
+    target: HealthConnectRefTarget,
+    key: string[]
+  ) => {
+    const recordId = recordIdOf(rec);
+    if (recordId) out.recordRefs.push({ recordId, target, key });
+  };
 
   // Records of a type the parser has no home for are dropped but COUNTED (issue #419)
   // so the Review feed's received/skipped tally reflects them instead of silently
@@ -961,6 +1020,8 @@ export function parseHealthConnectPayload(
     // above name it), so the canonical mint is the identity conversion — and it is
     // what makes the day aggregate carry a `Kg` all the way to the upsert (#2149).
     const a = dayFor(p.date);
+    if (t !== null)
+      refer(w, "body_metrics", ["weight_kg", p.date, utcInstant(new Date(t))]);
     a.weight_kg = toKg(kg, "kg"); // last reading of the day wins
     // …and so does its instant: the stamp must belong to the value that won, not to the
     // latest of the three measures.
@@ -978,6 +1039,12 @@ export function parseHealthConnectPayload(
     }
     const t = noteInstant(b.time);
     const a = dayFor(p.date);
+    if (t !== null)
+      refer(b, "body_metrics", [
+        "body_fat_pct",
+        p.date,
+        utcInstant(new Date(t)),
+      ]);
     a.bfSum += pct;
     a.bfN++;
     if (t !== null && (a.bfMs === null || t > a.bfMs)) a.bfMs = t;
@@ -994,6 +1061,8 @@ export function parseHealthConnectPayload(
     }
     const t = noteInstant(r.time);
     const a = dayFor(p.date);
+    if (t !== null)
+      refer(r, "body_metrics", ["resting_hr", p.date, utcInstant(new Date(t))]);
     a.rhrSum += bpm;
     a.rhrN++;
     if (t !== null && (a.rhrMs === null || t > a.rhrMs)) a.rhrMs = t;
@@ -1029,6 +1098,12 @@ export function parseHealthConnectPayload(
   });
 
   // --- summable / scalar daily metrics → metric_samples ---
+  // The metric_samples natural key (metric, origin, started_at); source is the push's.
+  const referSample = (
+    rec: Record<string, unknown>,
+    metric: string,
+    startedAt: string
+  ) => refer(rec, "metric_samples", [metric, dataOrigin(rec) ?? "", startedAt]);
   const interval = (
     key: string,
     metric: string,
@@ -1071,6 +1146,7 @@ export function parseHealthConnectPayload(
         origin: dataOrigin(rec),
         activity_external_id: null,
       });
+      referSample(rec, metric, start);
     }
   };
   interval("steps", "steps", (r) => num(r.count, r.steps, r.value));
@@ -1118,6 +1194,7 @@ export function parseHealthConnectPayload(
         value,
         origin: dataOrigin(rec),
       });
+      referSample(rec, metric, start);
     }
   }
 
@@ -1143,6 +1220,7 @@ export function parseHealthConnectPayload(
         value,
         origin: dataOrigin(rec),
       });
+      referSample(rec, metric, t);
     }
   };
   // Body composition.
@@ -1183,8 +1261,9 @@ export function parseHealthConnectPayload(
         skip(key);
         continue;
       }
+      const externalId = `${HEALTH_CONNECT_ID}:${canonical}:${t}`;
       out.vitals.push({
-        external_id: `${HEALTH_CONNECT_ID}:${canonical}:${t}`,
+        external_id: externalId,
         date: p.date,
         // The reading's own instant (#2154) — the same moment the external_id
         // already encodes, normalized to the canonical shape. external_id stays
@@ -1196,6 +1275,7 @@ export function parseHealthConnectPayload(
         value_num: value,
         unit,
       });
+      refer(rec, "medical_records", [externalId]);
     }
   };
   // Blood pressure is two analytes per reading (same timestamp, distinct canonicals).
@@ -1214,6 +1294,14 @@ export function parseHealthConnectPayload(
       skip("blood_pressure");
       continue;
     }
+    if (sys != null)
+      refer(rec, "medical_records", [
+        `${HEALTH_CONNECT_ID}:Blood Pressure Systolic:${t}`,
+      ]);
+    if (dia != null)
+      refer(rec, "medical_records", [
+        `${HEALTH_CONNECT_ID}:Blood Pressure Diastolic:${t}`,
+      ]);
     if (sys != null)
       out.vitals.push({
         external_id: `${HEALTH_CONNECT_ID}:Blood Pressure Systolic:${t}`,
@@ -1270,6 +1358,11 @@ export function parseHealthConnectPayload(
       mgdl,
       origin: dataOrigin(rec),
     });
+    // The trace stores the reading's UTC minute (recordGlucoseTrace).
+    refer(rec, "glucose_trace", [
+      dataOrigin(rec) ?? "",
+      utcMinute(new Date(t)),
+    ]);
   }
   vital("oxygen_saturation", "Oxygen Saturation", "vitals", "%", (r) =>
     sampleSeriesValue(r, ["percentage", "percent", "value"])
@@ -1315,6 +1408,7 @@ export function parseHealthConnectPayload(
       value: ms,
       origin: dataOrigin(h),
     });
+    referSample(h, "hrv_ms", t);
   }
   // Sleep: total duration (minutes) per session → metric_samples 'sleep_min', plus a
   // per-stage breakdown → 'sleep_deep_min' / '_rem_' / '_light_' / '_awake_'. A
@@ -1376,6 +1470,7 @@ export function parseHealthConnectPayload(
       value: sleepMin,
       origin: dataOrigin(s),
     });
+    referSample(s, "sleep_min", start);
 
     // Per-stage breakdown. Each stage carries its own start/end (+ duration); we key
     // on its window and pin its date to the session's wake day so it groups with the
@@ -1421,6 +1516,8 @@ export function parseHealthConnectPayload(
         value: stMin,
         origin: dataOrigin(s),
       });
+      // A stage belongs to its session's record id.
+      referSample(s, stMetric, stStart);
     }
   }
 
@@ -1476,6 +1573,7 @@ export function parseHealthConnectPayload(
       value,
       origin: dataOrigin(rec),
     });
+    referSample(rec, BREATHING_RATE_METRIC, night.startedAt);
   }
   // The spot readings — every respiratory record the night above did not claim. The
   // `owns` mechanism is glucose's (#3182): one record type, two destinations, and a
@@ -1535,12 +1633,17 @@ export function parseHealthConnectPayload(
       value: delta,
       origin: dataOrigin(rec),
     });
+    referSample(rec, SKIN_TEMP_DELTA_METRIC, t);
   }
 
   // --- continuous heart rate: bucket raw samples into 1-minute aggregates ---
   const buckets = new Map<
     string,
     { sum: number; n: number; min: number; max: number }
+  >();
+  const hrSpans = new Map<
+    string,
+    { rec: Record<string, unknown>; from: string; to: string }
   >();
   for (const s of asArray(payload.heart_rate)) {
     const p = zonedParts(s.time, tz);
@@ -1559,6 +1662,16 @@ export function parseHealthConnectPayload(
     const statedMax = boundedOrNull("heart_rate_bpm", num(s.max));
     const min = statedMin ?? bpm;
     const max = statedMax ?? bpm;
+    // One heart-rate record carries many samples: its span is what it wrote.
+    const hrId = recordIdOf(s);
+    if (hrId) {
+      const span = hrSpans.get(hrId);
+      if (!span) hrSpans.set(hrId, { rec: s, from: p.minute, to: p.minute });
+      else {
+        if (p.minute < span.from) span.from = p.minute;
+        if (p.minute > span.to) span.to = p.minute;
+      }
+    }
     const b = buckets.get(p.minute);
     if (!b) buckets.set(p.minute, { sum: bpm * n, n, min, max });
     else {
@@ -1577,6 +1690,8 @@ export function parseHealthConnectPayload(
       n: b.n,
     });
   }
+  for (const span of hrSpans.values())
+    refer(span.rec, "hr_minutes", [span.from, span.to]);
 
   // --- exercise sessions → activities ---
   // Active-calorie records are independent intervals in Health Connect. A shared
@@ -1623,6 +1738,7 @@ export function parseHealthConnectPayload(
       start_time: p.hhmm,
       end_time: endParts?.hhmm ?? null,
     });
+    refer(e, "activities", [externalId]);
     if (end) exerciseByWindow.set(`${start}\0${end}`, externalId);
   }
   for (const sample of out.samples) {

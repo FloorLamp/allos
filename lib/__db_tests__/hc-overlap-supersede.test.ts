@@ -1100,6 +1100,8 @@ describe("each batch is processed in ascending started_at order", () => {
       skipped: 0,
       details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
+      recordRefs: [],
+      deleted: [],
     };
     ingestHealthConnectPayload(p, parsed, HC, 2);
     expect(insertOrder(p)).toEqual(ASCENDING);
