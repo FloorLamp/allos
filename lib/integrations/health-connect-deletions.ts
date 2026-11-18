@@ -16,6 +16,7 @@
 import { db } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { removeGlucoseTracePoint } from "@/lib/glucose-trace-db";
+import { unlinkFollowUpsForMetricSample } from "@/lib/followup-write";
 import { removeImportTombstoneForRow } from "./tombstones";
 import { MEASURES } from "./ingest-timezone-reconcile";
 import { isEditLocked } from "./sync-log";
@@ -83,6 +84,8 @@ function removeMetricSample(
     { id: number; edited: number | null } | undefined;
   if (!row) return "absent";
   if (isEditLocked(row.edited)) return "edited";
+  // A follow-up may cite this reading (a breathing-rate night): free the whole link.
+  unlinkFollowUpsForMetricSample(profileId, row.id);
   db.prepare("DELETE FROM metric_samples WHERE id = ? AND profile_id = ?").run(
     row.id,
     profileId
