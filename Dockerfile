@@ -11,7 +11,7 @@
 # build-time check.
 
 # ---- builder ----
-FROM node:24.22.0-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS builder
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS builder
 WORKDIR /app
 
 # node-gyp's prerequisites, needed by `npm ci` below and nothing else in this image.
@@ -74,7 +74,7 @@ RUN BS3=/app/.next/standalone/node_modules/better-sqlite3 \
   && node -e "new (require('/app/.next/standalone/node_modules/better-sqlite3'))(':memory:').prepare('select sqlite_version()').get()"
 
 # ---- runner ----
-FROM node:24.22.0-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS runner
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
