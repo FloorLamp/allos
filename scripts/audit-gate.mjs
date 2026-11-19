@@ -33,11 +33,6 @@ const ALLOWLIST = {
       "Development-only Next lint dependency with no compatible patched release; remove when upstream fixes it.",
     tracking: "FloorLamp/allos#6064",
   },
-  "GHSA-fc5q-39xc-vjpf": {
-    reason:
-      "picomatch <=4.0.7 (every release) with no patched version; reached only through dev tools (eslint, lint-staged, vitest/vite).",
-    tracking: "FP-9650",
-  },
 };
 
 let raw;
