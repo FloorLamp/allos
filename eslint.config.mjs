@@ -6,7 +6,7 @@ const TYPESCRIPT_API_PATTERN = {
     'Import the compiler API from "typescript-api" (the pinned 5.x alias), not from "typescript" — see #3559.',
 };
 
-// ESLint 9 flat config. `next lint` is deprecated in Next 15 and removed in 16,
+// ESLint flat config. `next lint` is deprecated in Next 15 and removed in 16,
 // so `npm run lint` drives the ESLint CLI directly (see package.json). The lint
 // surface is `eslint-config-next`'s `next/core-web-vitals` rule set, applied to
 // every tracked JavaScript and TypeScript source file from the repository root.
