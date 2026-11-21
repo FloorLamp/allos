@@ -15,6 +15,6 @@ passport or emergency card. The app never proposes one.
   deletes the row, mark included. Past marks outlive the declaration. Offline
   taps queue their marks; Telegram taps carry none.
 
-Owner rulings (2026-09-11): the pair stays silent unless the effect was logged
+Owner rulings: the pair stays silent unless the effect was logged
 on half the window’s days or more, and above that an unlogged day counts as
 zero; declarations live on the Nutrition Manage tab.

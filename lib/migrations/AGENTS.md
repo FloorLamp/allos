@@ -13,10 +13,10 @@ These instructions apply to the migration runner and migrations.
 - A column added to a table that has an export dataset either joins that dataset
   (`columns` and `select` in `lib/export.ts`) or is named in
   `COLUMN_EXPORT_ALLOWLIST` with the reason it stays out. The portable export
-  carries provenance columns, not just facts (#5117).
+  carries provenance columns, not just facts.
 - Neither option applies if that table also feeds the FHIR passport
   (`FHIR_INPUT_TABLES`): those are carved out of the column guard, so adding an
-  allowlist entry for one is what fails (#5342).
+  allowlist entry for one is what fails.
 - Before renaming or dropping a column, audit `KIND_SPECS` for entities that
   capture its table and preserve restore compatibility by retaining or rewriting
   the affected `deleted_rows` payload keys.

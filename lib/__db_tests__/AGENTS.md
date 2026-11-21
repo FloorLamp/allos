@@ -16,8 +16,8 @@ this tier's main cost.
   `runMigrations(db, migrationsBefore("YYYYMMDD-slug"))`.
 
 `migratedDb()` returns an in-memory database the caller owns and closes. It is a
-byte copy of one migrated database built once per worker, so it costs ~1 ms
-rather than replaying every migration (~710 ms, rising with each one merged).
+byte copy of one migrated database built once per worker rather than a replay of
+every migration.
 
 Reach for `migrate()` or `runMigrations()` only when the chain is the question:
 a migration's own `up()`, replay safety, a partial apply to some version, or
@@ -25,7 +25,7 @@ what a boot task does on a first boot. Those tests are why the chain still runs.
 
 Never slice `MIGRATIONS` by position: "all but the newest" means "before X" for
 one day, then silently rebuilds the future into the "before" database while
-still passing (#3565). ESLint refuses it.
+still passing. ESLint refuses it.
 
 `./migrated-db-parity.test.ts` holds the snapshot to a real replay — same
 schema, same version, same seeded rows — and proves the copies are independent.
