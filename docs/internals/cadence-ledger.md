@@ -3,36 +3,18 @@
 Status: shipped (#2034 — one read model over `frequency_targets`; no schema
 change, no write path)
 
-`frequency_targets` is one physical table with one identity (`target.id`). Before
-#2034 four separately-maintained read models answered the same question about it —
-"how did this target do in week W?" — and none of them keyed on that identity
-uniformly.
-
-| reader                            | what it answered              | how it dispatched                 |
-| --------------------------------- | ----------------------------- | --------------------------------- |
-| `getFrequencyTargetProgress`      | the current, in-progress week | a six-branch `if` chain           |
-| `getFrequencyTargetWeeklyHistory` | the N completed weeks before  | **the same chain, inlined again** |
-| `getSubstanceWeekState`           | this week's substance units   | its own per-substance branch      |
-| `getSubstanceWeeklyTrend`         | the trailing substance weeks  | its own per-substance branch      |
-
-Plus a third dispatcher in `lib/queries/protocols.ts` over a subset of the scopes,
-which fell through to `{kind: "none"}` for any scope kind it had not been taught —
-a protocol that silently reported zero usage forever.
-
-The two frequency readers were ~250 lines of structurally identical
-gather-and-bucket code that had to be edited in lockstep, and the substance
-readers existed at all only because those two filtered `scope_kind !== "substance"`
-out. Adding an eighth scope kind meant editing three dispatchers and hoping four
-answers still agreed.
+`frequency_targets` is one physical table with one identity (`target.id`). One
+read model, keyed on that identity, answers "how did this target do in week W?"
+for every reader: the current week, completed weeks, floors and caps.
 
 ## The axes (`lib/cadence.ts`, pure)
 
-What dispatch used to encode as branches is now declared:
+Three declared axes replace per-reader dispatch:
 
 1. **Source and grain** — which event ledger a scope counts and whether a week is
    distinct days or a sum. `CADENCE_SCOPES` is `Record<FrequencyScopeKind, …>`, so
-   it is total by construction: an eighth scope kind is a compile error here, not a
-   silent fall-through in three places. Each entry carries the reason it counts the
+   it is total by construction: a new scope kind is a compile error here, not a
+   silent fall-through in a reader. Each entry carries the reason it counts the
    way it does.
 2. **Direction** — `floor` (a target to reach) vs `cap` (a limit to stay under).
    The same move `trailingAverage` made for #1909 with `basis`.
@@ -69,7 +51,7 @@ profile's stored timezone), issues **one gather per event source** over the whol
 span and buckets in JS — never one query per week, and never a second query for a
 source two scopes share.
 
-Every former reader is a thin adapter over it:
+Every reader is a thin adapter over it:
 
 | reader                            | ledger call                                           |
 | --------------------------------- | ----------------------------------------------------- |
@@ -80,8 +62,7 @@ Every former reader is a thin adapter over it:
 | `getCadenceWeekVerdicts`          | `weeks: 1, includeCurrent: true`, **both** directions |
 | `getCadenceCapWeeks`              | `weeks: N, includeCurrent: true, direction: "cap"`    |
 
-`getPracticeTrends` and `getProtocolAdherence` were already formatters over the
-first two and keep working unchanged — which is the proof the layering holds.
+`getPracticeTrends` and `getProtocolAdherence` are formatters over the first two.
 
 The last two rows are the periodic recap's reads (#2395/#2397). The daily digest
 reported a weekly target's PACE while the message that CLOSES the week never
@@ -109,13 +90,10 @@ and stays silent below `CAP_PERIOD_MIN_WEEKS`.
 
 ## Substance is a tenant, not a fork
 
-The substance exclusion was deliberate and correct: a floor-semantics reader
-renders "2 of 7 — 5 to go" on alcohol, nudging toward MORE consumption
-(#998/#1259). That safety argument survives, but it argues for direction being
-**declared**, not for a fourth module. Owner ruling, 2026-08-05: substance is the
-`direction: "cap"` tenant of this ledger.
-
-The anti-nudge rule moved from module separation into the verdict vocabulary:
+Substance is the `direction: "cap"` tenant of this ledger (owner ruling), not a
+separate module. A floor-semantics reader would render "2 of 7 — 5 to go" on
+alcohol, nudging toward MORE consumption (#998/#1259), so direction is
+**declared** and the anti-nudge rule lives in the verdict vocabulary:
 
 - a `cap` target's verdict set (`under-cap` / `at-cap` / `over-cap`) has no "N to
   go" and no pace state at all;
@@ -126,26 +104,25 @@ The anti-nudge rule moved from module separation into the verdict vocabulary:
 - `lib/__tests__/cadence.test.ts` pins that no cap verdict or label carries
   pace-toward-more language.
 
-Types enforce what keeping the code apart used to.
+Types enforce the separation.
 
 ## Selecting by direction, not by subtraction
 
-Every reader that used to filter `scope_kind !== "substance"` now selects a
-`direction`. A new inverted scope joins the right readers by declaring itself,
-rather than by someone remembering to add it to three exclusion lists — the same
-failure mode #2017 hit with the workout nudge's "not cardio" filter.
+Readers select a `direction`; none filters `scope_kind !== "substance"`. A new
+inverted scope joins the right readers by declaring itself, rather than by
+someone remembering to add it to exclusion lists — the failure mode #2017 hit
+with the workout nudge's "not cardio" filter.
 
-`PROTOCOL_USAGE_LEDGER` in `lib/queries/protocols.ts` is the third dispatcher
-rebased on the registry. It stays its own table (protocol usage counts EVENT ROWS
+`PROTOCOL_USAGE_LEDGER` in `lib/queries/protocols.ts` is a third dispatcher over
+the registry. It stays its own table (protocol usage counts EVENT ROWS
 in a date window, not weekly totals), but it is exhaustive over `CadenceSource`, so
 a new source is a compile error there too.
 
 ## Behavior notes
 
-Two of the four readers already clamped the current week at the anchor day; two did
-not, so a log dated in the FUTURE could fill this week's count — marking a floor met
-and silencing its nudge, or inflating a cap. The ledger clamps uniformly. That is
-the one intentional behavior delta of the consolidation.
+The ledger clamps the current week at the anchor day for every reader, so a log
+dated in the FUTURE cannot fill this week's count — marking a floor met and
+silencing its nudge, or inflating a cap.
 
 Related: #1997/#2032 (the pattern), #1909 (the `basis` precedent), #998/#1259 (the
 floor-vs-cap ruling), #1670 (under-cap is success), #748 (the floor pace), #2009

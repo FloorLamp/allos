@@ -103,7 +103,7 @@ approved designs: the illness cockpit header intentionally repeats the person's
 name and `Illness · Day N`. A change to that design needs its own scope.
 
 Where an approved surface and an unapproved one state the same fact, the approved
-half is raised and the other gives way. Owner ruling 2026-09-07: the cockpit's
+half is raised and the other gives way. Owner ruling: the cockpit's
 accordion row goes quiet when it is expanded — no situation, day, trend arrow,
 temperature, last dose or fever clock — because the header below states all six.
 It keeps the name and avatar, which identify whose card a control writes to.
