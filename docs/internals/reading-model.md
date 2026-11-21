@@ -61,7 +61,7 @@ device identity matters.
 
 `foldObservations()` first deduplicates observations, then removes those already
 covered by the stream's day/value points. That coverage comparison ignores source
-and instant because a daily point no longer carries either.
+and instant because a daily point carries neither.
 `trendMetricSeriesFold()` in
 [trend-metric-series.ts](../../lib/trend-metric-series.ts) returns both chart points
 and surviving observation rows. Use both results so the chart and its table agree.

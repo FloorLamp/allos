@@ -25,7 +25,7 @@ on the entry itself. No new route, no new page.
 
 ## The logged group
 
-**One group, `Logged`, for all seven kinds** (owner ruling, 2026-09-04). A group
+**One group, `Logged`, for all seven kinds** (owner ruling). A group
 per kind could put 35 logged hits ahead of the catalog on a broad query, and the
 question this feature exists to answer ("my latest sauna") is answered in five
 rows.
@@ -117,7 +117,7 @@ Across groups the fixed `SEARCH_DOMAIN_ORDER` stands. `logged` sits with
 `activity` (the other "things that happened") and **above the catalog entities**
 `supplement`, `protocol`, `practice` and `equipment` that name what the rows were
 logged against — typing "sauna" shows your sessions before the practice card
-(owner ruling, 2026-09-04). `page` is last, always, so the kind's static list
+(owner ruling). `page` is last, always, so the kind's static list
 entry ("Food history", "Dose history") sits below the entries it would have shown
 — a query matching both gets the entries first, newest first, the list entry
 last.

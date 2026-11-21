@@ -2,11 +2,10 @@
 
 **Status:** audited (#3590), no change to any shipped migration
 
-`runBootTx`'s bounded `SQLITE_BUSY` retry had never fired: its guard read the
-error _message_, and better-sqlite3 puts the result code on `.code`. #3442 fixed
-that, so from then on a migration `up()` could genuinely be re-entered. This
-records what the 219 shipped bodies do under that, how it was measured, and what
-the measurement does not reach.
+`runBootTx`'s bounded `SQLITE_BUSY` retry (it reads better-sqlite3's `.code`,
+#3442) can re-enter a migration `up()`. This records what the first 219 shipped
+bodies do under that, how it is measured, and what the measurement does not
+reach.
 
 - `lib/__db_tests__/migration-reentry.test.ts` — the measurement, over every
   shipped body at once, plus the two controls that prove it can see a failure.
@@ -22,8 +21,7 @@ each migration with `BEGIN IMMEDIATE`. In WAL the write lock is exclusive from
 better-sqlite3 / SQLite 3.53.4: a second `BEGIN IMMEDIATE` raises `SQLITE_BUSY`,
 while a peer holding an open read transaction does **not** make the writer's
 `COMMIT` fail. A retry on a production boot is therefore a first entry, with zero
-statements executed — which is why nothing had ever gone wrong here even before
-anyone looked.
+statements executed.
 
 **2. When a busy does land mid-body, the runner's transaction undoes the body.**
 `lib/migrations/runner.ts` wraps `m.up(db)` **and** the `schema_migrations` insert
@@ -46,7 +44,7 @@ database is identical to a clean run** — same schema, same rows, same
 ## The audit table
 
 Re-applying each `up()` over its own output, measured by
-`npm run census:migration-replay` (2026-08-23, 219 migrations):
+`npm run census:migration-replay` over the first 219 migrations:
 
 | Class                                        | Count | Idempotent by what property                                                                                                                                             | Which                                                                                               |
 | -------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -54,7 +52,7 @@ Re-applying each `up()` over its own output, measured by
 | Standalone no-op except a wall-clock value   | 1     | `105-login-notification-channels` upserts its one-shot reconciliation report; only the `at` stamp inside it moves. One row either way.                                  | `105-login-notification-channels`                                                                   |
 | Idempotent only under the runner's atomicity | 3     | Unguarded `ALTER TABLE … ADD COLUMN`: a standalone second application raises `duplicate column name`. Unreachable, because the body and its ledger row commit together. | `20260822-intake-source-name`, `20260822-logged-via-provenance`, `20260823-telemetry-source-answer` |
 
-The three in the last row are **not** a defect and were not changed. No path
+The three in the last row are **not** a defect. No path
 applies a body twice: `runMigrations` is the only caller in `lib/`, `app/` and
 `scripts/` (`scripts/restore.ts` reads `MIGRATIONS.length` for a version gate and
 nothing else), and every direct `m.up()` call in the tree is a DB-tier test
