@@ -678,7 +678,8 @@ const DAILY_FAILURE_LINE = "the daily forecast didn't come back";
 // recurrence question. The hourly half already worked this way (#3618).
 async function getJson(
   label: string,
-  url: string
+  url: string,
+  retryTimeout = false
 ): Promise<{ ok: true; json: unknown } | { ok: false; status: number }> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -691,6 +692,9 @@ async function getJson(
     }
     return { ok: true, json: await res.json() };
   } catch (err) {
+    if (retryTimeout && err instanceof Error && err.name === "TimeoutError") {
+      return getJson(label, url);
+    }
     // NO `error` FIELD ANY MORE (#3592). It used to carry the throw's own text, and
     // that text was interpolated straight into weatherPartialWarning's parenthetical
     // and rendered in Data → Review — "the daily forecast/air-quality half failed
@@ -732,7 +736,8 @@ export async function openMeteoFetchDaily(
   });
   const weather = await getJson(
     "daily fetch",
-    `${base}?${weatherQs.toString()}`
+    `${base}?${weatherQs.toString()}`,
+    true
   );
   if (!weather.ok) {
     return {

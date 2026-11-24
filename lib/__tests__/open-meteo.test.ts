@@ -305,6 +305,28 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
     vi.useRealTimers();
   });
 
+  it("retries a timed-out daily weather request with a fresh signal", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new DOMException("Timed out", "TimeoutError"))
+      .mockImplementation(async () => Response.json(OK_BODY));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await openMeteoFetchDaily(
+      40.7,
+      -74,
+      "2026-08-03",
+      "2026-08-09",
+      "America/New_York"
+    );
+
+    expect(result).toEqual({ ok: true, rows: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [first, retry] = fetchMock.mock.calls;
+    expect(retry[0]).toBe(first[0]);
+    expect(retry[1]?.signal).not.toBe(first[1]?.signal);
+  });
+
   it("asks weather for today+7 and air quality for today+6 — the regression fixture", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
