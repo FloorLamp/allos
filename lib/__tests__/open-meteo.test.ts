@@ -305,7 +305,13 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
     vi.useRealTimers();
   });
 
-  it("retries a timed-out daily weather request with a fresh signal", async () => {
+  it("gives a timed-out daily weather request a longer retry deadline", async ({
+    onTestFinished,
+  }) => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    onTestFinished(() => {
+      timeout.mockRestore();
+    });
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockRejectedValueOnce(new DOMException("Timed out", "TimeoutError"))
@@ -325,6 +331,7 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
     const [first, retry] = fetchMock.mock.calls;
     expect(retry[0]).toBe(first[0]);
     expect(retry[1]?.signal).not.toBe(first[1]?.signal);
+    expect(timeout.mock.calls).toEqual([[15_000], [30_000], [15_000]]);
   });
 
   it("asks weather for today+7 and air quality for today+6 — the regression fixture", () => {
