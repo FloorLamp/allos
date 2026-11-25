@@ -129,6 +129,7 @@ const ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive";
 const AIR_QUALITY_BASE =
   "https://air-quality-api.open-meteo.com/v1/air-quality";
 const TIMEOUT_MS = 15_000;
+const DAILY_RETRY_TIMEOUT_MS = 30_000;
 
 // How far ahead the AIR-QUALITY host publishes — NOT the same horizon as the weather
 // forecast host, which is what #3007 was. The weather endpoint publishes 16 days; air
@@ -679,10 +680,11 @@ const DAILY_FAILURE_LINE = "the daily forecast didn't come back";
 async function getJson(
   label: string,
   url: string,
-  retryTimeout = false
+  retryTimeout = false,
+  timeoutMs = TIMEOUT_MS
 ): Promise<{ ok: true; json: unknown } | { ok: false; status: number }> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) {
       log.error(`${label} rejected`, {
         status: res.status,
@@ -693,7 +695,7 @@ async function getJson(
     return { ok: true, json: await res.json() };
   } catch (err) {
     if (retryTimeout && err instanceof Error && err.name === "TimeoutError") {
-      return getJson(label, url);
+      return getJson(label, url, false, DAILY_RETRY_TIMEOUT_MS);
     }
     // NO `error` FIELD ANY MORE (#3592). It used to carry the throw's own text, and
     // that text was interpolated straight into weatherPartialWarning's parenthetical
