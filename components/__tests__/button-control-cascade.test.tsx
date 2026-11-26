@@ -56,7 +56,7 @@ function minSizeDeclarations(css: string) {
     found.push({
       selector: owningSelector(declaration),
       property: declaration.prop,
-      important: declaration.important,
+      important: declaration.important ?? false,
     });
   });
   return found;
